@@ -21,7 +21,7 @@ export function filterEncounterTimeline(events: ReadonlyArray<EncounterTimelineI
   return filter === "notes" ? events.filter(({ kind }) => kind === "text-note" || kind === "photo-note" || kind === "audio-note") : events;
 }
 
-export function EncounterTimeline({ events, validationStatuses, definition: sourceDefinition, clinicalForm, headingId, language, className, readOnly = false, mediaContentPath, onOpenTextNote, onOpenPhoto, onOpenAudio, onOpenEvent }: {
+export function EncounterTimeline({ events, validationStatuses, definition: sourceDefinition, clinicalForm, headingId, language, className, readOnly = false, mediaContentPath, onOpenTextNote, onOpenPhoto, onOpenAudio, onOpenEvent, onClose }: {
   readonly events: ReadonlyArray<EncounterTimelineItem>;
   readonly validationStatuses: ReadonlyMap<string, "warning" | "error">;
   readonly definition: EncounterDefinition;
@@ -35,6 +35,7 @@ export function EncounterTimeline({ events, validationStatuses, definition: sour
   readonly onOpenPhoto: (note: ReportPhotoNote, trigger: HTMLElement) => void;
   readonly onOpenAudio: (note: ReportAudioNote, trigger: HTMLElement) => void;
   readonly onOpenEvent: (event: EncounterEvent, trigger: HTMLElement) => void;
+  readonly onClose?: () => void;
 }) {
   const region = useRegionalFormat();
   const definition = mobileDisplayDefinition(sourceDefinition, language, clinicalForm);
@@ -49,10 +50,13 @@ export function EncounterTimeline({ events, validationStatuses, definition: sour
       <div><p className="eyebrow">{t("mobile.timelineOrder")}</p><h1 id={headingId}>{t("mobile.timeline")}</h1></div>
       <span aria-live="polite">{t("mobile.eventCount", { count: formatClinicalNumber(visibleEvents.length, region) }, visibleEvents.length)}</span>
     </div>
-    <div className="timeline-filters" role="group" aria-labelledby={filterLabelId}>
-      <span className="visually-hidden" id={filterLabelId}>{t("mobile.filterTimeline")}</span>
-      <button type="button" aria-pressed={filter === "all"} onClick={() => setFilter("all")}>{t("mobile.all")}</button>
-      <button type="button" aria-pressed={filter === "notes"} onClick={() => setFilter("notes")}>{t("mobile.notes")}</button>
+    <div className="timeline-controls">
+      <div className="timeline-filters" role="group" aria-labelledby={filterLabelId}>
+        <span className="visually-hidden" id={filterLabelId}>{t("mobile.filterTimeline")}</span>
+        <button type="button" aria-pressed={filter === "all"} onClick={() => setFilter("all")}>{t("mobile.all")}</button>
+        <button type="button" aria-pressed={filter === "notes"} onClick={() => setFilter("notes")}>{t("mobile.notes")}</button>
+      </div>
+      {onClose && <button type="button" onClick={onClose}>{t("stationary.close")}</button>}
     </div>
     {visibleEvents.length === 0 ? <p className="timeline-empty">{filter === "notes" ? t("mobile.noNotes") : t("mobile.noEvents")}</p> : <ol className="timeline-list">
       {visibleEvents.map((event) => {

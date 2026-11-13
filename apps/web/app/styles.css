@@ -937,8 +937,9 @@ fieldset { min-inline-size: 0; }
   .stationary-group-add-controls > button { width: 100%; }
   .stationary-group-dialog { width: 100vw; }
 }
-.timeline-filters { display: flex; gap: 6px; padding: 0 20px 12px; border-bottom: 1px solid var(--line); }
-.timeline-filters button { min-height: 44px; padding: 5px 14px; cursor: pointer; }
+.timeline-controls { display: flex; flex-wrap: wrap; gap: 6px; padding: 0 20px 12px; border-bottom: 1px solid var(--line); }
+.timeline-filters { display: flex; flex-wrap: wrap; gap: 6px; }
+.timeline-controls button { min-height: 44px; padding: 5px 14px; cursor: pointer; }
 .timeline-empty { margin: 0; padding: 24px 20px; color: var(--muted); }
 .stationary-presentation.stationary-timeline-open { padding-right: 360px; }
 .stationary-presentation.stationary-timeline-open .encounter-header { width: calc(100% + 360px); }

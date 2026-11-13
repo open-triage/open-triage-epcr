@@ -759,6 +759,12 @@ function EncounterWorkspace({ session, report, presentationMode, language, onSav
     dispatch({ type: event.vitals ? "vitals-opened" : event.kind === "procedure" ? "procedure-opened" : event.kind === "medication" ? "medication-opened" : "note-opened", id: event.id });
   }
 
+  function closeStationaryTimeline() {
+    setStationaryTimelineOpen(false);
+    storeStationaryTimelineOpen(window.localStorage, session.user.id, false);
+    timelineToggle.current?.focus();
+  }
+
   function toggleStationaryTimeline() {
     setStationaryTimelineOpen((open) => {
       const next = !open;
@@ -979,7 +985,7 @@ function EncounterWorkspace({ session, report, presentationMode, language, onSav
   }
 
   useAndroidBack(async () => {
-    if (stationaryTimelineOpen) { setStationaryTimelineOpen(false); return true; }
+    if (stationaryTimelineOpen) { closeStationaryTimeline(); return true; }
     if (shell.view !== "timeline") { dispatch({ type: "view-selected", view: "timeline" }); return true; }
     await saveAndClose();
     return true;
@@ -1123,13 +1129,9 @@ function EncounterWorkspace({ session, report, presentationMode, language, onSav
             groups={report.clinicalForm!.customGroups} language={language}
             onDocumentChange={(document) => dispatch({ type: "document-opened", document })} />)}
         </section>}
-      {presentationMode === "stationary" && stationaryTimelineOpen && <WorkspaceSidebar id="stationary-timeline-sidebar" className="stationary-timeline-sidebar" label={t("mobile.encounterTimeline")} onEscape={() => {
-        setStationaryTimelineOpen(false);
-        storeStationaryTimelineOpen(window.localStorage, session.user.id, false);
-        timelineToggle.current?.focus();
-      }}>
+      {presentationMode === "stationary" && stationaryTimelineOpen && <WorkspaceSidebar id="stationary-timeline-sidebar" className="stationary-timeline-sidebar" label={t("mobile.encounterTimeline")} onEscape={closeStationaryTimeline}>
         <EncounterTimeline events={timelineEvents} validationStatuses={eventValidationStatuses} definition={displayDefinition}
-          clinicalForm={report?.clinicalForm} headingId="stationary-timeline-heading" language={language} onOpenTextNote={openTextNote} onOpenPhoto={openPhoto} onOpenAudio={openAudio} onOpenEvent={openTimelineEvent} />
+          clinicalForm={report?.clinicalForm} headingId="stationary-timeline-heading" language={language} onClose={closeStationaryTimeline} onOpenTextNote={openTextNote} onOpenPhoto={openPhoto} onOpenAudio={openAudio} onOpenEvent={openTimelineEvent} />
       </WorkspaceSidebar>}
       {presentationMode === "mobile" && shell.view === "checklist" && (
         <section className="content-panel checklist-panel" aria-labelledby="checklist-heading">

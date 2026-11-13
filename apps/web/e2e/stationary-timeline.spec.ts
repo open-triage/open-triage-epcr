@@ -37,6 +37,7 @@ test("stationary timeline is remembered, filters events, restores focus, and edi
     persistenceState: "ready" as const,
   };
 
+  await page.route(`**/api/reports/${demoOpenAssignment.report.id}/active`, (route) => route.fulfill({ status: 304 }));
   await page.route("**/demo-assigned-calls.json", assignedCalls);
   await page.route(`**/api/calls/${assignedCall.id}/open`, (route) => route.fulfill({
     contentType: "application/json",
@@ -113,6 +114,22 @@ test("stationary timeline is remembered, filters events, restores focus, and edi
   const accessibility = await new AxeBuilder({ page }).include(".encounter-header, .stationary-timeline-sidebar")
     .withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"]).analyze();
   expect(accessibility.violations.filter(({ impact }) => impact === "critical" || impact === "serious")).toEqual([]);
+
+  const close = sidebar.getByRole("button", { name: "Close", exact: true });
+  const closeBox = (await close.boundingBox())!;
+  const notesBox = (await filters.getByRole("button", { name: "Notes" }).boundingBox())!;
+  expect(closeBox.y).toBe(notesBox.y);
+  expect(closeBox.x).toBeGreaterThanOrEqual(notesBox.x + notesBox.width);
+  expect(closeBox.height).toBeGreaterThanOrEqual(44);
+  expect(closeBox.x + closeBox.width).toBeLessThanOrEqual(390);
+  await close.click();
+  await expect(sidebar).toHaveCount(0);
+  await expect(toggle).toBeFocused();
+  await expect(toggle).toHaveAttribute("aria-expanded", "false");
+  expect(await page.evaluate(() => [...Object.entries(localStorage)].some(([key, value]) =>
+    key.startsWith("open-triage:stationary-timeline-v1:user:") && value === "closed"))).toBe(true);
+  await toggle.click();
+  await expect(sidebar).toBeVisible();
 
   await filters.getByRole("button", { name: "All" }).focus();
   await page.keyboard.press("Escape");

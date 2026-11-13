@@ -70,3 +70,14 @@ test("Swedish timeline translates operational events and compact vital summaries
   assert.ok(html.includes("AF 16"));
   assert.ok(html.includes("Patient feels better."));
 });
+
+test("timeline close action is optional and localized alongside the filters", () => {
+  for (const [language, label] of [["en", "Close"], ["sv", "Stäng"]] as const) {
+    const props = { events, validationStatuses: new Map(), definition: standardEncounterDefinition,
+      headingId: "timeline-heading", language, onOpenTextNote() {}, onOpenPhoto() {}, onOpenAudio() {}, onOpenEvent() {} };
+    const withoutClose = renderToStaticMarkup(createElement(EncounterTimeline, props));
+    assert.ok(!withoutClose.includes(`>${label}</button>`));
+    const withClose = renderToStaticMarkup(createElement(EncounterTimeline, { ...props, onClose() {} }));
+    assert.match(withClose, new RegExp(`</div><button type="button">${label}</button></div><ol`));
+  }
+});
