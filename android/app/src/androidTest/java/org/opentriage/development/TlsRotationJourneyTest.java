@@ -41,11 +41,10 @@ public class TlsRotationJourneyTest {
         evaluate("(()=>{const input=document.querySelector("+JSONObject.quote(selector)+");Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(input,"+JSONObject.quote(value)+");input.dispatchEvent(new Event('input',{bubbles:true}));})()");
     }
     private String retained(String expected) throws Exception {
-        evaluate("window.__retained=null;(()=>{const request=indexedDB.open('open-triage-protected-clinical-v1');request.onupgradeneeded=()=>{request.transaction.abort();window.__retained=[]};request.onsuccess=()=>{const db=request.result;const query=db.transaction('encrypted-reports').objectStore('encrypted-reports').getAll();query.onsuccess=()=>{window.__retained=query.result.map(row=>({...row,ciphertext:Array.from(new Uint8Array(row.ciphertext)),nonce:Array.from(new Uint8Array(row.nonce))}));db.close()}}})()");
-        waitFor("Array.isArray(window.__retained)");
-        String actual=digest(evaluate("JSON.stringify(window.__retained)"));
+        String snapshot = AndroidEncryptedSnapshot.read(this::evaluate, "__retained");
+        String actual = AndroidEncryptedSnapshot.digest(snapshot);
         if(expected!=null&&!expected.isEmpty())assertEquals("Only an opaque digest is compared; failed trust must retain the exact pending record",expected,actual);
-        assertEquals("true",evaluate("!JSON.stringify(window.__retained).includes('ANDROID-RETAINED-SYNTHETIC')"));
+        assertFalse("Encrypted snapshots cannot expose pending clinical text", snapshot.contains("ANDROID-RETAINED-SYNTHETIC"));
         return actual;
     }
     private JSONObject artifact(String name) throws Exception {

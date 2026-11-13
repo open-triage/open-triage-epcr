@@ -31,11 +31,9 @@ public class OidcJourneyTest extends PairingJourneyTest {
         evaluate("("+button+").click()");waitFor("document.querySelector('.active-report-notice')?.dataset.reportId==="+JSONObject.quote(report));
     }
     private String retainedDigest() throws Exception {
-        evaluate("window.__retained=null;(()=>{const request=indexedDB.open('open-triage-protected-clinical-v1');request.onsuccess=()=>{const db=request.result;const query=db.transaction('encrypted-reports').objectStore('encrypted-reports').getAll();query.onsuccess=()=>{window.__retained=query.result.map(row=>({...row,ciphertext:Array.from(new Uint8Array(row.ciphertext)),nonce:Array.from(new Uint8Array(row.nonce))}));db.close();};};})()");
-        waitFor("Array.isArray(window.__retained)");
-        assertEquals("1", evaluate("window.__retained.length"));
-        byte[] bytes=java.security.MessageDigest.getInstance("SHA-256").digest(evaluate("JSON.stringify(window.__retained)").getBytes(java.nio.charset.StandardCharsets.UTF_8));
-        StringBuilder digest=new StringBuilder();for(byte value:bytes)digest.append(String.format(java.util.Locale.ROOT,"%02x",value&255));return digest.toString();
+        String snapshot = AndroidEncryptedSnapshot.read(this::evaluate, "__retained");
+        assertEquals(1, new org.json.JSONArray(new org.json.JSONTokener(snapshot).nextValue().toString()).length());
+        return AndroidEncryptedSnapshot.digest(snapshot);
     }
     private void provider(boolean complete) throws Exception {
         UiDevice device = UiDevice.getInstance(InstrumentationRegistry.getInstrumentation());

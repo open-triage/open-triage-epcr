@@ -46,9 +46,7 @@ public class AgencyHandoffJourneyTest {
         waitFor("document.querySelector('input[name=username]') && !document.querySelector('.login-sign-in button[type=submit]').disabled");
     }
     private String records() throws Exception {
-        evaluate("window.__agencyRecords=null;(()=>{const r=indexedDB.open('open-triage-protected-clinical-v1');r.onsuccess=()=>{const db=r.result;const q=db.transaction('encrypted-reports').objectStore('encrypted-reports').getAll();q.onsuccess=()=>{window.__agencyRecords=q.result.map(x=>({...x,ciphertext:Array.from(new Uint8Array(x.ciphertext)),nonce:Array.from(new Uint8Array(x.nonce))}));db.close()}}})()");
-        waitFor("window.__agencyRecords!==null");
-        byte[] bytes=java.security.MessageDigest.getInstance("SHA-256").digest(evaluate("JSON.stringify(window.__agencyRecords)").getBytes(StandardCharsets.UTF_8));var hash=new StringBuilder();for(byte b:bytes)hash.append(String.format(java.util.Locale.ROOT,"%02x",b&255));return hash.toString();
+        return AndroidEncryptedSnapshot.digest(AndroidEncryptedSnapshot.read(this::evaluate, "__agencyRecords"));
     }
     private ConnectionVault vault(){return new ConnectionVault(InstrumentationRegistry.getInstrumentation().getTargetContext());}
     private String session(){return "JSON.parse(localStorage.getItem('open-triage.clinician-session.v1')||'null')";}

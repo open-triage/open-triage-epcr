@@ -67,16 +67,12 @@ public class ReportRecoveryJourneyTest {
                 return Boolean.parseBoolean(value);
             }, connected);
     }
+    private String encryptedSnapshot;
     private void records() throws Exception {
-        evaluate("window.__retained=null;(()=>{const request=indexedDB.open('open-triage-protected-clinical-v1');request.onupgradeneeded=()=>{request.transaction.abort();window.__retained=[];};request.onsuccess=()=>{const db=request.result;if(!db.objectStoreNames.contains('encrypted-reports')){window.__retained=[];db.close();return;}const query=db.transaction('encrypted-reports').objectStore('encrypted-reports').getAll();query.onsuccess=()=>{window.__retained=query.result.map(row=>({...row,ciphertext:Array.from(new Uint8Array(row.ciphertext)),nonce:Array.from(new Uint8Array(row.nonce))}));db.close();};};})()");
-        waitFor("Array.isArray(window.__retained)");
+        encryptedSnapshot = AndroidEncryptedSnapshot.read(this::evaluate, "__retained");
     }
     private String retainedDigest() throws Exception {
-        assertEquals("Only a completed encrypted-record snapshot can be hashed", "true", evaluate("Array.isArray(window.__retained)"));
-        byte[] digest = java.security.MessageDigest.getInstance("SHA-256").digest(evaluate("JSON.stringify(window.__retained)").getBytes(StandardCharsets.UTF_8));
-        var encoded = new StringBuilder();
-        for (byte value : digest) encoded.append(String.format(java.util.Locale.ROOT, "%02x", value & 255));
-        return encoded.toString();
+        return AndroidEncryptedSnapshot.digest(encryptedSnapshot);
     }
     private void signIn(String username, String password) throws Exception {
         waitFor("document.querySelector('input[name=username]')");
