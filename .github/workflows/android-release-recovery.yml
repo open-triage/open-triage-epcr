@@ -1,4 +1,4 @@
-name: Recover verified signed Android candidate
+name: Stage verified signed Android candidate
 
 on:
   workflow_call:

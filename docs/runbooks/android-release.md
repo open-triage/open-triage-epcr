@@ -154,10 +154,11 @@ public descriptor, digest and non-secret acceptance/preflight evidence are uploa
 
 After bootstrap, an authorized maintainer pushes
 `android-v<code>-<semantic-version>` at the intended source. The release workflow
-serializes publication, runs the complete repository preflight, restores signing
+serializes candidate staging, runs the complete repository preflight, restores signing
 only in the protected environment, builds B and upgrades from the latest published
-signed candidate A on an isolated emulator before publishing the immutable
-prerelease. An older or duplicate code, missing prior candidate, secrets or
+signed candidate A on an isolated emulator, then retains the exact production
+APK and passing evidence as `android-verified-candidate`. Publish those exact
+bytes locally with the existing owner credentials as described below. An older or duplicate code, missing prior candidate, secrets or
 validation stops publication. Ordinary feature/PR pushes cannot publish releases.
 
 An update preserves app data only when Android accepts the same application ID
@@ -177,13 +178,14 @@ See [Admin APK downloads](android-downloads.md) for explicit installation select
 public hosting/MDM prerequisites, actual download verification and additive native
 capability compatibility. Published candidate descriptors remain immutable.
 
-## Recover publication with owner credentials
+## Publish staged candidates with owner credentials
 
 The immutable-release settings endpoint requires repository Administration read
-permission, which `GITHUB_TOKEN` cannot grant. The normal publication job checks
-this before building. Do not copy a broad owner token into the runner.
+permission, which `GITHUB_TOKEN` cannot grant. Both normal tag builds and manual
+recovery stage validated artifacts with the ordinary read-only token. Do not copy
+a broad owner token into the runner.
 
-If publication credentials cannot read that setting, dispatch
+To recover an earlier candidate whose publication failed, dispatch
 `android-release.yml` from an `android-v*-recovery` controller tag with the unpublished tag
 and the release run whose **preflight** passed. Controller tags use the reviewed
 workflow on the feature branch; their push does not start a new release, and

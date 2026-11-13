@@ -76,25 +76,29 @@ test('Android acceptance loads its harness before any API compilation is availab
     }}], logLevel: 'silent'});
 });
 
-test('production publication is serialized, gated by preflight and protected environment, and uploads no instrumentation', async () => {
+test('production staging is serialized, gated by exact preflight and a protected signer without owner credentials', async () => {
   const workflow = yaml.load(await readFile(new URL('android-release.yml', workflows), 'utf8'));
+  const stage = yaml.load(await readFile(new URL('android-release-recovery.yml', workflows), 'utf8'));
   assert.deepEqual(workflow.on.push.tags, ['android-v*', '!android-v*-recovery']);
   assert.equal(workflow.concurrency['cancel-in-progress'], false);
-  assert.equal(workflow.jobs.release.environment, 'android-release');
   assert.equal(workflow.jobs.release.needs, 'preflight');
+  assert.equal(workflow.jobs.release.uses, './.github/workflows/android-release-recovery.yml');
+  assert.equal(workflow.jobs.release.with.tag, '${{ github.ref_name }}');
+  assert.equal(workflow.jobs.release.with.preflight_run, "${{ format('{0}', github.run_id) }}");
+  assert.equal(workflow.permissions.contents, 'read');
+  assert.equal(stage.jobs.stage.environment, 'android-release');
   assert(workflow.jobs.preflight.steps.some(step => step.run === 'npm run check:ci'));
-  const emulator = workflow.jobs.release.steps.find(step => step.uses?.startsWith('reactivecircus/android-emulator-runner@'));
-  assert.equal(emulator.with.script, 'node scripts/android-release-candidate.mjs');
+  const emulator = stage.jobs.stage.steps.find(step => step.uses?.startsWith('reactivecircus/android-emulator-runner@'));
+  assert.equal(emulator.with.script, 'node "$RUNNER_TEMP/recover-candidate.mjs"');
   assert.equal(String(emulator.with['api-level']), '33');
-  for (const upload of workflow.jobs.release.steps.filter(step => step.uses?.startsWith('actions/upload-artifact@'))) {
-    assert.equal(upload.if, 'failure()');
-    assert(upload.with.path.split('\n').filter(Boolean).every(path => path.startsWith('.local/android-releases/') || path === '.local/android-release-workflow/preflight-evidence.json'));
-    assert(!/androidTest|build\/outputs/.test(upload.with.path));
-  }
+  const upload = stage.jobs.stage.steps.find(step => step.uses?.startsWith('actions/upload-artifact@'));
+  assert(upload.with.path.split('\n').filter(Boolean).every(path => path.startsWith('${{ runner.temp }}/candidate/')));
+  assert(!/androidTest|build\/outputs/.test(upload.with.path));
   const publication = await readFile(new URL('../scripts/android-release-publish.mjs', import.meta.url), 'utf8');
   assert(!publication.includes('androidTest.apk'));
   assert.match(publication, /published\.immutable, true/);
 });
+
 
 
 test('Android audio declares optional microphone access and keeps real saved/unfinished media acceptance in the default journey', async () => {
