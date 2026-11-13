@@ -1129,7 +1129,7 @@ function EncounterWorkspace({ session, report, presentationMode, language, onSav
             groups={report.clinicalForm!.customGroups} language={language}
             onDocumentChange={(document) => dispatch({ type: "document-opened", document })} />)}
         </section>}
-      {presentationMode === "stationary" && stationaryTimelineOpen && <WorkspaceSidebar id="stationary-timeline-sidebar" className="stationary-timeline-sidebar" label={t("mobile.encounterTimeline")} onEscape={closeStationaryTimeline}>
+      {presentationMode === "stationary" && stationaryTimelineOpen && <WorkspaceSidebar anchor={encounterHeader} id="stationary-timeline-sidebar" className="stationary-timeline-sidebar" label={t("mobile.encounterTimeline")} onEscape={closeStationaryTimeline}>
         <EncounterTimeline events={timelineEvents} validationStatuses={eventValidationStatuses} definition={displayDefinition}
           clinicalForm={report?.clinicalForm} headingId="stationary-timeline-heading" language={language} onClose={closeStationaryTimeline} onOpenTextNote={openTextNote} onOpenPhoto={openPhoto} onOpenAudio={openAudio} onOpenEvent={openTimelineEvent} />
       </WorkspaceSidebar>}

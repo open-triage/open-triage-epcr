@@ -56,4 +56,16 @@ test("Stationary record information and actions stay separate as the viewport na
     }).toBeGreaterThanOrEqual(-1);
     if (width === 390) await page.screenshot({ path: testInfo.outputPath("stationary-header-390.png") });
   }
+  await page.locator(".timeline-toggle-action").click();
+  await page.addStyleTag({ content: ":root{--text-caption:18px;--text-body:21px;--text-control:24px;--text-heading:36px}" });
+  for (const height of [440, 320, 240, 180, 844]) {
+    await page.setViewportSize({ width: 320, height });
+    const close = page.getByRole("button", { name: "Save & close", exact: true });
+    await close.evaluate(element => element.scrollIntoView({ block: "center", behavior: "instant" }));
+    await expect.poll(() => close.evaluate(element => {
+      const r = element.getBoundingClientRect();
+      return r.top >= 0 && r.bottom <= innerHeight + 1 && element.contains(document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2));
+    }), { message: `Save & close stays reachable with enlarged text at ${height}px height` }).toBe(true);
+    await page.screenshot({ path: testInfo.outputPath(`stationary-large-text-${height}.png`) });
+  }
 });
