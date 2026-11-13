@@ -35,9 +35,13 @@ jobs:
       - name: Install controlled browser for the complete preflight
         run: npx playwright install --with-deps chromium
       - run: npm run check:ci
+  acceptance:
+    if: github.event_name != 'workflow_dispatch'
+    uses: ./.github/workflows/android.yml
+
   release:
     if: github.event_name != 'workflow_dispatch'
-    needs: preflight
+    needs: [preflight, acceptance]
     uses: ./.github/workflows/android-release-recovery.yml
     with:
       tag: ${{ github.ref_name }}

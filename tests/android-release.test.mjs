@@ -1,3 +1,4 @@
+const nativeAcceptance=sourceCommit=>({status:'passed',command:'npm run android:test -- --skip-build',sourceCommit});
 import { isAndroidReleaseCompatible } from '@open-triage/contracts/android-release';
 import { ANDROID_API_PROTOCOL_VERSION, ANDROID_API_CAPABILITIES, ANDROID_CLIENT_REQUIRED_CAPABILITIES, ANDROID_CLIENT_API_PROTOCOL_RANGE, isAndroidApiProtocolCompatible } from '@open-triage/contracts/android-client-protocol';
 import assert from 'node:assert/strict';
@@ -34,9 +35,10 @@ test('APK verification checks real package metadata, release flag and certificat
  test('publication rejects incomplete acceptance, mismatched descriptors and unverified preflight', () => {
   const descriptor = { ...b, sourceCommit: 'a'.repeat(40), minAndroidApi: 33, compatibility: { pairingArtifact: 1, protectedReportSchema: 1, recoveryEnvelope: 1, api: ANDROID_CLIENT_API_PROTOCOL_RANGE } };
   const evidence = { status: 'passed', serverAndroidApiProtocol: ANDROID_API_PROTOCOL_VERSION, releaseA: { ...a, sourceCommit: descriptor.sourceCommit, minAndroidApi: 33 }, releaseB: descriptor, androidApi: '33', assertions: [...requiredUpgradeAssertions] };
-  const preflight = { status: 'passed', command: 'npm run check:ci', sourceCommit: descriptor.sourceCommit };
+  const preflight = { status: 'passed', command: 'npm run check:ci', sourceCommit: descriptor.sourceCommit,nativeAcceptance:nativeAcceptance(descriptor.sourceCommit) };
   const identity = { applicationId: b.applicationId, certificateSha256: b.certificateSha256 };
   validatePublicationEvidence(descriptor, evidence, preflight, identity);
+  for(const acceptance of [undefined,{...preflight.nativeAcceptance,status:'failed'},{...preflight.nativeAcceptance,command:'npm test'},{...preflight.nativeAcceptance,sourceCommit:'b'.repeat(40)}]) assert.throws(()=>validatePublicationEvidence(descriptor,evidence,{...preflight,nativeAcceptance:acceptance},identity));
   for (const missing of requiredUpgradeAssertions) assert.throws(() => validatePublicationEvidence(descriptor, { ...evidence, assertions: evidence.assertions.filter(value => value !== missing) }, preflight, identity), /Missing upgrade acceptance/);
   for (const altered of [{ status: 'failed' }, { serverAndroidApiProtocol: 2 }, { serverAndroidApiProtocol: undefined }, { androidApi: '32' }, { releaseB: { ...descriptor, uiSha256: 'tampered' } }]) assert.throws(() => validatePublicationEvidence(descriptor, { ...evidence, ...altered }, preflight, identity));
   for (const altered of [{ status: 'failed' }, { command: 'npm test' }, { sourceCommit: 'b'.repeat(40) }]) assert.throws(() => validatePublicationEvidence(descriptor, evidence, { ...preflight, ...altered }, identity));
@@ -55,7 +57,7 @@ test('publication requires acceptance evidence for every native extension requir
     compatibility: { pairingArtifact: 1, protectedReportSchema: 1, recoveryEnvelope: 1, api: ANDROID_CLIENT_API_PROTOCOL_RANGE, requiredCapabilities: ['native-enrollment-attempt-v1'] } };
   const evidence = { status: 'passed', serverAndroidApiProtocol: 1, releaseA: { ...a, sourceCommit: descriptor.sourceCommit },
     releaseB: descriptor, androidApi: '33', assertions: [...requiredUpgradeAssertions] };
-  const preflight = { status: 'passed', command: 'npm run check:ci', sourceCommit: descriptor.sourceCommit };
+  const preflight = { status: 'passed', command: 'npm run check:ci', sourceCommit: descriptor.sourceCommit,nativeAcceptance:nativeAcceptance(descriptor.sourceCommit) };
   const identity = { applicationId: b.applicationId, certificateSha256: b.certificateSha256 };
   for (const serverAndroidApiCapabilities of [undefined, [], ['native-oidc-return-v1'], 'native-enrollment-attempt-v1']) {
     assert.throws(() => validatePublicationEvidence(descriptor, { ...evidence, serverAndroidApiCapabilities }, preflight, identity), /protocol and capabilities/);
@@ -101,7 +103,7 @@ test('future continuation APKs require the implemented generic current route wit
 test('publication of an upgrade-gating APK requires actual retirement, interrupted staging and current-replacement acceptance', () => {
  const descriptor={...b,sourceCommit:'a'.repeat(40),minAndroidApi:33,compatibility};
  const evidence={status:'passed',serverAndroidApiProtocol:1,serverAndroidApiCapabilities:ANDROID_API_CAPABILITIES,releaseA:a,releaseB:descriptor,androidApi:'33',assertions:[...requiredUpgradeAssertions,...requiredUpgradeGateAssertions]};
- const preflight={status:'passed',command:'npm run check:ci',sourceCommit:descriptor.sourceCommit},identity={applicationId:b.applicationId,certificateSha256:b.certificateSha256};
+ const preflight={status:'passed',command:'npm run check:ci',sourceCommit:descriptor.sourceCommit,nativeAcceptance:nativeAcceptance(descriptor.sourceCommit)},identity={applicationId:b.applicationId,certificateSha256:b.certificateSha256};
  validatePublicationEvidence(descriptor,evidence,preflight,identity);
  for(const missing of requiredUpgradeGateAssertions)assert.throws(()=>validatePublicationEvidence(descriptor,{...evidence,assertions:evidence.assertions.filter(value=>value!==missing)},preflight,identity),/Missing upgrade gate acceptance/);
 });
@@ -109,7 +111,7 @@ test('publication of an upgrade-gating APK requires actual retirement, interrupt
 test('a future OIDC APK cannot publish against an enrollment-only server', () => {
   const descriptor = { ...b, sourceCommit: 'a'.repeat(40), minAndroidApi: 33, compatibility };
   const evidence = {status: 'passed', serverAndroidApiProtocol: 1, releaseA: {...a,sourceCommit:descriptor.sourceCommit},releaseB:descriptor,androidApi:'33',assertions:[...requiredUpgradeAssertions,...requiredUpgradeGateAssertions]};
-  const preflight={status:'passed',command:'npm run check:ci',sourceCommit:descriptor.sourceCommit};
+  const preflight={status:'passed',command:'npm run check:ci',sourceCommit:descriptor.sourceCommit,nativeAcceptance:nativeAcceptance(descriptor.sourceCommit)};
   const identity={applicationId:b.applicationId,certificateSha256:b.certificateSha256};
   assert.throws(()=>validatePublicationEvidence(descriptor,{...evidence,serverAndroidApiCapabilities:['native-enrollment-attempt-v1']},preflight,identity),/protocol and capabilities/);
   validatePublicationEvidence(descriptor,{...evidence,serverAndroidApiCapabilities:ANDROID_API_CAPABILITIES},preflight,identity);
@@ -118,7 +120,7 @@ test('a future OIDC APK cannot publish against an enrollment-only server', () =>
 for (const missing of ['native-enrollment-outcome-v1','native-oidc-return-v1','audio-webm-live-v1']) test(`future clients cannot publish when the server lacks ${missing}`,()=>{
  const descriptor={...b,sourceCommit:'a'.repeat(40),minAndroidApi:33,compatibility};
  const evidence={status:'passed',serverAndroidApiProtocol:1,serverAndroidApiCapabilities:ANDROID_API_CAPABILITIES.filter(value=>value!==missing),releaseA:{...a,sourceCommit:descriptor.sourceCommit},releaseB:descriptor,androidApi:'33',assertions:[...requiredUpgradeAssertions,...requiredUpgradeGateAssertions]};
- const preflight={status:'passed',command:'npm run check:ci',sourceCommit:descriptor.sourceCommit},identity={applicationId:b.applicationId,certificateSha256:b.certificateSha256};
+ const preflight={status:'passed',command:'npm run check:ci',sourceCommit:descriptor.sourceCommit,nativeAcceptance:nativeAcceptance(descriptor.sourceCommit)},identity={applicationId:b.applicationId,certificateSha256:b.certificateSha256};
  assert.throws(()=>validatePublicationEvidence(descriptor,evidence,preflight,identity),/protocol and capabilities/);
  validatePublicationEvidence(descriptor,{...evidence,serverAndroidApiCapabilities:ANDROID_API_CAPABILITIES},preflight,identity);
 });

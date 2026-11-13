@@ -16,14 +16,14 @@ test('release recovery accepts only the exact tagged source with a successful or
     await writeFile(join(bin,'gh'),`#!${process.execPath}
       const data=JSON.parse(process.env.FIXTURE_RESPONSES),path=process.argv[3];
       console.log(JSON.stringify(path.endsWith('/jobs')?data.jobs:path.includes('releases?')?data.releases:data.run));`,{mode:0o700});
-    const step=workflow.jobs.stage.steps.find(step=>step.name==='Verify exact-source preflight evidence');
+    const step=workflow.jobs.stage.steps.find(step=>step.name==='Verify exact-source preflight and native acceptance');
     const script=step.run.split("<<'NODE'\n")[1].split('\nNODE')[0];
-    const valid={run:{path:'.github/workflows/android-release.yml',event:'push',head_branch:tag,head_sha:source},jobs:{jobs:[{name:'preflight',conclusion:'success'}]},releases:[]};
+    const valid={run:{path:'.github/workflows/android-release.yml',event:'push',head_branch:tag,head_sha:source},jobs:{jobs:[{name:'preflight',conclusion:'success'},{name:'acceptance / Android 13 / hosted UI and private CA',conclusion:'success'}]},releases:[]};
     const receipt=join(directory,'preflight-evidence.json');
     const execute=data=>spawnSync(process.execPath,['--input-type=module','-e',script],{cwd:directory,encoding:'utf8',env:{...process.env,PATH:bin+':'+process.env.PATH,RUNNER_TEMP:directory,GITHUB_REPOSITORY:'open-triage/open-triage-epcr',RELEASE_TAG:tag,PREFLIGHT_RUN:'123',FIXTURE_RESPONSES:JSON.stringify(data)}});
     const accepted=execute(valid);assert.equal(accepted.status,0,accepted.stderr);
     assert.equal(JSON.parse(await readFile(receipt,'utf8')).sourceCommit,source);
-    for(const change of [data=>data.run.head_sha='b'.repeat(40),data=>data.run.head_branch='another-tag',data=>data.run.path='another-workflow.yml',data=>data.run.event='pull_request',data=>data.jobs.jobs[0].conclusion='failure',data=>data.releases.push({tag_name:tag})]){
+    for(const change of [data=>data.run.head_sha='b'.repeat(40),data=>data.run.head_branch='another-tag',data=>data.run.path='another-workflow.yml',data=>data.run.event='pull_request',data=>data.jobs.jobs[0].conclusion='failure',data=>data.jobs.jobs[1].conclusion='failure',data=>data.jobs.jobs.splice(1,1),data=>data.jobs.jobs.push({name:'acceptance / additional Android runtime',conclusion:'failure'}),data=>data.releases.push({tag_name:tag})]){
       await rm(receipt);const data=structuredClone(valid);change(data);
       assert.notEqual(execute(data).status,0,'Invalid preflight evidence must fail before any signed build');
       await assert.rejects(readFile(receipt),{code:'ENOENT'});

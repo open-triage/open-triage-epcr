@@ -144,7 +144,10 @@ evidence. Preserve failed-run logs and source/APK hashes before fixing or rerunn
 Fixtures and management owner are removed in cleanup.
 
 A preflight evidence JSON records `status: passed`, `command: npm run check:ci`,
-the exact tested `sourceCommit` and optional workflow run. Publish only after all
+the exact tested `sourceCommit`, optional workflow run, and a `nativeAcceptance`
+object with `status: passed`, `command: npm run android:test -- --skip-build` and
+the same `sourceCommit`. Both full native acceptance and preflight must pass before
+staging or publication. Publish only after all
 checks using `scripts/android-release-publish.mjs <artifact-dir>
 <upgrade-evidence.json> <preflight-evidence.json> <tag>`. Bootstrap candidates use
 `android-candidate-<code>-<version>` tags. Publication re-verifies the APK,
@@ -154,7 +157,8 @@ public descriptor, digest and non-secret acceptance/preflight evidence are uploa
 
 After bootstrap, an authorized maintainer pushes
 `android-v<code>-<semantic-version>` at the intended source. The release workflow
-serializes candidate staging, runs the complete repository preflight, restores signing
+serializes candidate staging, runs the complete repository preflight and full
+Android acceptance in parallel, restores signing
 only in the protected environment, builds B and upgrades from the latest published
 signed candidate A on an isolated emulator, then retains the exact production
 APK and passing evidence as `android-verified-candidate`. Publish those exact
@@ -187,10 +191,10 @@ a broad owner token into the runner.
 
 To recover an earlier candidate whose publication failed, dispatch
 `android-release.yml` from an `android-v*-recovery` controller tag with the unpublished tag
-and the release run whose **preflight** passed. Controller tags use the reviewed
+and the release run whose **preflight** and **acceptance** jobs passed. Controller tags use the reviewed
 workflow on the feature branch; their push does not start a new release, and
 they satisfy the protected environment’s existing tag rule. The workflow checks the exact
-tag, source SHA, workflow and successful preflight, rebuilds from that clean
+tag, source SHA, workflow, successful preflight and complete native acceptance, rebuilds from that clean
 tag, repeats signed A/B acceptance, and retains only the production APK and
 verification evidence as `android-verified-candidate`. It does not publish.
 
@@ -200,7 +204,7 @@ credentials locally:
 ```sh
 node scripts/android-release-publish.mjs /path/to/candidate \
   /path/to/candidate/upgrade-evidence.json \
-  /path/to/candidate/preflight-evidence.json android-v8-0.1.0-rc.8
+  /path/to/candidate/preflight-evidence.json 'android-v<code>-<semantic-version>'
 ```
 
 The publisher verifies the exact APK, signing identity, preflight and upgrade

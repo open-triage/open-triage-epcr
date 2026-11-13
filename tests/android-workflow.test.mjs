@@ -81,7 +81,8 @@ test('production staging is serialized, gated by exact preflight and a protected
   const stage = yaml.load(await readFile(new URL('android-release-recovery.yml', workflows), 'utf8'));
   assert.deepEqual(workflow.on.push.tags, ['android-v*', '!android-v*-recovery']);
   assert.equal(workflow.concurrency['cancel-in-progress'], false);
-  assert.equal(workflow.jobs.release.needs, 'preflight');
+  assert.deepEqual(workflow.jobs.release.needs, ['preflight','acceptance']);
+  assert.equal(workflow.jobs.acceptance.uses, './.github/workflows/android.yml');
   assert.equal(workflow.jobs.release.uses, './.github/workflows/android-release-recovery.yml');
   assert.equal(workflow.jobs.release.with.tag, '${{ github.ref_name }}');
   assert.equal(workflow.jobs.release.with.preflight_run, "${{ format('{0}', github.run_id) }}");

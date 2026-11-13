@@ -39,7 +39,7 @@ jobs:
         with:
           node-version: 22
           cache: npm
-      - name: Verify exact-source preflight evidence
+      - name: Verify exact-source preflight and native acceptance
         env:
           GH_TOKEN: ${{ github.token }}
           RELEASE_TAG: ${{ inputs.tag }}
@@ -56,9 +56,12 @@ jobs:
           const run=gh(`actions/runs/${id}`),source=execFileSync('git',['rev-parse','HEAD'],{encoding:'utf8'}).trim();
           assert.equal(run.path,'.github/workflows/android-release.yml');
           assert.equal(run.event,'push');assert.equal(run.head_branch,tag);assert.equal(run.head_sha,source);
-          assert(gh(`actions/runs/${id}/jobs`).jobs.some(job=>job.name==='preflight'&&job.conclusion==='success'));
+          const jobs=gh(`actions/runs/${id}/jobs`).jobs;
+          assert(jobs.some(job=>job.name==='preflight'&&job.conclusion==='success'));
+          const acceptance=jobs.filter(job=>job.name.startsWith('acceptance /'));
+          assert(acceptance.length&&acceptance.every(job=>job.conclusion==='success'),'Complete Android acceptance must pass before staging');
           assert(!gh('releases?per_page=100').some(release=>release.tag_name===tag),'Published releases must never be replaced');
-          writeFileSync(`${process.env.RUNNER_TEMP}/preflight-evidence.json`,JSON.stringify({status:'passed',command:'npm run check:ci',sourceCommit:source,workflowRun:id},null,2));
+          writeFileSync(`${process.env.RUNNER_TEMP}/preflight-evidence.json`,JSON.stringify({status:'passed',command:'npm run check:ci',sourceCommit:source,workflowRun:id,nativeAcceptance:{status:'passed',command:'npm run android:test -- --skip-build',sourceCommit:source,workflowRun:id}},null,2));
           NODE
       - uses: actions/setup-java@v5
         with:

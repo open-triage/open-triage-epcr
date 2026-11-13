@@ -39,4 +39,7 @@ export function validatePublicationEvidence(descriptor, evidence, preflight, ide
   for (const assertion of requiredUpgradeAssertions) assert(evidence.assertions?.includes(assertion), `Missing upgrade acceptance: ${assertion}`);
   if (descriptor.compatibility?.requiredCapabilities?.includes('android-upgrade-gate-v1')) for (const assertion of requiredUpgradeGateAssertions) assert(evidence.assertions?.includes(assertion), `Missing upgrade gate acceptance: ${assertion}`);
   assert.equal(preflight.status, 'passed'); assert.equal(preflight.command, 'npm run check:ci'); assert.equal(preflight.sourceCommit, descriptor.sourceCommit);
+  assert.equal(preflight.nativeAcceptance?.status, 'passed', 'Complete native acceptance is required before publication');
+  assert.equal(preflight.nativeAcceptance.command, 'npm run android:test -- --skip-build');
+  assert.equal(preflight.nativeAcceptance.sourceCommit, descriptor.sourceCommit, 'Native acceptance must cover the exact release source');
 }
