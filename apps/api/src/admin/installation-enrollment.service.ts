@@ -8,9 +8,30 @@ import { agencyRequest } from "../sessions/agency-context.js";
 import { mutationRows } from "../database/mutation-result.js";
 import { enrollmentAttemptBinding, enrollmentAttemptCredential, enrollmentDigest, sameEnrollmentDigest } from "./enrollment-attempt.js";
 import { revokeRegistrationSessions } from "../sessions/installation-session.js";
+import { DEFAULT_PAIRING_EXPIRY_MINUTES, MAX_PAIRING_EXPIRY_MINUTES } from "@open-triage/contracts";
+import { pairingCaPem } from "./pairing-trust.js";
 const digest = (value: string) => createHash("sha256").update(value).digest("hex");
 const columns = `i.id,i.installation_identity_id as "installationId",i.organization_id as "organizationId",i.unit_id as "unitId",i.name,i.enrolled_at as "enrolledAt",i.revoked_at as "revokedAt"`;
 export type InstallationSummary = { id: string; installationId: string; organizationId: string; unitId: string; name: string; enrolledAt: string; revokedAt: string | null };
+export function enrollmentExpiryMinutes(input: unknown): number {
+ if (input === undefined) return DEFAULT_PAIRING_EXPIRY_MINUTES;
+ if (!input || typeof input !== "object" || Array.isArray(input)) throw new UnprocessableEntityException("Invalid pairing expiry");
+ const body = input as Record<string, unknown>;
+ const minutes = "expiresInMinutes" in body ? body.expiresInMinutes : DEFAULT_PAIRING_EXPIRY_MINUTES;
+ if (Object.keys(body).some(key => key !== "expiresInMinutes" && key !== "name") ||
+     typeof minutes !== "number" || !Number.isInteger(minutes) || minutes < 1 || minutes > MAX_PAIRING_EXPIRY_MINUTES) {
+ throw new UnprocessableEntityException(`Pairing expiry must be between 1 and ${MAX_PAIRING_EXPIRY_MINUTES} whole minutes`);
+ }
+ return minutes;
+}
+export function enrollmentName(input: unknown): string | undefined {
+ if (input === undefined || !(input && typeof input === "object") || !("name" in input)) return undefined;
+ const name = (input as Record<string, unknown>).name;
+ if (typeof name !== "string" || !name.trim() || name.length > 100 || /[\u0000-\u001f\u007f]/u.test(name)) {
+ throw new UnprocessableEntityException("A valid installation name is required");
+ }
+ return name.trim();
+}
 export function enrollmentInput(input: unknown, consuming: boolean): { token: string; name?: string; reassign?: boolean; attempt?: string } {
  if (!input || typeof input !== "object" || Array.isArray(input)) throw new UnprocessableEntityException("Invalid enrollment");
  const b = input as Record<string, unknown>;
@@ -44,16 +65,18 @@ export class InstallationEnrollmentService {
  if (!unit) throw new NotFoundException("Active unit not found in this agency");
  return unit;
  }
- async issue(session: string, unitId: string) {
+ async issue(session: string, unitId: string, input?: unknown) {
+ const minutes=enrollmentExpiryMinutes(input),name=enrollmentName(input);
  const origin=await this.requireOrigin();
  return this.database.transaction(async manager => {
  const actor=await this.sessions.requireCapability(session,"settings:write",manager);
- await this.unit(manager,actor.organization.id,unitId);
+ const unit=await this.unit(manager,actor.organization.id,unitId);
+ const caPem=pairingCaPem();
  const token=randomBytes(32).toString("base64url");
- const [row]=mutationRows<{expiresAt:string}>(await manager.query(`insert into app_identity.unit_enrollment(id,organization_id,unit_id,issued_by,token_sha256,origin)
- values($1,$2,$3,$4,$5,$6) returning expires_at as "expiresAt"`,[randomUUID(),actor.organization.id,unitId,actor.user.id,digest(token),origin]));
+ const [row]=mutationRows<{expiresAt:string}>(await manager.query(`insert into app_identity.unit_enrollment(id,organization_id,unit_id,issued_by,token_sha256,origin,installation_name,expires_at)
+ values($1,$2,$3,$4,$5,$6,$8,clock_timestamp()+$7::integer*interval '1 minute') returning expires_at as "expiresAt"`,[randomUUID(),actor.organization.id,unitId,actor.user.id,digest(token),origin,minutes,name??unit.name]));
  await manager.query(`insert into app_identity.installation_event(organization_id,unit_id,actor_id,event_type) values($1,$2,$3,'enrollment-issued')`,[actor.organization.id,unitId,actor.user.id]);
- return {token,origin,expiresAt:row!.expiresAt};
+ return {token,origin,expiresAt:row!.expiresAt,caPem};
  });
  }
  async inventory(session: string, unitId: string, cursor?: string) {
@@ -86,7 +109,7 @@ export class InstallationEnrollmentService {
  const [row]=await manager.query(`select * from app_identity.unit_enrollment where token_sha256=$1 and origin=$2
  and consumed_at is null and expires_at>clock_timestamp() ${lock?'for update':''}`,[digest(token),agencyRequest.getStore()?.origin??""]);
  if (!row) throw new UnauthorizedException("Enrollment code is expired, invalid or already used");
- return row as {id:string;organization_id:string;unit_id:string;issued_by:string};
+ return row as {id:string;organization_id:string;unit_id:string;issued_by:string;installation_name:string|null};
  }
  async preview(input: unknown) {
  await this.requireOrigin();
@@ -94,7 +117,7 @@ export class InstallationEnrollmentService {
  return this.database.transaction(async manager=>{
  const row=await this.code(manager,token,false);
  const unit=await this.unit(manager,row.organization_id,row.unit_id);
- return {unitName:unit.name,callSign:unit.callSign,organizationName:unit.organizationName};
+ return {unitName:unit.name,callSign:unit.callSign,organizationName:unit.organizationName,installationName:row.installation_name??unit.name};
  });
  }
  private async lockCredentialIdentity(manager: Pick<EntityManager,"query">, credential: string) {
@@ -176,7 +199,7 @@ export class InstallationEnrollmentService {
  }
  if(!previous) await manager.query(`insert into app_identity.installation_identity(id) values($1)`,[identityId]);
  const [installation]=mutationRows<InstallationSummary>(await manager.query(`insert into app_identity.installation_registration as i(id,organization_id,unit_id,name,credential_sha256,installation_identity_id)
- values($1,$2,$3,$4,$5,$6) returning ${columns}`,[id,row.organization_id,row.unit_id,body.name,digest(credential),identityId]));
+ values($1,$2,$3,$4,$5,$6) returning ${columns}`,[id,row.organization_id,row.unit_id,row.installation_name??body.name,digest(credential),identityId]));
  // Enrollment may complete while a clinician is already signed in. Attach only
  // that live same-origin cookie session; stale cookies never block independent pairing.
  if(existingSession && !body.reassign) await manager.query(`update app_identity.app_session set installation_registration_id=$2
@@ -201,7 +224,7 @@ export class InstallationEnrollmentService {
  async current(credential?: string) {
  await this.requireOrigin();
  if(!credential) throw new UnauthorizedException("Enrollment required for this browser installation");
- const [row]=await this.database.query<InstallationSummary[]>(`select ${columns} from app_identity.installation_registration i
+ const [row]=await this.database.query<(InstallationSummary & {unitName:string})[]>(`select ${columns},u.name as "unitName" from app_identity.installation_registration i
  join app_identity.operational_unit u on u.id=i.unit_id and u.organization_id=i.organization_id
  join app_identity.organization a on a.id=i.organization_id join app_identity.organization g on g.id=coalesce(a.parent_organization_id,a.id)
  where i.credential_sha256=$1 and i.revoked_at is null and u.active and a.active and g.active

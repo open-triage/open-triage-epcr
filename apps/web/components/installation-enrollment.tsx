@@ -22,7 +22,7 @@ export function InstallationEnrollment() {
  const current=await installationRequest<{enrolled:boolean;installation?:InstallationSummary}>("current");
  if(!active||version!==revision)return;
  if(current.enrolled&&current.installation){setInstallation(current.installation);setName(current.installation.name);if(!code){setToken("");setReady(true);return;}}
- if(code) {const preview=await installationRequest<{unitName:string;callSign:string}>("preview",{token:code});if(active&&version===revision)setUnit(preview);}
+ if(code) {const preview=await installationRequest<{unitName:string;callSign:string;installationName:string}>("preview",{token:code});if(active&&version===revision){setUnit(preview);setName(preview.installationName??preview.unitName); }}
  if(active&&version===revision)setReady(true);
  }catch{if(active&&version===revision)setError(true);}
  }
@@ -39,7 +39,7 @@ export function InstallationEnrollment() {
  catch {setError(true);}finally{setBusy(false);}
  }}>
  <p>{unit.unitName} — {unit.callSign}</p>
- <label>{t("enrollment.name")}<input required maxLength={100} value={name} onChange={e=>setName(e.target.value)} /></label>
+ <label>{t("enrollment.name")}<input readOnly maxLength={100} value={name} /></label>
  <label><input type="checkbox" checked={confirmed} onChange={e=>setConfirmed(e.target.checked)} />{t("enrollment.confirm")}</label>
  <button className="button-primary" disabled={busy||!confirmed||!name.trim()} type="submit">{t(installation?"enrollment.reassign":"enrollment.title")}</button>
  </form>}

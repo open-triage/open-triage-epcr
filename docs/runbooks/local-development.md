@@ -159,6 +159,26 @@ assigned-call screen loads. A successful demo login followed by a successful
 `GET /api/calls/assigned` confirms the database workflow. API health alone confirms
 service availability, not account or fixture readiness.
 
+### Android pairing on port 3000
+
+Android pairing requires HTTPS. Configure `DEV_TLS_CERT_FILE`,
+`DEV_TLS_KEY_FILE`, and (for a private development CA) `DEV_TLS_CA_FILE` in
+`.env.local` with absolute paths to the server certificate, private key, and
+public CA bundle. The certificate must cover the exact local hostnames used.
+Run the normal `npm run dev`: the web and same-origin API are served at
+`https://localhost:3000`. Existing HTTP links redirect to HTTPS on the same host
+and port, including `http://demo.localhost:3000`. The helper sets the HTTPS application origin, verifies
+readiness with the supplied CA, and automatically includes that public CA in
+Android pairing files and QR codes. No separate pairing port is needed.
+Set `OPEN_TRIAGE_PUBLIC_SITE_HOST=` to use the application directly at localhost
+rather than the public landing page. Sign in again after changing scheme.
+
+For a USB-connected phone with debugging authorized, run
+`adb -s <phone-serial> reverse tcp:3000 tcp:3000` using the ADB server that owns
+the USB connection. Generate a fresh Android pairing QR from the HTTPS site.
+The rc6 APK accepts pairing codes with at most five minutes remaining; select
+five minutes until using an APK with configurable-lifetime support.
+
 ## Manual startup
 
 Make PostgreSQL ready first. Start the API in one terminal:

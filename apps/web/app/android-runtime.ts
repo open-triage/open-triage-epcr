@@ -6,7 +6,7 @@ import { INSTALLATION_TRANSITION_KEY } from "./installation-transition-generatio
 import { Capacitor, registerPlugin, type PluginListenerHandle } from "@capacitor/core";
 
 export type NativeResponse = { status: number; headers: Record<string, string>; bodyBase64: string };
-export type PairingPreview = { organizationName: string; unitName: string; callSign: string; origin: string };
+export type PairingPreview = { installationName?: string; organizationName: string; unitName: string; callSign: string; origin: string };
 export type AndroidConnectionState = { configured: boolean; origin?: string; managed?: boolean; managedStatus?: string; blocked?: boolean; managedOrigin?: string; managedContext?: string; connectionContext?: string; replacementPending?: boolean; pendingOrigin?: string; pendingOutcome?: string; handoffPending?: boolean; handoffComplete?: boolean; storageScope?: string; legacyStorageScope?: string };
 type ConnectionPlugin = {
   openPdf(options: { operationId: string; path: string; headers: Record<string,string>; connectionContext: string; action: "view" | "save"; language: "en" | "sv"; accent: string }): Promise<{opened:boolean;status:number;code?:string}>;
@@ -23,6 +23,7 @@ type ConnectionPlugin = {
   finishAuthentication(): Promise<{outcome: "idle" | "waiting" | "succeeded" | "pending" | "denied" | "failed"}>;
   state(): Promise<AndroidConnectionState>;
   reconcileTransition(options: { connectionContext: string; purpose:"enrollment"|"logout" }): Promise<AndroidConnectionState>;
+  refreshInstallation(options: {connectionContext?: string}): Promise<AndroidConnectionState>;
   beginReplacement(): Promise<AndroidConnectionState>;
   resumeEnrollment(): Promise<AndroidConnectionState>;
   previewPendingTrust(options: { artifact: string }): Promise<{ origin: string; trustFingerprint: string }>;

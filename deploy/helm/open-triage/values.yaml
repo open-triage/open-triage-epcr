@@ -30,6 +30,10 @@ api:
   host: api.epcr.example.com
   trustProxyHops: 1
   androidApprovedRelease: ""
+  # Public roots exported by provision:tls for private PKI. Empty uses Android system trust.
+  pairingCa:
+    configMapName: ""
+    key: ca.pem
   resources:
     requests: { cpu: 100m, memory: 256Mi }
     limits: { cpu: 500m, memory: 512Mi }

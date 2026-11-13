@@ -109,9 +109,17 @@ test('local agency origins require the web port, an active agency and developmen
     row = undefined;
     assert.equal(await service.allowsOrigin('http://unknown.localhost:3000'), false);
     await assert.rejects(agencyRequest.run({ origin: 'http://unknown.localhost:3000' }, () => service.forLogin()), /No active agency/);
+    row = { active: true, root_active: true };
+    process.env.WEB_ORIGIN = 'https://localhost:3000';
+    assert.equal(await service.allowsOrigin('https://demo.localhost:3000'), true);
+    assert.equal(await service.allowsOrigin('https://test.localhost:3000'), true);
+    for (const origin of ['http://test.localhost:3000','https://test.localhost:3001','https://test.localhost.evil.test:3000']) {
+      assert.equal(await service.allowsOrigin(origin), false);
+    }
     process.env.NODE_ENV = 'production';
     row = { active: true, root_active: true };
     assert.equal(await service.allowsOrigin('http://demo.localhost:3000'), false);
+    assert.equal(await service.allowsOrigin('https://demo.localhost:3000'), false);
     assert.equal(await service.allowsOrigin('https://agency.example.org'), true);
     assert.deepEqual(parameters, ['agency.example.org', null]);
   } finally {

@@ -4,6 +4,7 @@ import path from 'node:path';
 import settings from '@open-triage/contracts/config/installation.production.json';
 import {DEFAULT_AGENCY_APPEARANCE} from '@open-triage/contracts';
 import calls from '../public/demo-assigned-calls.json';
+import {readFile} from 'node:fs/promises';
 
 async function fixture(page:Page,extra:Record<string,unknown>={}) {
  const script=await build({bundle:true,write:false,format:'iife',platform:'browser',jsx:'automatic',define:{'process.env':JSON.stringify({NEXT_PUBLIC_API_URL:'same-origin',NEXT_PUBLIC_USE_LOCAL_DEMO_SESSION:'false'})},plugins:[{name:'native-authority',setup(b){
@@ -31,6 +32,29 @@ async function fixture(page:Page,extra:Record<string,unknown>={}) {
  await page.goto('/__native-resume');
 }
 const marker=(page:Page)=>page.evaluate(()=>localStorage.getItem('open-triage.installation-transition.v1'));
+
+for(const signedIn of [false,true])test(`native ${signedIn?'workspace':'sign-in'} has no installation-change action`,async({page},testInfo)=>{
+ await page.setViewportSize({width:320,height:640});
+ await fixture(page,{noMarker:true,durable:true,personal:signedIn,pendingOidc:false});
+ await page.addStyleTag({content:await readFile(path.resolve(__dirname,'../app/styles.css'),'utf8')+await readFile(path.resolve(__dirname,'../app/session-layout.css'),'utf8')});
+ if(signedIn)await expect(page.locator('.session-identity')).toContainText('Valid native clinician');
+ else{
+  await expect(page.getByLabel('Username',{exact:true})).toBeVisible();
+  await expect(page.getByLabel('Password',{exact:true})).toBeVisible();
+  await expect(page.getByRole('button',{name:'Sign in',exact:true})).toBeVisible();
+ }
+ await expect(page.getByRole('button',{name:'Change installation',exact:true})).toHaveCount(0);
+ await expect(page.locator('[data-change-installation]')).toHaveCount(0);
+ expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+ await page.screenshot({path:testInfo.outputPath(`native-${signedIn?'workspace':'sign-in'}-no-installation-action.png`)});
+});
+
+test('changed managed policy remains blocked without offering installation switching',async({page})=>{
+ await fixture(page,{noMarker:true,state:{blocked:true,managed:true,managedStatus:'changed'}});
+ await expect(page.getByRole('alert')).toBeVisible();
+ await expect(page.getByRole('button',{name:'Change installation',exact:true})).toHaveCount(0);
+ await expect(page.locator('input[name=username],.session-identity')).toHaveCount(0);
+});
 
 test('orphaned confirmed transition reaches primary login after restart without reviving cached identity or changing encrypted work',async({page})=>{
  await fixture(page);await expect(page.locator('input[name=username]')).toBeVisible();

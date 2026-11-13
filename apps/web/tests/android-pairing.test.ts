@@ -22,3 +22,12 @@ test("pairing and native managed settings require the same canonical origin repr
     assert.equal(parseAndroidPairing(JSON.stringify({...artifact, origin})).origin, origin);
   }
 });
+
+test("pairing accepts the configurable lifetime and rejects expiry outside its bounds", () => {
+ const now=Date.now();
+ for(const minutes of [1,30,90,1440]){
+ const issued={...code(),expiresAt:new Date(now+minutes*60000).toISOString()};
+ assert.deepEqual(parseAndroidPairing(createAndroidPairing(issued,""),now),{version:1,...issued,caPem:""});
+ }
+ for(const offset of [0,-1,1440*60000+30001])assert.throws(()=>parseAndroidPairing(JSON.stringify({version:1,...code(),expiresAt:new Date(now+offset).toISOString(),caPem:""}),now));
+});

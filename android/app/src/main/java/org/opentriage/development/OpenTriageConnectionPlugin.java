@@ -340,6 +340,7 @@ public class OpenTriageConnectionPlugin extends LifecycleBoundPlugin {
         JSONObject preview = new JSONObject(response.body());
         JSObject result = new JSObject(); result.put("origin", next.origin);
         for (String key : new String[]{"organizationName", "unitName", "callSign"}) result.put(key, preview.getString(key));
+        result.put("installationName", preview.optString("installationName", preview.getString("unitName")));
         candidate = next; pairing = artifact;
         pairing.put("reassign", new JSONObject(current.body()).optBoolean("enrolled", false));
         return result;
@@ -442,6 +443,20 @@ public class OpenTriageConnectionPlugin extends LifecycleBoundPlugin {
         connectionContext = java.util.UUID.randomUUID().toString();return connectionState();
     }); }
     @PluginMethod public void resumeEnrollment(PluginCall call) { execute(call, () -> finishEnrollment(false)); }
+    /** Check pairing independently of personal login, including while the sign-in screen is open. */
+    @PluginMethod public void refreshInstallation(PluginCall call) { execute(call, () -> {
+        if (!connectionContext.equals(call.getString("connectionContext"))) throw new IllegalStateException("Installation changed");
+        if (active == null || pendingEnrollment != null || pendingHandoff != null || replacing) return connectionState();
+        var response = managedRequest(active, "/api/installations/current", "GET", new JSONObject(), null);
+        if (NativeInstallationStatus.requiresPairing(response.status(), response.body())) {
+            // Persist before replying so process death cannot reopen the revoked workspace.
+            vault.pendingAuthentication(null);
+            vault.promoteHandoff(null);
+            active = null; candidate = null; pairing = null; replacing = false;
+            connectionContext = java.util.UUID.randomUUID().toString();
+        } else vault.write(active);
+        return connectionState();
+    }); }
     @PluginMethod public void beginReplacement(PluginCall call) { execute(call, () -> {
         if (pendingEnrollment != null || pendingHandoff != null) throw new IllegalStateException("Resolve the pending transition first");
         // Shared UI has settled encrypted writers before this native boundary.

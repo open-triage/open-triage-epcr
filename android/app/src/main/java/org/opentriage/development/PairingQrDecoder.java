@@ -76,7 +76,8 @@ final class PairingQrDecoder {
     static String accept(String text) throws Exception {
         if (text == null) throw new IllegalArgumentException("INVALID_QR");
         if (text.getBytes(StandardCharsets.UTF_8).length > MAX_BYTES) throw new IllegalArgumentException("QR_TOO_LARGE");
-        TrustedConnection.artifact(text, System.currentTimeMillis());
-        return text;
+        String artifact = CompactPairingQr.expand(text);
+        TrustedConnection.artifact(artifact, System.currentTimeMillis());
+        return artifact;
     }
 }

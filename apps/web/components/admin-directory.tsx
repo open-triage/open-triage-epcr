@@ -309,7 +309,7 @@ export function UsersPanel({ canCreate = false, canManage = false, canAssignRole
     {canCreate && createOpen && <form id="create-user-form" className="admin-user-create" onChangeCapture={() => setCreationDirty(true)} onSubmit={createUser}>
       <fieldset disabled={creating}><legend><AdminText messageKey="admin.newLocalUser" /></legend>
         <label><AdminText messageKey="admin.displayName" /><input name="displayName" maxLength={200} required autoComplete="off" /></label>
-        <label><AdminText messageKey="admin.username" /><input name="username" minLength={3} maxLength={128} pattern="[A-Za-z0-9][A-Za-z0-9._-]{2,127}"
+        <label><AdminText messageKey="admin.username" /><input name="username" autoCapitalize="none" autoCorrect="off" spellCheck={false} minLength={3} maxLength={128} pattern="[A-Za-z0-9][A-Za-z0-9._-]{2,127}"
           required autoComplete="off" /></label>
         <label><AdminText messageKey="admin.temporaryPassword" /><input name="temporaryPassword" type="password" minLength={12} maxLength={1024}
           required autoComplete="new-password" /></label>
@@ -340,7 +340,7 @@ export function UsersPanel({ canCreate = false, canManage = false, canAssignRole
         <label><AdminText messageKey="admin.hsaId" /><input name="hsaId" defaultValue={editing.hsaId??""} maxLength={128} autoComplete="off" /></label>
         {editing.hsaSource&&<small><AdminText messageKey={editing.hsaSource==="oidc"?"admin.hsaSourceOidc":"admin.hsaSourceManual"} /></small>}
         {editing.hsaConflict && <><p role="alert"><AdminText messageKey="admin.hsaConflict" /></p><label><input type="checkbox" name="confirmHsa" /><AdminText messageKey="admin.hsaConfirm" /></label></>}
-        {editing.username !== null ? <label><AdminText messageKey="admin.username" /><input name="username" defaultValue={editing.username} minLength={3} maxLength={128}
+        {editing.username !== null ? <label><AdminText messageKey="admin.username" /><input name="username" autoCapitalize="none" autoCorrect="off" spellCheck={false} defaultValue={editing.username} minLength={3} maxLength={128}
           pattern="[A-Za-z0-9][A-Za-z0-9._-]{2,127}" required autoComplete="off" /></label> : <><label>{t("admin.ssoUsername")}<input readOnly value={editing.ssoUsername??""} /></label><p><AdminText messageKey="admin.ssoOnlyAccount" /></p></>}
         <fieldset className="admin-role-selection" disabled={!canAssignRoles || saving}><legend><AdminText messageKey="admin.completeRetainedRole" /></legend>
           {roleOptions.map((role) => <label key={role.id}>

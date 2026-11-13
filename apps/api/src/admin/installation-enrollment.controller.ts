@@ -10,8 +10,8 @@ export class InstallationEnrollmentController {
  constructor(private readonly enrollment: InstallationEnrollmentService) {}
  @Post("admin/units/:id/enrollment")
  @Header("Cache-Control","no-store, private")
- issue(@Param("id",new ParseUUIDPipe()) id:string,@Req() req:RequestLike,@Headers("authorization") auth?:string) {
- return this.enrollment.issue(sessionToken(req,auth),id);
+ issue(@Param("id",new ParseUUIDPipe()) id:string,@Req() req:RequestLike,@Headers("authorization") auth?:string,@Body() body?:unknown) {
+ return this.enrollment.issue(sessionToken(req,auth),id,body);
  }
  @Get("admin/units/:id/installations")
  @Header("Cache-Control","no-store, private")

@@ -1,4 +1,5 @@
 "use client";
+import { applicationVisible, APPLICATION_FOREGROUND_EVENT } from "../app/application-foreground";
 import {clearAgencyHandoffCaches,storeAgencyHandoffSession} from "../app/agency-session";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { AndroidConnection, configureNativeConnection, installAndroidTransport, isAndroidRuntime, type PairingPreview, type AndroidConnectionState } from "../app/android-runtime";
@@ -9,7 +10,7 @@ import { lockProtectedClinicalStorage } from "../app/protected-clinical-storage"
 import { resolveMessage } from "../app/localization";
 import {INSTALLATION_GENERATION_KEY} from "../app/installation-transition-generation";
 import { transitionInstallation, resumeNativeInstallationTransition, INSTALLATION_TRANSITION_KEY, INSTALLATION_TRANSITION_COMPLETE_EVENT } from "../app/installation-transition";
-import { AndroidInstallationAction, ANDROID_REPLACE_INSTALLATION } from "./android-installation-action";
+import { ANDROID_REPLACE_INSTALLATION } from "../app/android-installation-events";
 import { installAndroidLifecycle } from "../app/android-lifecycle";
 import { AndroidTlsNotice } from "./android-tls-notice";
 import { AndroidPendingEnrollment } from "./android-pending-enrollment";
@@ -70,6 +71,32 @@ export function AndroidRuntimeGate({ children }: { children: React.ReactNode }) 
         if(active&&!waiting)applyState({configured:false,blocked:true,managedStatus:"unavailable"});
       } finally {checking=false;}
     };
+    let refreshing = false;
+    const refreshInstallation = async () => {
+      const state = currentState.current;
+      if (!active || refreshing || !isAndroidRuntime() || !state?.configured || state.blocked ||
+          state.handoffPending || state.replacementPending || waiting ||
+          window.localStorage.getItem(INSTALLATION_TRANSITION_KEY) || !applicationVisible() || navigator.onLine === false) return;
+      refreshing = true;
+      const started = revision.current;
+      try {
+        const next = await AndroidConnection.refreshInstallation({connectionContext: state.connectionContext});
+        if (!active || revision.current !== started) return;
+        if (!next.configured) {
+          setReady(false);
+          await transitionInstallation(async () => {
+            if (active && revision.current === started) applyState(next);
+          });
+        } else applyState(next);
+      } catch { /* Outages and failed checks cannot invalidate a saved pairing. */ }
+      finally { refreshing = false; }
+    };
+    const refreshVisible = () => { void refreshInstallation(); };
+    const enrollmentTimer = window.setInterval(refreshVisible, 10_000);
+    window.addEventListener("online", refreshVisible);
+    window.addEventListener("focus", refreshVisible);
+    window.addEventListener(APPLICATION_FOREGROUND_EVENT, refreshVisible);
+    document.addEventListener("visibilitychange", refreshVisible);
     const retry=()=>{if(waiting)void observe();};
     const storage=(event:StorageEvent)=>{if(event.key===INSTALLATION_TRANSITION_KEY)void observe();};
     const completed=()=>{void observe();};
@@ -108,16 +135,16 @@ export function AndroidRuntimeGate({ children }: { children: React.ReactNode }) 
         removeListener = () => listener.remove();
         const started = revision.current;
         const state = await AndroidConnection.state();
-        if (active && revision.current === started) await observe(state);
+        if (active && revision.current === started) { await observe(state); void refreshInstallation(); }
       } catch { if (active) applyState({configured: false, blocked: true, managedStatus: "unavailable"}); }
     });
-    return () => { active = false; mounted.current = false;window.clearInterval(timer);window.removeEventListener("storage",storage);window.removeEventListener(INSTALLATION_TRANSITION_COMPLETE_EVENT,completed); window.removeEventListener(ANDROID_REPLACE_INSTALLATION, replace); generation.current++; void removeListener?.(); };
+    return () => { active = false; mounted.current = false;window.clearInterval(enrollmentTimer);window.removeEventListener("online",refreshVisible);window.removeEventListener("focus",refreshVisible);window.removeEventListener(APPLICATION_FOREGROUND_EVENT,refreshVisible);document.removeEventListener("visibilitychange",refreshVisible);window.clearInterval(timer);window.removeEventListener("storage",storage);window.removeEventListener(INSTALLATION_TRANSITION_COMPLETE_EVENT,completed); window.removeEventListener(ANDROID_REPLACE_INSTALLATION, replace); generation.current++; void removeListener?.(); };
   }, [applyState]);
   async function preparePairing(artifact: string, source: "scan" | "import", started: number) {
     if (!isCurrent(started)) return;
     if (source === "scan") parseAndroidPairingQr(artifact); else parseAndroidPairing(artifact);
     const next = await AndroidConnection.preview({ artifact });
-    if (isCurrent(started)) { setName(""); setConfirmed(false); setPreview(next); }
+    if (isCurrent(started)) { setName(next.installationName??next.unitName); setConfirmed(false); setPreview(next); }
   }
   const managedNotice = connection?.managed ? <p role="status" className="android-managed-connection" data-managed-context={connection.managedContext} data-managed-status={connection.managedStatus}>{t("android.managed.locked")}{connection.managedOrigin ? ` · ${connection.managedOrigin}` : ""}</p> : null;
   if (ready) return <><AndroidTlsNotice />{children}</>;
@@ -125,7 +152,7 @@ export function AndroidRuntimeGate({ children }: { children: React.ReactNode }) 
   if (!native || !connection) return null;
   return <main className="admin-directory installation-enrollment"><h1>{t("android.pairingTitle")}</h1>
     {managedNotice}
-    {connection?.blocked ? <><p role="alert" className="admin-error">{t(`android.managed.${["missing", "pending", "invalid", "changed"].includes(connection.managedStatus ?? "") ? connection.managedStatus : "unavailable"}`)}</p>{connection.managedStatus === "changed" && <AndroidInstallationAction language={language} />}</> : <>
+    {connection?.blocked ? <p role="alert" className="admin-error">{t(`android.managed.${["missing", "pending", "invalid", "changed"].includes(connection.managedStatus ?? "") ? connection.managedStatus : "unavailable"}`)}</p> : <>
     {error && <p role="alert" className="admin-error">{t(error)}</p>}
     {connection.handoffPending ? <><p role="alert">{t(connection.handoffComplete?"android.handoffComplete":"android.handoffInterrupted")}</p><button type="button" disabled={busy} onClick={async()=>{
       setBusy(true);setError(null);const started=revision.current,context=currentState.current?.connectionContext;
@@ -170,7 +197,7 @@ export function AndroidRuntimeGate({ children }: { children: React.ReactNode }) 
       } finally { if (mounted.current) setBusy(false); }
     }}>
       <p>{preview.organizationName} — {preview.unitName} — {preview.callSign}</p><p>{preview.origin}</p>
-      <label>{t("enrollment.name")}<input required maxLength={100} value={name} onChange={e => setName(e.target.value)} /></label>
+      <label>{t("enrollment.name")}<input readOnly maxLength={100} value={name} /></label>
       <label><input type="checkbox" checked={confirmed} onChange={e => setConfirmed(e.target.checked)} />{t("enrollment.confirm")}</label>
       <div className="admin-role-editor-actions"><button type="submit" className="button-primary" disabled={busy || !confirmed || !name.trim()}>{t("enrollment.title")}</button>
       <button type="button" disabled={busy} onClick={async () => { await AndroidConnection.cancel(); applyState(await AndroidConnection.state()); setPreview(null); setName(""); setConfirmed(false); setError(null); }}>{t("android.cancel")}</button></div>

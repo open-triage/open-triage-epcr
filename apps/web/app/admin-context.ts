@@ -239,7 +239,7 @@ export const saveOperationalUnit = (csrfToken: string, id: string | null, comman
   catalogRequest<import("@open-triage/contracts").OperationalUnitSummary>(id ? `units/${id}` : "units", csrfToken,
     { method: id ? "PUT" : "POST", body: JSON.stringify(command) });
 
-export const issueUnitEnrollment=(csrfToken:string,id:string)=>catalogRequest<{token:string;origin:string;expiresAt:string}>(`units/${id}/enrollment`,csrfToken,{method:"POST"});
+export const issueUnitEnrollment=(csrfToken:string,id:string,expiresInMinutes:number,name:string)=>catalogRequest<{token:string;origin:string;expiresAt:string;caPem:string}>(`units/${id}/enrollment`,csrfToken,{method:"POST",body:JSON.stringify({expiresInMinutes,name})});
 export const loadUnitInstallations=(id:string,cursor?:string)=>catalogRequest<{items:import("./installation-enrollment").InstallationSummary[];nextCursor:string|null}>(`units/${id}/installations${cursor?`?cursor=${encodeURIComponent(cursor)}`:""}`);
 
 export const loadWeeklySchedules = () => catalogRequest<{items:import("@open-triage/contracts").WeeklySchedule[]}>("schedules");

@@ -56,6 +56,7 @@ test('agency private-origin approval does not inherit another group or installat
 test('registration URLs use the accepted localhost port in development and HTTPS in production',()=>{
  assert.equal(registeredAgencyOrigin('test.localhost',{NODE_ENV:'development',WEB_ORIGIN:'http://localhost:3000'}),'http://test.localhost:3000');
  assert.equal(registeredAgencyOrigin('test.localhost',{NODE_ENV:'development',WEB_ORIGIN:'http://localhost:3198'}),'http://test.localhost:3198');
+ assert.equal(registeredAgencyOrigin('test.localhost',{NODE_ENV:'development',WEB_ORIGIN:'https://localhost:3000'}),'https://test.localhost:3000');
  assert.equal(registeredAgencyOrigin('agency.example.org',{NODE_ENV:'development',WEB_ORIGIN:'http://localhost:3000'}),'https://agency.example.org');
  assert.equal(registeredAgencyOrigin('test.localhost',{NODE_ENV:'production',WEB_ORIGIN:'http://localhost:3000'}),'https://test.localhost');
 });

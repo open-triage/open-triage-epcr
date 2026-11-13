@@ -13,8 +13,16 @@ Use the separate Users/Sessions action to revoke personal access. The installati
 lifecycle audit identifies the registration, actor and unit scope; the retained
 `sessionsRevoked` response field is zero. Repeated revocation is idempotent.
 
-Call-list refresh removes incoming unit calls and shows enrollment is required
-for new calls. Opening a new assignment independently checks the live registration
+In the Android app, pairing status is checked at startup, every ten seconds
+while visible and connected, and on foreground/reconnection. When the server
+confirms the registration is unavailable, the app returns to the initial pairing
+screen, clears its local personal session and native connection, and locks
+readable protected work. The reset persists across restarts. A new pairing is
+required to continue; protected ciphertext and recovery deadlines are retained.
+Failed or offline checks do not reset pairing.
+
+Browser call-list refresh removes incoming unit calls and shows enrollment is
+required for new calls. Opening a new assignment independently checks the live registration
 under locks, so a stale call card cannot grant access after revocation commits.
 This applies equally to production and generated synthetic calls. Calls generated
 by a Demo user are delivered to any authorized clinician paired to the target unit;

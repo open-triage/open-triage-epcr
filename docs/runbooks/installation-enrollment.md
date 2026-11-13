@@ -1,10 +1,12 @@
 # Installation enrollment
 
 Under Admin → Units, an agency administrator opens Installations for an active
-unit and issues a five-minute, single-use QR. The QR includes only an opaque
-random enrollment token in a URL fragment. Open the link in the intended browser
+unit, enters the installation name, and generates a single-use pairing file,
+browser/PWA QR, or Android QR directly. The administrator chooses
+an expiry in whole minutes (1–1440); the default is 30 minutes. The browser QR
+includes only an opaque random enrollment token in a URL fragment. Open the link in the intended browser
 or installed PWA. The compact confirmation page names the
-selected unit, requires an installation name and explicit confirmation, and
+selected unit and administrator-selected installation name, requires explicit confirmation, and
 never consumes a code automatically. A scanner that opens another browser must
 open the original link in the intended installation before confirming. The page
 removes the code from browser history immediately. Refreshing an unpaired page
@@ -50,7 +52,7 @@ acceptance on the intended devices; desktop automation is not hardware testing.
 
 ## Reassigning a live installation
 
-Issue a new five-minute single-use QR from the incoming unit's Installations
+Issue a new single-use pairing file or QR code from the incoming unit's Installations
 inventory. Open it in the enrolled browser or PWA, confirm the incoming unit and
 intended installation, then choose **Reassign and sign out**. The installation
 keeps its stable identity; its old registration stays in history and a new

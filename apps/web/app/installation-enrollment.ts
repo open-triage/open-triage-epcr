@@ -1,6 +1,6 @@
 import { transitionInstallation } from "./installation-transition";
 import { apiRequestUrl, browserRouteUrl, browserRequestConfiguration } from "./browser-api";
-export type InstallationSummary={id:string;installationId:string;organizationId:string;unitId:string;name:string;enrolledAt:string;revokedAt:string|null};
+export type InstallationSummary={id:string;installationId:string;organizationId:string;unitId:string;unitName?:string;name:string;enrolledAt:string;revokedAt:string|null};
 export async function installationRequest<T>(path:string,body?:unknown):Promise<T> {
  if(!navigator.locks) throw new Error("Enrollment requires a browser with secure cross-tab storage coordination");
  return navigator.locks.request("open-triage.installation-enrollment",async()=>{

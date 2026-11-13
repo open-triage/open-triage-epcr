@@ -28,7 +28,7 @@ test("root configuration keeps API ports and secrets out of the web process, inc
 
 
 test("inherited server credentials remain API-only when an older local file omits their names", () => {
-  const privateKeys = ["OIDC_CREDENTIAL_KEYS_JSON", "OIDC_CREDENTIAL_KEY_VERSION",
+  const privateKeys = ["PAIRING_CA_FILE", "OIDC_CREDENTIAL_KEYS_JSON", "OIDC_CREDENTIAL_KEY_VERSION",
     "PATIENT_KEY_SECRET_BASE64", "PATIENT_KEY_INSTALLATION_ID", "PATIENT_KEY_VERSION",
     "AUTH_RATE_LIMIT_SECRET_BASE64", "AUTH_TRUST_PROXY_HOPS", "OFFLINE_RECOVERY_SECRET_BASE64",
     "OFFLINE_RECOVERY_WRAPPING_KEYS_JSON", "OFFLINE_RECOVERY_KEY_VERSION", "DATABASE_LOGGING",
@@ -217,4 +217,17 @@ test("development defaults to the shared same-origin edge and derives its privat
   assert.equal(web.OPEN_TRIAGE_API_UPSTREAM, "http://127.0.0.1:3456");
   assert.equal(web.OPEN_TRIAGE_PUBLIC_SITE_HOST, "public.localhost");
   assert.equal(web.PORT, undefined);
+});
+
+test("development TLS uses port 3000, configures browser origins and supplies the pairing CA only to the API", () => {
+  const {api,web}=developmentEnvironment("WEB_ORIGIN=http://localhost:3000\nDEV_TLS_CERT_FILE=/local/server.pem\nDEV_TLS_KEY_FILE=/local/server.key\nDEV_TLS_CA_FILE=/local/ca.pem",{});
+  assert.equal(api.WEB_ORIGIN,'https://localhost:3000');
+  assert.equal(api.PAIRING_CA_FILE,'/local/ca.pem');
+  assert.equal(api.AUTH_TRUST_PROXY_HOPS,'1');
+  assert.equal(web.DEV_TLS_CERT_FILE,'/local/server.pem');
+  assert.equal(web.DEV_TLS_KEY_FILE,'/local/server.key');
+  assert.equal(web.DEV_TLS_CA_FILE,'/local/ca.pem');
+  assert.equal(web.PAIRING_CA_FILE,undefined);
+  assert.equal(web.NEXT_PUBLIC_API_URL,'same-origin');
+  assert.throws(()=>developmentEnvironment('DEV_TLS_CERT_FILE=/local/server.pem',{}),/Configure both/);
 });

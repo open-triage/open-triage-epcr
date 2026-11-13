@@ -91,7 +91,7 @@ for (const operation of ['preview', 'confirm'] as const) test(`late ${operation}
   await startFixture(page, {previewMode: operation === 'preview' ? 'held' : 'success', holdConfirm: operation === 'confirm'});
   await page.locator('[data-pairing-scan]').click();
   if (operation === 'confirm') {
-    await page.getByRole('textbox').fill('Synthetic ambulance');
+    await expect(page.getByRole('textbox')).toHaveValue('Synthetic unit');await expect(page.getByRole('textbox')).toHaveAttribute('readonly', '');
     await page.getByRole('checkbox').check();
     await page.locator('button[type=submit]').click();
   }
@@ -112,7 +112,7 @@ test('unchanged resume preserves an in-flight scanned preview and confirmation',
   await page.locator('[data-pairing-scan]').click();
   await expect.poll(() => page.evaluate(() => Boolean((window as unknown as {managedFixture: ManagedFixture}).managedFixture.releasePreview))).toBe(true);
   await page.evaluate(state => {const f=(window as unknown as {managedFixture: ManagedFixture}).managedFixture;f.emit(state);f.releasePreview?.();}, validState);
-  await page.getByRole('textbox').fill('Synthetic ambulance');
+  await expect(page.getByRole('textbox')).toHaveValue('Synthetic unit');await expect(page.getByRole('textbox')).toHaveAttribute('readonly', '');
   await page.getByRole('checkbox').check();
   await page.locator('button[type=submit]').click();
   await expect.poll(() => page.evaluate(() => Boolean((window as unknown as {managedFixture: ManagedFixture}).managedFixture.releaseConfirm))).toBe(true);
@@ -138,7 +138,7 @@ for (const operation of ['scan', 'import', 'confirm'] as const) test(`managed-bl
   if (operation === 'import') await page.locator('input[type=file]').setInputFiles({name:'pairing.json',mimeType:'application/json',buffer:Buffer.from(pairing())});
   else {
     await page.locator('[data-pairing-scan]').click();
-    if (operation === 'confirm') {await page.getByRole('textbox').fill('Synthetic ambulance');await page.getByRole('checkbox').check();await page.locator('button[type=submit]').click();}
+    if (operation === 'confirm') {await expect(page.getByRole('textbox')).toHaveValue('Synthetic unit');await expect(page.getByRole('textbox')).toHaveAttribute('readonly', '');await page.getByRole('checkbox').check();await page.locator('button[type=submit]').click();}
   }
   await expect(page.getByRole('alert')).toHaveText('Managed settings are unavailable. Contact IT.');
   await expect(page.locator('[data-clinical]')).toHaveCount(0);

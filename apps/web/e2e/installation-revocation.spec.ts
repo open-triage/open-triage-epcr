@@ -15,14 +15,14 @@ async function harness(page:import('@playwright/test').Page,script:string){
  await page.route('**/__device-script',r=>r.fulfill({contentType:'text/javascript',body:script}));
  await page.route('**/__device?*',r=>r.fulfill({contentType:'text/html',body:`<html><head><meta name="viewport" content="width=device-width,initial-scale=1"><style>${css}</style></head><body style="--green:#593c91;--green-dark:#30205a;--destructive:#92212e"><div id="root"></div><script src="/__device-script"></script></body></html>`}));
 }
-for(const language of ['en','sv'])test(`${language} administrator confirms device scope and understands offline revocation`,async({page},info)=>{
+for(const language of ['en','sv'])test(`${language} administrator confirms device scope and preserves other devices`,async({page},info)=>{
  const t=(en:string,sv:string)=>language==='sv'?sv:en;
  await harness(page,inventoryScript);let revoked=false;
  await page.route('**/api/admin/units/unit/installations',r=>r.fulfill({json:{items:[{id:'lost',name:'Lost browser',revokedAt:revoked?'2026-10-13':null},{id:'other',name:'Other clinician device',revokedAt:null}],nextCursor:null}}));
  await page.route('**/api/admin/units/unit/installations/lost/revoke',r=>{expect(r.request().headers()['x-csrf-token']).toBe('csrf');expect(r.request().method()).toBe('POST');revoked=true;return r.fulfill({json:{revoked:true,sessionsRevoked:0}});});
  await page.goto(`/__device?language=${language}`);
  const trigger=page.getByRole('button',{name:t('Devices','Enheter'),exact:true});await trigger.focus();await trigger.press('Enter');
- const dialog=page.getByRole('dialog');await expect(dialog).toContainText(t('This is not remote erasure','Detta är ingen fjärradering'));
+ const dialog=page.getByRole('dialog');await expect(dialog).toContainText('Lost browser');await expect(dialog).toContainText('Other clinician device');
  const lost=dialog.getByRole('button',{name:`${t('Revoke','Återkalla')} Lost browser`,exact:true});await lost.focus();await lost.press('Enter');
  const confirm=dialog.getByRole('button',{name:t('Confirm revocation','Bekräfta återkallelse'),exact:true});await expect(confirm).toBeVisible();expect(revoked).toBe(false);
  await page.setViewportSize({width:360,height:800});await confirm.scrollIntoViewIfNeeded();await expect(confirm).toBeInViewport();await confirm.focus();await confirm.press('Enter');

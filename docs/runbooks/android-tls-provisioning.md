@@ -73,10 +73,26 @@ Secret in place; diagnose rollout/DNS/chain readiness or deliberately reapply th
 previous still-valid material. The helper never disables verification or silently
 rolls back trust. Run the ordinary deployment preflight and verify browser access.
 
-In Admin's existing vehicle pairing flow, paste the **contents** of the validated
-public CA bundle into Public CA certificates, then issue a new Android pairing
-file/QR. Check the displayed server and unit before confirming. A private key or
-server leaf certificate is not a public CA bundle.
+Configure the API's `PAIRING_CA_FILE` with the validated public CA export for
+private PKI. Pairing files and Android QR codes automatically include it; Admin
+has no certificate input. Leave the variable unset for platform-trusted HTTPS.
+Configured files must contain only current public CA certificates (at most 48,000
+bytes); missing, malformed, expired, private-key or leaf-only material prevents
+issuance rather than silently switching trust.
+
+For Helm, create an operator-owned ConfigMap from the validated export and set
+`api.pairingCa.configMapName` to its name (`api.pairingCa.key` defaults to `ca.pem`).
+The API mounts only that public file, never the ingress TLS Secret or private key:
+
+```sh
+kubectl -n "$OT_NAMESPACE" create configmap open-triage-pairing-ca \
+  --from-file=ca.pem="$OT_PRIVATE/validated-public-ca.pem"
+```
+
+Configure the bundle for every ingress hostname in the installation. After a CA
+rotation, update the ConfigMap/file and issue fresh pairing material. The API
+reads the current file on issuance; existing pairing artifacts retain their
+original trust snapshot.
 
 ## Ordinary leaf renewal
 
@@ -88,6 +104,13 @@ renewal inside CA and leaf validity windows; replacing an expired leaf with a
 valid one under a still-valid CA restores connectivity.
 
 ## Deliberate CA replacement
+
+Current builds change installations and their saved trust by uninstalling,
+reinstalling and pairing again. Synchronize pending work first: uninstalling clears
+local data. The in-app replacement protocol below describes earlier APKs and
+recovery of transitions already started there; current builds expose no
+installation-change control. Pending confirmed pairing can still use its existing
+trust-update and retry actions.
 
 An API response, redirect, TLS error or failed connection can never introduce a
 new CA. Obtain replacement trust through the approved operator/MDM channel, not

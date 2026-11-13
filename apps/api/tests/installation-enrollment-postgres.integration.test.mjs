@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { randomBytes,randomUUID,createHash } from 'node:crypto';
 import test from 'node:test';
 import pg from 'pg';
+import {readFile} from 'node:fs/promises';
 import { DataSource } from 'typeorm';
 import { SYNTHETIC_DEMO_FIXTURE } from '@open-triage/contracts';
 import { InstallationEnrollmentService } from '../dist/admin/installation-enrollment.service.js';
@@ -40,6 +41,12 @@ integration('real PostgreSQL enrollment races, replay, expiry, scopes, audit and
  await client.query(`insert into app_identity.operational_unit(id,organization_id,name,call_sign,active) values($1,$2,'Enrollment test',$3,true)`,[unitId,organizationId,`ENR-${unitId}`]);
  denied=true;await assert.rejects(run(()=>service.issue('session',unitId)),/Not authorized/);denied=false;
  scope=randomUUID();await assert.rejects(run(()=>service.issue('session',unitId)),/Active unit/);await assert.rejects(run(()=>service.inventory('session',unitId)),/not found/);scope=organizationId;
+ for(const minutes of [undefined,1,90,1440]){
+ const issued=await run(()=>service.issue('session',unitId,minutes===undefined?undefined:{expiresInMinutes:minutes}));
+ const {rows:[stored]}=await client.query(`select extract(epoch from (expires_at-issued_at))/60 as lifetime from app_identity.unit_enrollment where token_sha256=$1`,[createHash('sha256').update(issued.token).digest('hex')]);
+ assert.ok(Math.abs(Number(stored.lifetime)-(minutes??30))<0.01);
+ await run(()=>service.preview({token:issued.token}));
+ }
  const code=await run(()=>service.issue('session',unitId));
  originActive=false;
  await assert.rejects(run(()=>service.preview({token:code.token})),/origin required/);
@@ -48,7 +55,7 @@ integration('real PostgreSQL enrollment races, replay, expiry, scopes, audit and
  originActive=true;
  const countsBefore=await client.query(`select (select count(*) from app_identity.app_session where user_id=$1) sessions,(select count(*) from app_identity.user_role_assignment where user_id=$1) roles`,[userId]);
  const expiry=await client.query(`select extract(epoch from(expires_at-issued_at)) seconds from app_identity.unit_enrollment where token_sha256=$1`,[createHash('sha256').update(code.token).digest('hex')]);
- assert.ok(Math.abs(Number(expiry.rows[0].seconds)-300)<1);
+ assert.ok(Math.abs(Number(expiry.rows[0].seconds)-1800)<1);
  await assert.rejects(at('https://other-group.example',()=>service.consume(input(code.token),secret())),/origin required/);
  await assert.rejects(run(()=>service.consume(input(secret()),secret())),/invalid/);
  const runtimeDb=new DataSource({type:'postgres',url:process.env.DATABASE_URL,extra:{options:'-c role=open_triage_api_runtime'}});
@@ -64,6 +71,7 @@ integration('real PostgreSQL enrollment races, replay, expiry, scopes, audit and
  const enrolled=attempts.find(x=>x.status==='fulfilled').value;
  assert.equal(enrolled.installation.unitId,unitId);
  assert.equal((await run(()=>service.current(enrolled.credential))).id,enrolled.installation.id);
+ assert.equal((await run(()=>service.current(enrolled.credential))).unitName,'Enrollment test');
  await assert.rejects(run(()=>service.consume(input(code.token),secret())),/invalid/);
  const codes=await run(()=>Promise.all([service.issue('session',unitId),service.issue('session',unitId)]));
  const sameContext=secret();
@@ -155,4 +163,27 @@ integration('native outcome never confuses expired uncommitted intent with commi
   await run(()=>service.consume(intentB,cookieB));await client.query('commit');transaction=false;await rejected;
   assert.equal(await count(),3);
  } finally {if(transaction)await client.query('rollback');await client.end();await db.destroy();}
+});
+
+integration('administrator-assigned pairing name survives phone overrides on real PostgreSQL',async()=>{
+ const client=new pg.Client({connectionString:process.env.DATABASE_URL});await client.connect();
+ const organizationId=SYNTHETIC_DEMO_FIXTURE.organizationId,userId=randomUUID(),unitId=randomUUID();
+ try {
+ await client.query('begin');
+ const {rows:[column]}=await client.query("select 1 from information_schema.columns where table_schema='app_identity' and table_name='unit_enrollment' and column_name='installation_name'");
+ if(!column)await client.query(await readFile(new URL('../../../supabase/migrations/20261113102148_admin_assigned_installation_name.sql',import.meta.url),'utf8'));
+ await client.query(`insert into app_identity.app_user(id,organization_id,display_name,synthetic) values($1,$2,'Fictional pairing administrator',true)`,[userId,organizationId]);
+ await client.query(`insert into app_identity.operational_unit(id,organization_id,name,call_sign,active) values($1,$2,'Pairing name test',$3,true)`,[unitId,organizationId,`NAME-${unitId}`]);
+ const manager={query:async(sql,parameters)=>(await client.query(sql,parameters)).rows};
+ const database={transaction:work=>work(manager)};
+ const service=new InstallationEnrollmentService(database,{requireCapability:async()=>({organization:{id:organizationId},user:{id:userId}})},{allowsOrigin:async()=>true});
+ await agencyRequest.run({origin:'https://enrollment.example'},async()=>{
+ const issued=await service.issue('admin',unitId,{name:'  Admin cab tablet  ',expiresInMinutes:30});
+ assert.equal((await service.preview({token:issued.token})).installationName,'Admin cab tablet');
+ const result=await service.consume({token:issued.token,name:'Phone override',confirmInstallation:true},secret());
+ assert.equal(result.installation.name,'Admin cab tablet');
+ const fallback=await service.issue('older-admin',unitId);
+ assert.equal((await service.preview({token:fallback.token})).installationName,'Pairing name test');
+ });
+ }finally{await client.query('rollback');await client.end();}
 });

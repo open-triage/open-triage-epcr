@@ -3,6 +3,7 @@ import { execFile, spawn } from "node:child_process";
 import { readFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { createServer } from "node:net";
+import { get as httpsGet } from "node:https";
 import path from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -20,7 +21,7 @@ const transientDatabaseErrors = new Set(["ECONNREFUSED", "ECONNRESET", "ETIMEDOU
 // Remove server-owned namespaces and credential names independently of that file.
 const serverEnvironmentPrefixes = ["DATABASE_", "PATIENT_KEY_", "AUTH_", "OFFLINE_RECOVERY_", "OIDC_",
   "SUPABASE_", "REVIEW_REPORTING_", "REPORTING_REPLICA_", "RESTORED_DATABASE_", "WORKLOAD_DATABASE_"];
-const serverEnvironmentNames = new Set(["PORT", "WEB_ORIGIN", "AGENCY_BASE_DOMAIN", "PGHOST", "PGPORT", "PGUSER",
+const serverEnvironmentNames = new Set(["PORT", "WEB_ORIGIN", "PAIRING_CA_FILE", "AGENCY_BASE_DOMAIN", "PGHOST", "PGPORT", "PGUSER",
   "PGPASSWORD", "PGDATABASE", "PGSERVICE", "PGSERVICEFILE", "PGPASSFILE", "PGSSLMODE", "PGOPTIONS"]);
 const credentialEnvironmentName = /(?:^|_)(?:SECRET|PASSWORD|TOKEN|CREDENTIALS?|PRIVATE_KEY)(?:_|$)/u;
 
@@ -32,6 +33,15 @@ export function developmentEnvironment(fileContents, inherited = process.env) {
     throw new Error("API PORT must be between 1 and 65535 and different from the web port 3000.");
   }
   api.PORT = String(port);
+  const tlsEnabled = !!api.DEV_TLS_CERT_FILE;
+  if (tlsEnabled !== !!api.DEV_TLS_KEY_FILE) throw new Error("Configure both DEV_TLS_CERT_FILE and DEV_TLS_KEY_FILE");
+  if (tlsEnabled) {
+    const origin = new URL(api.WEB_ORIGIN || "http://localhost:3000");
+    origin.protocol = "https:";
+    api.WEB_ORIGIN = origin.origin;
+    api.AUTH_TRUST_PROXY_HOPS = "1";
+    api.PAIRING_CA_FILE ||= api.DEV_TLS_CA_FILE;
+  }
   const web = { ...inherited };
   for (const [key, value] of Object.entries(local)) {
     if (key.startsWith("NEXT_PUBLIC_")) web[key] = inherited[key] ?? value;
@@ -44,6 +54,9 @@ export function developmentEnvironment(fileContents, inherited = process.env) {
   web.NEXT_PUBLIC_API_URL ||= "same-origin";
   web.OPEN_TRIAGE_API_UPSTREAM = `http://127.0.0.1:${port}`;
   web.OPEN_TRIAGE_PUBLIC_SITE_HOST = api.OPEN_TRIAGE_PUBLIC_SITE_HOST ?? "localhost";
+  if (tlsEnabled) {
+    for (const name of ["DEV_TLS_CERT_FILE", "DEV_TLS_KEY_FILE", "DEV_TLS_CA_FILE"]) web[name] = api[name];
+  }
   return { api, web, port };
 }
 
@@ -157,14 +170,27 @@ export async function ensureDatabase({ connectionString, projectId, probe = prob
   throw new Error(`PostgreSQL was not ready within ${timeoutMs / 1000}s (${lastCode}). Check the database logs, then retry npm run dev.`);
 }
 
-export async function waitForHttp(url, { api = false, timeoutMs = 120_000, signal } = {}) {
+export async function waitForHttp(url, { api = false, timeoutMs = 120_000, signal, ca } = {}) {
   const deadline = Date.now() + timeoutMs;
   do {
     signal?.throwIfAborted();
     try {
+      if (new URL(url).protocol === "https:") {
+        const ready = await new Promise((resolve, reject) => {
+          const request = httpsGet(url, {ca, signal:AbortSignal.any([AbortSignal.timeout(1500), ...(signal ? [signal] : [])])}, response => {
+            let body = "";
+            response.on("data", chunk => { body += chunk; if (body.length > 65536) request.destroy(new Error("Readiness response too large")); });
+            response.on("error", reject);
+            response.on("end", () => { try { resolve(response.statusCode >= 200 && response.statusCode < 300 && (!api || JSON.parse(body).status === "ok")); } catch { resolve(false); } });
+          });
+          request.on("error", reject);
+        });
+        if (ready) return;
+      } else {
       const response = await fetch(url, { signal: AbortSignal.any([AbortSignal.timeout(1500), ...(signal ? [signal] : [])]) });
       if (response.ok && (!api || (await response.json()).status === "ok")) return;
       if (!response.bodyUsed) await response.body?.cancel();
+      }
     } catch { signal?.throwIfAborted(); }
     await delay(500, undefined, { signal });
   } while (Date.now() < deadline);
@@ -198,6 +224,8 @@ export async function stopChildren(children) {
 }
 
 export async function runDevelopment({ api, web, port }, { start = launch, readiness = waitForHttp, log = console } = {}) {
+  const webOrigin = `${web.DEV_TLS_CERT_FILE ? "https" : "http"}://localhost:3000`;
+  const ca = web.DEV_TLS_CA_FILE ? await readFile(web.DEV_TLS_CA_FILE) : undefined;
   const children = [];
   const controller = new AbortController();
   let stop;
@@ -221,11 +249,11 @@ export async function runDevelopment({ api, web, port }, { start = launch, readi
     const ended = Promise.race([interrupted, ...exits]);
     const ready = Promise.all([
       readiness(`http://localhost:${port}/api/health`, { api: true, signal: controller.signal }),
-      readiness("http://localhost:3000", { signal: controller.signal }),
+      readiness(webOrigin, { signal: controller.signal, ca }),
     ]).then(() => null);
     let result = await Promise.race([ready, ended]);
     if (!result) {
-      log.info(`OpenTriage is ready: http://localhost:3000 (API: http://localhost:${port}). Press Ctrl+C to stop.`);
+      log.info(`OpenTriage is ready: ${webOrigin} (API: http://localhost:${port}). Press Ctrl+C to stop.`);
       result = await ended;
     }
     if (result.interrupted) return result.interrupted === "SIGINT" ? 130 : 143;

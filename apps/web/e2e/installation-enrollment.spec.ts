@@ -10,7 +10,7 @@ test.beforeAll(async()=>{
 });
 for(const language of ['en','sv'])test(`${language} intended installation confirmation, multiple contexts, logout and cleared data`,async({page,context},testInfo)=>{
  const t=(en:string,sv:string)=>language==='sv'?sv:en;
- let inventory:string[]=[],consumed=0,failEnrollment=true;
+ let inventory:string[]=[],consumed=0,failEnrollment=true,installationName='Cab-browser';
  const code='A'.repeat(43);
  await context.route('**/__enroll-script',route=>route.fulfill({contentType:'text/javascript',body:script}));
  await context.route('**/__enroll?*',route=>route.fulfill({contentType:'text/html',body:`<html lang="${language}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><style>${css}</style></head><body><div id="root"></div><script src="/__enroll-script"></script></body></html>`}));
@@ -22,7 +22,7 @@ for(const language of ['en','sv'])test(`${language} intended installation confir
  }
  expect(request.headers()['x-installation-enrollment']).toBe('1');
  const body=request.postDataJSON();expect(body.token).toBe(code);
- if(request.url().endsWith('/preview'))return route.fulfill({json:{unitName:'Medic 7',callSign:'M7'}});
+ if(request.url().endsWith('/preview'))return route.fulfill({json:{unitName:'Medic 7',callSign:'M7',installationName}});
  if(failEnrollment){failEnrollment=false;return route.fulfill({status:503,json:{message:'Try again'}});}
  consumed++;expect(body.confirmInstallation).toBe(true);
  inventory.push(body.name);
@@ -36,7 +36,8 @@ for(const language of ['en','sv'])test(`${language} intended installation confir
  await expect(page.getByText(/A registration identifies|En registrering identifierar/)).toHaveCount(0);
  const button=page.getByRole('button',{name:t('Pair this installation','Koppla denna installation'),exact:true});
  await expect(button).toBeDisabled();
- await page.getByLabel(t('Installation name','Installationsnamn'),{exact:true}).fill('Cab-browser');
+ await expect(page.getByLabel(t('Installation name','Installationsnamn'),{exact:true})).toHaveValue('Cab-browser');
+ await expect(page.getByLabel(t('Installation name','Installationsnamn'),{exact:true})).not.toBeEditable();
  await expect(button).toBeDisabled();
  await page.getByLabel(t('I confirm this is the intended browser or PWA installation.','Jag bekräftar att detta är avsedd webbläsare eller PWA-installation.')).check();
  await page.setViewportSize({width:360,height:800});await button.scrollIntoViewIfNeeded();await expect(button).toBeInViewport();
@@ -52,7 +53,8 @@ for(const language of ['en','sv'])test(`${language} intended installation confir
  await expect(page.getByRole('textbox')).toHaveCount(0);
  await expect(button).toHaveCount(0);
  await page.goto(`/__enroll?language=${language}#code=${code}`);
- await page.getByLabel(t('Installation name','Installationsnamn'),{exact:true}).fill('Cab-browser');
+ await expect(page.getByLabel(t('Installation name','Installationsnamn'),{exact:true})).toHaveValue('Cab-browser');
+ await expect(page.getByLabel(t('Installation name','Installationsnamn'),{exact:true})).not.toBeEditable();
  await page.getByRole('checkbox').check();
  await expect(button).toBeEnabled();
  await button.focus();await button.press('Enter');await expect(page.getByRole('status')).toContainText('Cab-browser');expect(consumed).toBe(1);
@@ -62,90 +64,119 @@ for(const language of ['en','sv'])test(`${language} intended installation confir
  await page.evaluate(()=>localStorage.removeItem('open-triage.clinician-session.v1'));
  await page.goto(`/__enroll?language=${language}`);await expect(page.getByRole('status')).toContainText('Cab-browser');
  // Scanner opening another storage context cannot silently consume any code.
- await context.clearCookies();
+ await context.clearCookies();installationName='New-browser';
  await page.goto(`/__enroll?language=${language}#code=${code}`);
  await expect(page.getByText('Medic 7 — M7')).toBeVisible();expect(consumed).toBe(1);
  await expect(button).toBeDisabled();
- await page.getByLabel(t('Installation name','Installationsnamn'),{exact:true}).fill('New-browser');
+ await expect(page.getByLabel(t('Installation name','Installationsnamn'),{exact:true})).toHaveValue('New-browser');
  await page.getByRole('checkbox').check();await button.click();
  await expect(page.getByRole('status')).toContainText('New-browser');expect(inventory).toEqual(['Cab-browser','New-browser']);
 });
 
 for(const language of ['en','sv'])test(`${language} administrator inventory and actual QR issuance on mobile`,async({page},testInfo)=>{
  const t=(en:string,sv:string)=>language==='sv'?sv:en;
+ const ca=await readFile(path.resolve(__dirname,'../../../android/app/src/test/resources/tls/ca.pem'),'utf8');
+ let serverCa='',issuances=0;
  await page.route('**/__enroll-script',route=>route.fulfill({contentType:'text/javascript',body:script}));
  await page.route('**/__enroll?*',route=>route.fulfill({contentType:'text/html',body:`<html><head><meta name="viewport" content="width=device-width,initial-scale=1"><style>${css}</style></head><body style="--green:#593c91;--green-dark:#30205a"><div id="root"></div><script src="/__enroll-script"></script></body></html>`}));
  await page.route('**/api/admin/units/unit/installations',route=>route.fulfill({json:{items:[{id:'1',name:'Cab browser'},{id:'2',name:'Rear PWA'}],nextCursor:null}}));
  await page.route('**/api/admin/units/unit/enrollment',route=>{
+ issuances++;
  expect(route.request().headers()['x-csrf-token']).toBe('csrf');
- return route.fulfill({json:{token:'A'.repeat(43),origin:'https://agency.example.test',expiresAt:new Date(Date.now()+240000).toISOString()}});
+ const {expiresInMinutes,name}=route.request().postDataJSON();expect([30,90]).toContain(expiresInMinutes);expect(name).toBe('Admin cab tablet');
+ return route.fulfill({json:{caPem:serverCa,token:'A'.repeat(43),origin:'https://agency.example.test',expiresAt:new Date(Date.now()+route.request().postDataJSON().expiresInMinutes*60000).toISOString()}});
  });
  await page.goto(`/__enroll?admin=1&language=${language}`);
  const trigger=page.getByRole('button',{name:t('Devices','Enheter'),exact:true});
  await trigger.focus();await trigger.press('Enter');
  const dialog=page.getByRole('dialog');await expect(dialog.getByText('Rear PWA',{exact:true})).toBeVisible();
- const issue=dialog.getByRole('button',{name:t('Issue five-minute QR code','Utfärda femminuters QR-kod'),exact:true});
+ await page.setViewportSize({width:1280,height:900});
+ await page.screenshot({path:testInfo.outputPath(`pairing-${language}-desktop.png`)});
+ const expiry=dialog.getByLabel(t('Expires in (minutes)','Giltighetstid (minuter)'));
+ await expect(expiry).toHaveValue('30');
+ const generate=dialog.getByRole('button',{name:t('Download pairing file','Ladda ned kopplingsfil'),exact:true});
+ await expect(dialog.getByRole('button',{name:t('Pair browser','Koppla webbläsare'),exact:true})).toBeVisible();
+ await expect(dialog.getByRole('button',{name:t('Pair Android','Koppla Android'),exact:true})).toBeVisible();
+ const pairAndroid=dialog.getByRole('button',{name:t('Pair Android','Koppla Android'),exact:true});
+ await expect(generate).toHaveCount(0);
+ for(const invalid of ['', '0', '1441', '1.5']){await expiry.fill(invalid);await expect(pairAndroid).toBeDisabled();}
+ await expiry.fill('30');
+ await expect(pairAndroid).toBeDisabled();
+ await dialog.getByLabel(t('Installation name','Installationsnamn'),{exact:true}).fill('Admin cab tablet');
+ await dialog.getByRole('button',{name:t('Pair Android','Koppla Android'),exact:true}).click();
+ await expect(dialog.getByRole('img',{name:t('Android vehicle-pairing QR code','QR-kod för Android-fordonskoppling'),exact:true})).toBeVisible();
+ const issuedAndroidQr=await dialog.getByRole('img').getAttribute('src');
+ const beforeDownload=issuances;
+ const firstDownload=page.waitForEvent('download');await generate.click();
+ expect(issuances).toBe(beforeDownload);
+ await expect(dialog.getByRole('img')).toHaveAttribute('src',issuedAndroidQr!);
+ const firstStream=await (await firstDownload).createReadStream();const firstChunks:Buffer[]=[];
+ for await(const chunk of firstStream!)firstChunks.push(Buffer.from(chunk));
+ const firstArtifact=JSON.parse(Buffer.concat(firstChunks).toString('utf8'));
+ expect(Date.parse(firstArtifact.expiresAt)-Date.now()).toBeGreaterThan(29*60000);
+ expect(Date.parse(firstArtifact.expiresAt)-Date.now()).toBeLessThanOrEqual(30*60000);
+ expect(firstArtifact.caPem).toBe('');
+ await expect(dialog.locator('textarea')).toHaveCount(0);
+ serverCa=ca;
+ await page.setViewportSize({width:360,height:800});
+ await expiry.scrollIntoViewIfNeeded();
+ await page.screenshot({path:testInfo.outputPath(`pairing-${language}-mobile.png`)});
+ await dialog.getByLabel(t('Installation name','Installationsnamn'),{exact:true}).fill('Changed name');
+ await expect(dialog.getByRole('img')).toHaveCount(0);await expect(generate).toHaveCount(0);
+ await dialog.getByLabel(t('Installation name','Installationsnamn'),{exact:true}).fill('Admin cab tablet');
+ await pairAndroid.click();await expect(dialog.getByRole('img')).toBeVisible();
+ await expiry.fill('90');
+ await expect(dialog.getByRole('img')).toHaveCount(0);await expect(generate).toHaveCount(0);
+ const issue=dialog.getByRole('button',{name:t('Pair browser','Koppla webbläsare'),exact:true});
  await page.setViewportSize({width:360,height:800});
  await issue.focus();await issue.press('Enter');
  await expect(dialog.getByRole('img')).toBeVisible();
  expect(await dialog.getByRole('img').getAttribute('src')).toMatch(/^data:image\/png;base64,/);
  await expect(dialog.getByLabel(t('Enrollment link — open in the intended installation','Kopplingslänk — öppna i avsedd installation'))).toHaveValue('https://agency.example.test/enroll/#code='+'A'.repeat(43));
- const ca=await readFile(path.resolve(__dirname,'../../../android/app/src/test/resources/tls/ca.pem'),'utf8');
- const caField=dialog.getByLabel(t('Public CA certificates (PEM, optional)','Publika CA-certifikat (PEM, valfritt)'));
- await caField.fill("-----BEGIN PRIVATE KEY-----");
- await dialog.getByRole('button',{name:t('Download Android pairing file','Hämta Android-kopplingsfil'),exact:true}).click();
- await expect(dialog.getByRole('alert')).toBeVisible();
- await caField.fill(ca);
+ await expect(generate).toHaveCount(0);
+ await pairAndroid.click();
+ await expect(dialog.getByRole('img',{name:t('Android vehicle-pairing QR code','QR-kod för Android-fordonskoppling'),exact:true})).toBeVisible();
  const downloaded=page.waitForEvent('download');
- await dialog.getByRole('button',{name:t('Download Android pairing file','Hämta Android-kopplingsfil'),exact:true}).click();
+ await dialog.getByRole('button',{name:t('Download pairing file','Ladda ned kopplingsfil'),exact:true}).click();
  const download=await downloaded,stream=await download.createReadStream();
  const chunks:Buffer[]=[];for await(const chunk of stream!)chunks.push(Buffer.from(chunk));
  const artifact=JSON.parse(Buffer.concat(chunks).toString('utf8'));
+ expect(Date.parse(artifact.expiresAt)-Date.now()).toBeGreaterThan(89*60000);
  expect(artifact).toMatchObject({version:1,origin:'https://agency.example.test',token:'A'.repeat(43),caPem:ca});
  expect(Object.keys(artifact).sort()).toEqual(['caPem','expiresAt','origin','token','version']);
  expect(download.suggestedFilename()).toBe('open-triage-pairing.json');
- const showAndroidQr=dialog.getByRole('button',{name:t('Show Android pairing QR','Visa QR-kod för Android-koppling'),exact:true});
- const showBrowserQr=dialog.getByRole('button',{name:t('Show browser/PWA QR','Visa QR-kod för webbläsare/PWA'),exact:true});
+ const showAndroidQr=dialog.getByRole('button',{name:t('Pair Android','Koppla Android'),exact:true});
+ const showBrowserQr=dialog.getByRole('button',{name:t('Pair browser','Koppla webbläsare'),exact:true});
  const androidQr=dialog.getByRole('img',{name:t('Android vehicle-pairing QR code','QR-kod för Android-fordonskoppling'),exact:true});
  const browserQr=dialog.getByRole('img',{name:t('Single-use enrollment QR code','QR-kod för engångskoppling'),exact:true});
+ const enrollmentLink=dialog.getByLabel(t('Enrollment link — open in the intended installation','Kopplingslänk — öppna i avsedd installation'));
  await showAndroidQr.click();await expect(androidQr).toBeVisible();
+ await expect(enrollmentLink).toHaveCount(0);
  await expect(dialog.getByRole('img')).toHaveCount(1);await expect(browserQr).toHaveCount(0);
  await expect(showAndroidQr).toHaveAttribute('aria-pressed','true');
  expect(await androidQr.getAttribute('src')).toMatch(/^data:image\/png;base64,/);
  await showBrowserQr.focus();await showBrowserQr.press('Enter');
  await expect(showBrowserQr).toBeFocused();await expect(showBrowserQr).toHaveAttribute('aria-pressed','true');
  await expect(browserQr).toBeVisible();await expect(androidQr).toHaveCount(0);await expect(dialog.getByRole('img')).toHaveCount(1);
+ await expect(enrollmentLink).toHaveValue('https://agency.example.test/enroll/#code='+'A'.repeat(43));
  await showAndroidQr.click();await expect(androidQr).toBeVisible();await expect(dialog.getByRole('img')).toHaveCount(1);
- // A CA change removes stale QR trust material. Larger trust chains retain file import.
- await caField.fill(ca.repeat(2));await expect(androidQr).toHaveCount(0);
+ await expect(enrollmentLink).toHaveCount(0);
+ // A newly issued server trust snapshot replaces the old QR. Large bundles retain file import.
+ serverCa=ca.repeat(2);await issue.click();await expect(androidQr).toHaveCount(0);
  await showAndroidQr.click();
  await expect(dialog.getByText(t('Pairing data is too large for QR. Use the pairing file.','Kopplingsdata är för stora för QR. Använd kopplingsfilen.'),{exact:true})).toBeVisible();
  await expect(androidQr).toHaveCount(0);
  await expect(dialog.getByRole('img')).toHaveCount(0);
- await expect(dialog.getByLabel(t('Enrollment link — open in the intended installation','Kopplingslänk — öppna i avsedd installation'))).toHaveValue('https://agency.example.test/enroll/#code='+'A'.repeat(43));
+ await expect(enrollmentLink).toHaveCount(0);
  await showBrowserQr.click();await expect(browserQr).toBeVisible();await expect(dialog.getByRole('img')).toHaveCount(1);
+ await expect(generate).toHaveCount(0);
+ await showAndroidQr.click();
+ await expect(dialog.getByRole('alert')).toBeVisible();
  const largeDownloaded=page.waitForEvent('download');
- await dialog.getByRole('button',{name:t('Download Android pairing file','Hämta Android-kopplingsfil'),exact:true}).click();
+ await dialog.getByRole('button',{name:t('Download pairing file','Ladda ned kopplingsfil'),exact:true}).click();
  expect((await largeDownloaded).suggestedFilename()).toBe('open-triage-pairing.json');
- await caField.fill(ca);
- // A queued image render must not restore the old trust snapshot after an edit.
- await showAndroidQr.evaluate(button=>{
-  (button as HTMLButtonElement).click();
-  const field=button.closest('dialog')!.querySelector('textarea')!;
-  Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype,'value')!.set!.call(field,field.value+' ');
-  field.dispatchEvent(new Event('input',{bubbles:true}));
- });
- await expect(showAndroidQr).toBeEnabled();await expect(caField).toHaveValue(ca+' ');await expect(androidQr).toHaveCount(0);
- await caField.fill(ca);
- // Selecting the browser target also invalidates a pending Android render.
- await showAndroidQr.evaluate(button=>{
-  (button as HTMLButtonElement).click();
-  const other=Array.from(button.closest('dialog')!.querySelectorAll<HTMLButtonElement>('button[aria-pressed]')).find(candidate=>candidate!==button)!;
-  other.click();
- });
- await expect(showAndroidQr).toBeEnabled();await expect(showBrowserQr).toHaveAttribute('aria-pressed','true');
- await expect(browserQr).toBeVisible();await expect(androidQr).toHaveCount(0);await expect(dialog.getByRole('img')).toHaveCount(1);
- await caField.fill(ca);await showAndroidQr.click();await expect(androidQr).toBeVisible();
+ serverCa=ca;await issue.click();
+ await showAndroidQr.click();await expect(androidQr).toBeVisible();
  await expect(dialog.getByRole('img')).toHaveCount(1);
  await dialog.getByRole('button',{name:t('Close','Stäng'),exact:true}).scrollIntoViewIfNeeded();
  await expect(dialog.getByRole('button',{name:t('Close','Stäng'),exact:true})).toBeInViewport();
@@ -159,16 +190,18 @@ test('closed Admin pairing dialog cannot restore a delayed browser or Android QR
  await page.route('**/__enroll-script',route=>route.fulfill({contentType:'text/javascript',body:script}));
  await page.route('**/__enroll?*',route=>route.fulfill({contentType:'text/html',body:`<html><body><div id="root"></div><script src="/__enroll-script"></script></body></html>`}));
  await page.route('**/api/admin/units/unit/installations',route=>route.fulfill({json:{items:[],nextCursor:null}}));
- let issued=false;await page.route('**/api/admin/units/unit/enrollment',async route=>{issued=true;await pending;await route.fulfill({json:{token:'A'.repeat(43),origin:'https://agency.example.test',expiresAt:new Date(Date.now()+240000).toISOString()}});});
+ let issued=false;await page.route('**/api/admin/units/unit/enrollment',async route=>{issued=true;await pending;await route.fulfill({json:{caPem:'',token:'A'.repeat(43),origin:'https://agency.example.test',expiresAt:new Date(Date.now()+240000).toISOString()}});});
  await page.goto('/__enroll?admin=1&language=en');await page.getByRole('button',{name:'Devices',exact:true}).click();
- const dialog=page.getByRole('dialog'),issuedResponse=page.waitForResponse('**/api/admin/units/unit/enrollment');await dialog.getByRole('button',{name:'Issue five-minute QR code',exact:true}).click();
+ const dialog=page.getByRole('dialog');await dialog.getByLabel('Installation name',{exact:true}).fill('Delayed tablet');const issuedResponse=page.waitForResponse('**/api/admin/units/unit/enrollment');await dialog.getByRole('button',{name:'Pair browser',exact:true}).click();
  await expect.poll(()=>issued).toBe(true);await dialog.getByRole('button',{name:'Close',exact:true}).click();release();
  await (await issuedResponse).finished();
  await page.evaluate(()=>new Promise<void>(resolve=>requestAnimationFrame(()=>requestAnimationFrame(()=>resolve()))));
  await page.getByRole('button',{name:'Devices',exact:true}).click();
- await expect(dialog.getByRole('button',{name:'Issue five-minute QR code',exact:true})).toBeEnabled();
+ await expect(dialog.getByRole('button',{name:'Pair browser',exact:true})).toBeDisabled();
+ await expect(dialog.getByLabel('Installation name',{exact:true})).toHaveValue('');
  await expect(dialog.getByRole('img')).toHaveCount(0);
- await expect(dialog.getByRole('button',{name:'Download Android pairing file',exact:true})).toHaveCount(0);
+ await expect(dialog.getByRole('button',{name:'Download pairing file',exact:true})).toHaveCount(0);
+ await expect(dialog.locator('input[readonly]')).toHaveCount(0);
 });
 
 test('concurrent tabs bootstrap one HttpOnly installation authority; a separate browser context stays independent',async({context,browser})=>{
@@ -206,7 +239,7 @@ for(const language of ['en','sv'])test(`${language} confirmed reassignment settl
  await context.route('**/__enroll?*',route=>route.fulfill({contentType:'text/html',body:`<html><head><meta name="viewport" content="width=device-width,initial-scale=1"><style>${css}</style></head><body><div id="root"></div><script src="/__enroll-script"></script></body></html>`}));
  await context.route('**/api/installations/**',async route=>{
  if(route.request().url().endsWith('/current'))return route.fulfill({json:{enrolled:true,installation:{id:'old',name:'Cab browser'}}});
- if(route.request().url().endsWith('/preview'))return route.fulfill({json:{unitName:'Medic 8',callSign:'M8'}});
+ if(route.request().url().endsWith('/preview'))return route.fulfill({json:{unitName:'Medic 8',callSign:'M8',installationName:'Cab browser'}});
  expect(route.request().postDataJSON()).toEqual({token:'A'.repeat(43),name:'Cab browser',confirmInstallation:true,reassign:true});
  replaced++;
  return route.fulfill({json:{id:'new',name:'Cab browser'}});

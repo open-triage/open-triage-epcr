@@ -1,6 +1,8 @@
 "use client";
+import { DEFAULT_PAIRING_EXPIRY_MINUTES, MAX_PAIRING_EXPIRY_MINUTES } from "@open-triage/contracts";
 import { createAndroidPairing } from "../app/android-pairing";
-import { parseAndroidPairingQr, PairingQrError } from "../app/android-scanner";
+import { compactAndroidPairingQr } from "../app/android-pairing-qr";
+import { PairingQrError } from "../app/android-scanner";
 import { resolveMessage } from "../app/localization";
 import React,{useRef,useState} from "react";
 import QRCode from "qrcode";
@@ -8,55 +10,77 @@ import Image from "next/image";
 import { issueUnitEnrollment,loadUnitInstallations,revokeUnitInstallation } from "../app/admin-context";
 import { listAccessRemoved } from "../app/list-refresh";
 import type { InstallationSummary } from "../app/installation-enrollment";
+import { useReturnFocus } from "./use-return-focus";
 export function UnitInstallations({unitId,unitName,csrfToken,language}:{unitId:string;unitName:string;csrfToken:string;language:string}) {
- const t=(en:string,sv:string)=>language==="sv"?sv:en;
  const dialog=useRef<HTMLDialogElement>(null),trigger=useRef<HTMLButtonElement>(null);
  const [items,setItems]=useState<InstallationSummary[]>([]),[cursor,setCursor]=useState<string|null>(null);
  const [qr,setQr]=useState<string|null>(null),[link,setLink]=useState<string|null>(null),[expires,setExpires]=useState<string|null>(null);
- const [caPem,setCaPem]=useState("");
+ const [expiryMinutes,setExpiryMinutes]=useState(String(DEFAULT_PAIRING_EXPIRY_MINUTES));
+ const [name,setName]=useState("");
+ const [pairingFile,setPairingFile]=useState<string|null>(null);
+ const validName=!!name.trim()&&name.length<=100&&!/[\u0000-\u001f\u007f]/u.test(name);
+ const minutes=Number(expiryMinutes);
+ const validExpiry=Number.isInteger(minutes)&&minutes>=1&&minutes<=MAX_PAIRING_EXPIRY_MINUTES;
  const [androidQr,setAndroidQr]=useState<string|null>(null),[qrError,setQrError]=useState<string|null>(null);
  const [qrTarget,setQrTarget]=useState<"browser"|"android">("browser");
- const [code,setCode]=useState<{token:string;origin:string;expiresAt:string}|null>(null);
  const [confirming,setConfirming]=useState<InstallationSummary|null>(null);
  const [busy,setBusy]=useState(false),[error,setError]=useState(false);
  const qrGeneration=useRef(0);
- function clearAndroidQr(){qrGeneration.current++;setAndroidQr(null);setQrError(null);}
- async function showAndroidQr(){
- if(!code)return;const generation=++qrGeneration.current;setQrTarget("android");setBusy(true);setAndroidQr(null);setQrError(null);
- try{const encoded=createAndroidPairing(code,caPem);parseAndroidPairingQr(encoded);const image=await QRCode.toDataURL(encoded,{width:512,margin:4,errorCorrectionLevel:"M"});if(generation===qrGeneration.current)setAndroidQr(image);}
- catch(reason){if(generation===qrGeneration.current)setQrError(reason instanceof PairingQrError && reason.code==="QR_TOO_LARGE"?"android.qrTooLarge":"android.pairingFailed");}
- finally{setBusy(false);}
+ const issueFocus=useRef<{element:HTMLButtonElement;generation:number}|null>(null);
+ useReturnFocus(busy,busy,()=>{
+ const pending=issueFocus.current;issueFocus.current=null;
+ return pending?.generation===qrGeneration.current&&dialog.current?.open&&
+ (document.activeElement===document.body||document.activeElement===dialog.current)?pending.element:null;
+ });
+ function clearAndroidQr(){qrGeneration.current++;setAndroidQr(null);setQrError(null);setPairingFile(null);}
+ function clearIssuedPairing(){clearAndroidQr();setQr(null);setLink(null);setExpires(null);setError(false);}
+ function downloadPairing(encoded:string){
+ const url=URL.createObjectURL(new Blob([encoded],{type:"application/json"}));
+ const anchor=document.createElement("a");anchor.href=url;anchor.download="open-triage-pairing.json";anchor.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
  }
- async function load(next?:string){setBusy(true);try{const page=await loadUnitInstallations(unitId,next);setItems(page.items);setCursor(page.nextCursor);setError(false);}catch(reason){if(listAccessRemoved(reason)){setItems([]);setCursor(null);setQr(null);setLink(null);setCode(null);setCaPem("");clearAndroidQr();setQrTarget("browser");setExpires(null);}setError(true);}finally{setBusy(false);}}
- function close(){dialog.current?.close();setLink(null);setQr(null);setExpires(null);setCode(null);setCaPem("");clearAndroidQr();setQrTarget("browser");setConfirming(null);trigger.current?.focus();}
+ async function issue(target:"browser"|"android"){
+ if(!validExpiry||!validName)return;
+ const focused=document.activeElement instanceof HTMLButtonElement?document.activeElement:null;
+ const generation=++qrGeneration.current;setBusy(true);setQrError(null);
+ issueFocus.current=focused?{element:focused,generation}:null;
+ try{
+ const issued=await issueUnitEnrollment(csrfToken,unitId,minutes,name.trim());
+ const url=`${issued.origin}${process.env.NEXT_PUBLIC_BASE_PATH??""}/enroll/#code=${encodeURIComponent(issued.token)}`;
+ if(generation!==qrGeneration.current)return;
+ setLink(url);setExpires(issued.expiresAt);setAndroidQr(null);setQr(null);setQrError(null);setQrTarget(target);setPairingFile(null);setError(false);
+ const file=target==="android"?createAndroidPairing(issued,issued.caPem):null;
+ setPairingFile(file);
+ const encoded=file?await compactAndroidPairingQr(file):url;
+ const image=await QRCode.toDataURL(encoded,target==="android"?{width:512,margin:4,errorCorrectionLevel:"M"}:{width:240,margin:2});
+ if(generation!==qrGeneration.current)return;
+ if(target==="android")setAndroidQr(image);else setQr(image);
+ }catch(reason){if(generation===qrGeneration.current){
+ if(target==="android")setQrError(reason instanceof PairingQrError && reason.code==="QR_TOO_LARGE"?"android.qrTooLarge":"android.pairingFailed");
+ else setError(true);
+ }}finally{if(generation===qrGeneration.current)setBusy(false);}
+ }
+ async function load(next?:string){setBusy(true);try{const page=await loadUnitInstallations(unitId,next);setItems(page.items);setCursor(page.nextCursor);setError(false);}catch(reason){if(listAccessRemoved(reason)){setItems([]);setCursor(null);setQr(null);setLink(null);clearAndroidQr();setQrTarget("browser");setExpires(null);}setError(true);}finally{setBusy(false);}}
+ function close(){dialog.current?.close();setBusy(false);issueFocus.current=null;setLink(null);setQr(null);setExpires(null);clearAndroidQr();setQrTarget("browser");setConfirming(null);setName("");setExpiryMinutes(String(DEFAULT_PAIRING_EXPIRY_MINUTES));trigger.current?.focus();}
  return <><button ref={trigger} type="button" onClick={()=>{dialog.current?.showModal();void load();}}>{resolveMessage(language,"admin.unitDevices")}</button>
  <dialog ref={dialog} className="unit-dialog" aria-label={`${resolveMessage(language,"admin.unitDevices")} ${unitName}`} onCancel={e=>{e.preventDefault();close();}}>
  <h3>{unitName}: {resolveMessage(language,"admin.unitDevices")}</h3>
- <p>{t("Clearing site data or changing browser requires enrollment again. Old entries remain in the inventory. Pairing grants no clinician permissions.","Rensad webbplatsdata eller byte av webbläsare kräver ny koppling. Gamla poster behålls. Koppling ger inga kliniska behörigheter.")}</p>
- {error&&<p role="alert" className="admin-error">{t("Could not complete the action. Loaded inventory is retained.","Kunde inte slutföra åtgärden. Hämtade inventarier behålls.")}</p>}
- <div className="admin-table-scroll unit-installation-inventory"><table className="admin-table"><thead><tr><th>{t("Name","Namn")}</th><th>{t("Status","Status")}</th><th>{t("Actions","Åtgärder")}</th></tr></thead><tbody>{items.map(i=><tr key={i.id}><td>{i.name}</td><td>{i.revokedAt?t("Revoked","Återkallad"):t("Enrolled","Kopplad")}</td><td><button className="button-danger" disabled={busy||!!i.revokedAt} onClick={()=>setConfirming(i)}>{t("Revoke","Återkalla")} {i.name}</button></td></tr>)}</tbody></table></div>
- <p>{resolveMessage(language,"admin.unitRevocationEffect")}</p>
- {confirming&&<section aria-label={t("Confirm installation revocation","Bekräfta återkallelse av installation")}><p>{t("Revoke","Återkalla")} {confirming.name}?</p>
- <button className="button-danger" disabled={busy} onClick={async()=>{setBusy(true);try{await revokeUnitInstallation(csrfToken,unitId,confirming.id);setItems(rows=>rows.map(row=>row.id===confirming.id?{...row,revokedAt:new Date().toISOString()}:row));setConfirming(null);setError(false);}catch{setError(true);}finally{setBusy(false);}}}>{t("Confirm revocation","Bekräfta återkallelse")}</button>
- <button disabled={busy} onClick={()=>setConfirming(null)}>{t("Cancel","Avbryt")}</button></section>}
- <div className="admin-role-editor-actions"><button disabled={busy} onClick={()=>void load()}>{t("Refresh","Uppdatera")}</button><button disabled={busy||!cursor} onClick={()=>cursor&&void load(cursor)}>{t("Next page","Nästa sida")}</button></div>
- <button className="button-primary" disabled={busy} onClick={async()=>{const generation=++qrGeneration.current;setBusy(true);try{
- const code=await issueUnitEnrollment(csrfToken,unitId);
- const url=`${code.origin}${process.env.NEXT_PUBLIC_BASE_PATH??""}/enroll/#code=${encodeURIComponent(code.token)}`;
- const image=await QRCode.toDataURL(url,{width:240,margin:2});
- if(generation!==qrGeneration.current)return;
- setCode(code);setLink(url);setExpires(code.expiresAt);setAndroidQr(null);setQrError(null);setQrTarget("browser");setQr(image);setError(false);
- }catch{if(generation===qrGeneration.current)setError(true);}finally{setBusy(false);}}}>{t("Issue five-minute QR code","Utfärda femminuters QR-kod")}</button>
- {code&&<><label>{resolveMessage(language,"android.publicCa")}<textarea maxLength={48000} value={caPem} onChange={e=>{setCaPem(e.target.value);clearAndroidQr();}} /></label>
- <button type="button" disabled={busy} onClick={()=>{try{const blob=new Blob([createAndroidPairing(code,caPem)],{type:"application/json"});const url=URL.createObjectURL(blob);const anchor=document.createElement("a");anchor.href=url;anchor.download="open-triage-pairing.json";anchor.click();setTimeout(()=>URL.revokeObjectURL(url),1000);setError(false);}catch{setError(true);}}}>{resolveMessage(language,"android.downloadPairing")}</button></>}
- {code&&<><div className="admin-role-editor-actions">
- <button type="button" aria-pressed={qrTarget==="browser"} className={qrTarget==="browser"?"button-primary":undefined} onClick={()=>{clearAndroidQr();setQrTarget("browser");}}>{resolveMessage(language,"enrollment.showBrowserQr")}</button>
- <button type="button" aria-pressed={qrTarget==="android"} className={qrTarget==="android"?"button-primary":undefined} disabled={busy} onClick={()=>void showAndroidQr()}>{resolveMessage(language,"android.showPairingQr")}</button>
+ {error&&<p role="alert" className="admin-error">{resolveMessage(language,"enrollment.actionFailed")}</p>}
+ <div className="admin-table-scroll unit-installation-inventory"><table className="admin-table"><thead><tr><th>{resolveMessage(language,"enrollment.inventoryName")}</th><th>{resolveMessage(language,"enrollment.status")}</th><th>{resolveMessage(language,"enrollment.actions")}</th></tr></thead><tbody>{items.map(i=><tr key={i.id}><td>{i.name}</td><td>{i.revokedAt?resolveMessage(language,"enrollment.revoked"):resolveMessage(language,"enrollment.enrolled")}</td><td><button className="button-danger" disabled={busy||!!i.revokedAt} onClick={()=>setConfirming(i)}>{resolveMessage(language,"enrollment.revoke")} {i.name}</button></td></tr>)}</tbody></table></div>
+ {confirming&&<section aria-label={resolveMessage(language,"enrollment.confirmRevocationTitle")}><p>{resolveMessage(language,"enrollment.revoke")} {confirming.name}?</p>
+ <button className="button-danger" disabled={busy} onClick={async()=>{setBusy(true);try{await revokeUnitInstallation(csrfToken,unitId,confirming.id);setItems(rows=>rows.map(row=>row.id===confirming.id?{...row,revokedAt:new Date().toISOString()}:row));setConfirming(null);setError(false);}catch{setError(true);}finally{setBusy(false);}}}>{resolveMessage(language,"enrollment.confirmRevocation")}</button>
+ <button disabled={busy} onClick={()=>setConfirming(null)}>{resolveMessage(language,"enrollment.cancel")}</button></section>}
+ <div className="admin-role-editor-actions"><button disabled={busy} onClick={()=>void load()}>{resolveMessage(language,"enrollment.refresh")}</button><button disabled={busy||!cursor} onClick={()=>cursor&&void load(cursor)}>{resolveMessage(language,"enrollment.nextPage")}</button></div>
+ <label>{resolveMessage(language,"enrollment.name")}<input required maxLength={100} value={name} disabled={busy} onChange={event=>{setName(event.target.value);clearIssuedPairing();}}/></label>
+ <label>{resolveMessage(language,"enrollment.expiryMinutes")}<input type="number" min={1} max={MAX_PAIRING_EXPIRY_MINUTES} step={1} required value={expiryMinutes} disabled={busy} onChange={e=>{setExpiryMinutes(e.target.value);clearIssuedPairing();}}/></label>
+ <div className="admin-role-editor-actions">
+ <button type="button" disabled={busy||!validExpiry||!validName} aria-pressed={qrTarget==="android"&&!!androidQr} className={qrTarget==="android"&&androidQr?"button-primary":undefined} onClick={()=>void issue("android")}>{resolveMessage(language,"android.showPairingQr")}</button>
+ <button type="button" disabled={busy||!validExpiry||!validName} aria-pressed={qrTarget==="browser"&&!!qr} className={qrTarget==="browser"&&qr?"button-primary":undefined} onClick={()=>void issue("browser")}>{resolveMessage(language,"enrollment.showBrowserQr")}</button>
  </div>
  {qrError&&<p role="alert" className="admin-error">{resolveMessage(language,qrError)}</p>}
- {qrTarget==="android"&&androidQr&&<figure className="unit-pairing-qr"><figcaption>{resolveMessage(language,"android.pairingQrAlt")}</figcaption><Image unoptimized src={androidQr} alt={resolveMessage(language,"android.pairingQrAlt")} width={512} height={512}/></figure>}</>}
- {qr&&link&&<>{qrTarget==="browser"&&<figure className="unit-pairing-qr"><figcaption>{resolveMessage(language,"enrollment.browserQrTitle")}</figcaption><Image unoptimized src={qr} alt={t("Single-use enrollment QR code","QR-kod för engångskoppling")} width={240} height={240}/></figure>}<p>{t("Expires","Giltig till")} {expires}</p>
- <label>{t("Enrollment link — open in the intended installation","Kopplingslänk — öppna i avsedd installation")}<input readOnly value={link} onFocus={e=>e.target.select()}/></label></>}
- <button type="button" onClick={close}>{t("Close","Stäng")}</button>
+ {qrTarget==="android"&&androidQr&&<figure className="unit-pairing-qr"><figcaption>{resolveMessage(language,"android.pairingQrAlt")}</figcaption><Image unoptimized src={androidQr} alt={resolveMessage(language,"android.pairingQrAlt")} width={512} height={512}/></figure>}
+ {link&&<>{qrTarget==="browser"&&qr&&<figure className="unit-pairing-qr"><figcaption>{resolveMessage(language,"enrollment.browserQrTitle")}</figcaption><Image unoptimized src={qr} alt={resolveMessage(language,"enrollment.qrAlt")} width={240} height={240}/></figure>}<p>{resolveMessage(language,"enrollment.expires")} {expires}</p>
+ {qrTarget==="browser"&&<label>{resolveMessage(language,"enrollment.link")}<input readOnly value={link} onFocus={e=>e.target.select()}/></label>}
+ {qrTarget==="android"&&pairingFile&&<p><button type="button" disabled={busy} onClick={()=>downloadPairing(pairingFile)}>{resolveMessage(language,"enrollment.generateFile")}</button></p>}</>}
+ <button type="button" onClick={close}>{resolveMessage(language,"enrollment.close")}</button>
  </dialog></>;
 }

@@ -76,6 +76,14 @@ for(const language of ['en','sv']) {
       const inventory=page.getByRole('dialog',{name:`${t('Devices','Enheter')} Medic 7`,exact:true});
       await expect(inventory).toBeVisible();
       await expect(page.getByRole('dialog',{name:t('Edit unit','Redigera enhet'),exact:true})).toHaveCount(0);
+      // Noninteractive modal content must not activate the unit row behind it.
+      for (const target of [inventory.getByRole('heading'), inventory.getByRole('columnheader').first(), inventory.getByRole('columnheader').nth(1)]) {
+        await target.click();
+        await expect(inventory).toBeVisible();
+        await expect(page.getByRole('dialog',{name:t('Edit unit','Redigera enhet'),exact:true})).toHaveCount(0);
+      }
+      await inventory.click({position:{x:5,y:5}});
+      await expect(page.getByRole('dialog',{name:t('Edit unit','Redigera enhet'),exact:true})).toHaveCount(0);
       await inventory.getByRole('button',{name:t('Close','Stäng'),exact:true}).click();
       await expect(devices).toBeFocused();
       await edit.getByRole('cell',{name:'Medic 7',exact:true}).click();

@@ -14,8 +14,8 @@ export const agencySummary = (row: AgencyRow): AgencySummary => ({ id: row.id, n
 /** Match the development origins accepted by allowsOrigin and used by callbacks. */
 export function registeredAgencyOrigin(hostname:string,environment:Record<string,string|undefined>=process.env):string {
   if(environment.NODE_ENV!=="production"&&/^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.localhost$/.test(hostname)){
-    const port=new URL(environment.WEB_ORIGIN??"http://localhost:3000").port;
-    return `http://${hostname}${port?`:${port}`:""}`;
+    const portal=new URL(environment.WEB_ORIGIN??"http://localhost:3000");
+    return `${portal.protocol}//${hostname}${portal.port?`:${portal.port}`:""}`;
   }
   return `https://${hostname}`;
 }
@@ -60,7 +60,7 @@ export class AgencyDirectoryService {
     try { url = new URL(origin); } catch { return false; }
     if (origin === (process.env.WEB_ORIGIN ?? "http://localhost:3000")) return true;
     const portal = new URL(process.env.WEB_ORIGIN ?? "http://localhost:3000");
-    const localDevelopment = process.env.NODE_ENV !== "production" && url.protocol === "http:" &&
+    const localDevelopment = process.env.NODE_ENV !== "production" && url.protocol === portal.protocol &&
       /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.localhost$/.test(url.hostname) && url.port === portal.port;
     if (url.origin !== origin || (!localDevelopment && (url.protocol !== "https:" || url.port))) return false;
     const agency = await this.registeredAgency(url.hostname,manager);

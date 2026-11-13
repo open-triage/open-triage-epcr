@@ -1,11 +1,30 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import QRCode from "qrcode";
+import { inflateSync } from "node:zlib";
+import { compactAndroidPairingQr } from "../app/android-pairing-qr";
 import { readFileSync } from "node:fs";
 import { createAndroidPairing, parseAndroidPairing } from "../app/android-pairing";
 import { MAX_PAIRING_QR_BYTES, parseAndroidPairingQr, scannerFailureMessage } from "../app/android-scanner";
 
 const issued = () => ({ origin: "https://agency.example.test", token: "a".repeat(43), expiresAt: new Date(Date.now() + 240000).toISOString() });
+test("compact pairing QR uses fewer modules while preserving every trust and enrollment byte", async () => {
+  const ca = readFileSync(new URL("../../../android/app/src/test/resources/tls/ca.pem", import.meta.url), "utf8");
+  for (const trust of ["", ca]) {
+    const artifact = createAndroidPairing({...issued(),token:"xJEXWe9y7qix5b0mIcbIzC5ehCbbxwZLhMpV2bV3-aA"}, trust);
+    const encoded = await compactAndroidPairingQr(artifact);
+    const alphabet = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ $%*+-./:";
+    const bytes:number[] = [];
+    for (let i=5; i<encoded.length; i+=3) {
+      const count=Math.min(3,encoded.length-i);
+      const value=[...encoded.slice(i,i+count)].reduce((sum,char,j)=>sum+alphabet.indexOf(char)*45**j,0);
+      if(count===3)bytes.push(Math.floor(value/256));bytes.push(value%256);
+    }
+    const [origin,token,expiresAt,caPem] = JSON.parse(inflateSync(Buffer.from(bytes)).toString("utf8"));
+    assert.deepEqual({version:1,origin,token,expiresAt,caPem}, JSON.parse(artifact));
+    assert(QRCode.create(encoded,{errorCorrectionLevel:"M"}).version < QRCode.create(artifact,{errorCorrectionLevel:"M"}).version);
+  }
+});
 test("Android QR carries the same public CA, destination and authorization as import within a practical QR bound", () => {
   const ca = readFileSync(new URL("../../../android/app/src/test/resources/tls/ca.pem", import.meta.url), "utf8");
   const artifact = createAndroidPairing(issued(), ca);

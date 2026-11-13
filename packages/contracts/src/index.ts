@@ -1,5 +1,6 @@
 export { SUPPORTED_UI_LANGUAGES, isSupportedUiLanguage } from "./ui-languages.generated.js";
 export { filterValidationRuleLibrary } from "./validation-rule-library.js";
+export { DEFAULT_PAIRING_EXPIRY_MINUTES, MAX_PAIRING_EXPIRY_MINUTES } from "./installation-enrollment.js";
 export { parseAndroidReleaseDescriptor, isAndroidReleaseCompatible, approvedAndroidReleaseUrl, type AndroidReleaseDescriptor, type AndroidReleaseAvailability } from "./android-release.js";
 
 export interface HealthResponse {

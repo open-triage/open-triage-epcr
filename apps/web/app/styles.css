@@ -134,6 +134,7 @@ fieldset { min-inline-size: 0; }
 .session-bar button:disabled { cursor: not-allowed; }
 .session-account { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 4px 8px; min-width: 0; }
 .session-identity { min-width: 0; overflow-wrap: anywhere; text-align: center; }
+.session-paired-unit { display: block; font-size: var(--text-caption); }
 .session-bar .call-list-refresh { flex: 0 0 78px; width: 78px; white-space: nowrap; }
 .session-bar-spacer { display: block; }
 .session-bar .feedback-trigger { display: grid; width: 42px; padding: 4px; place-items: center; }
@@ -161,12 +162,9 @@ fieldset { min-inline-size: 0; }
 .authenticated-shell .safety-notice { top: 48px; }
 .authenticated-shell .quick-actions { top: 86px; }
 .mobile-shell .session-bar { grid-template-columns: auto auto minmax(0, 1fr) auto; }
-/* The native pairing action is an additional control, not another identity column. */
-.session-bar:has(> .session-account):has(> [data-change-installation]) { grid-template-columns: auto auto minmax(0, 1fr) auto auto auto; }
-.mobile-shell .session-bar:has(> [data-change-installation]) { grid-template-columns: auto auto minmax(0, 1fr) auto; }
-.mobile-shell .session-bar:has(> [data-change-installation]) > .session-account { grid-column: 3 / -1; grid-row: 1; }
-.mobile-shell .session-bar:has(> .session-account) > [data-change-installation] { grid-column: 1 / 4; grid-row: 3; min-width: 0; padding-inline: 8px; overflow-wrap: anywhere; }
-.mobile-shell .session-bar:has(> [data-change-installation]):has(> .session-account) > button:last-child { grid-column: 4; grid-row: 3; }
+.mobile-shell .session-bar > .session-account { grid-column: 3; grid-row: 1; }
+.mobile-shell .session-bar:has(> .session-account) > button:last-child { grid-column: 4; grid-row: 1; }
+.mobile-shell .session-bar:has(> .session-account) > .presentation-selector-scroll { grid-column: 1 / -1; grid-row: 2; }
 
 .mobile-shell .transient-notice { max-width: min(calc(100vw - 24px), 456px); }
 .mobile-shell .presentation-selector-scroll { grid-column: 1 / -1; grid-row: 2; width: 100%; }
@@ -811,13 +809,16 @@ fieldset { min-inline-size: 0; }
 .review-actions button:disabled { cursor: not-allowed; }
 .finish-help { margin: 9px 18px 0; color: var(--muted); font-size: var(--text-caption); text-align: right; }
 @media (max-width: 410px) { .vital-grid { grid-template-columns: 1fr; } }
+@media (max-width: 370px) {
+  .authenticated-shell .session-bar:has(> .session-account) > .session-account { grid-column: 1 / -1; grid-row: 2; }
+  .authenticated-shell .session-bar:has(> .session-account) > .presentation-selector-scroll { grid-row: 3; }
+}
 @media (max-width: 620px) {
-  .session-bar:has(> .session-account):has(> [data-change-installation]) { grid-template-columns: auto auto minmax(0, 1fr) auto; }
-  .session-bar:has(> [data-change-installation]) > .session-account { grid-column: 3 / -1; grid-row: 1; }
-  .session-bar:has(> .session-account) > [data-change-installation] { grid-column: 1 / 4; grid-row: 3; min-width: 0; padding-inline: 8px; overflow-wrap: anywhere; }
-  .session-bar:has(> [data-change-installation]):has(> .session-account) > button:last-child { grid-column: 4; grid-row: 3; }
   .stationary-inline-group { margin-left: 0; }
   .session-bar { grid-template-columns: auto auto minmax(0, 1fr) auto; }
+  .session-bar > .session-account { grid-column: 3; grid-row: 1; }
+  .session-bar:has(> .session-account) > button:last-child { grid-column: 4; grid-row: 1; }
+  .session-bar:has(> .session-account) > .presentation-selector-scroll { grid-column: 1 / -1; grid-row: 2; }
   .presentation-selector-scroll { grid-column: 1 / -1; grid-row: 2; width: 100%; }
   .authenticated-shell .safety-notice { position: relative; top: auto; }
   .authenticated-shell .quick-actions { top: 98px; }
@@ -845,7 +846,6 @@ fieldset { min-inline-size: 0; }
   .stationary-record-fields > :is(.custom-text-fields, .custom-coded-fields, .repeated-custom-fields, .custom-group-fields):not(:empty) { margin: 8px; }
 }
 @media (max-width: 370px) {
-  .session-bar:has(> .session-account):has(> [data-change-installation]) { padding-inline: 8px; column-gap: 4px; }
   .safety-notice { align-items: flex-start; flex-direction: column; gap: 1px; }
   .encounter-header { padding-inline: 16px; }
   .incident-line { align-items: stretch; flex-direction: column; }

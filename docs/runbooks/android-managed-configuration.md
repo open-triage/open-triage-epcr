@@ -11,7 +11,7 @@ ordinary managed application and never becomes the device owner.
 Android's `APP_RESTRICTIONS` schema is declared in `res/xml/app_restrictions.xml`.
 `RestrictionsManager` supplies settings on startup, resume, policy broadcasts
 and before native credential-bearing requests. Management supplies the approved
-connection. Vehicle pairing still requires the existing confirmed, five-minute,
+connection. Vehicle pairing still requires the confirmed, administrator-timed,
 single-use authorization, followed by separate clinician sign-in.
 
 ## Version 1 contract

@@ -43,6 +43,9 @@ public class PairingQrDecoderTest {
             String token = java.util.Base64.getUrlEncoder().withoutPadding().encodeToString(java.security.MessageDigest.getInstance("SHA-256").digest(("synthetic-token-" + seed).getBytes(StandardCharsets.UTF_8)));
             payloads.add(new JSONObject(artifact()).put("token", token).put("origin", "https://agency-" + seed + ".example.test").toString());
         }
+        String vectors = new String(getClass().getResourceAsStream("/compact-pairing-qr-vectors.json").readAllBytes(), StandardCharsets.UTF_8);
+        var compact = new JSONObject(vectors).getJSONArray("vectors");
+        for (int i = 0; i < compact.length(); i++) payloads.add(compact.getJSONObject(i).getString("compact"));
         String full = artifact(); payloads.add(full + " ".repeat(PairingQrDecoder.MAX_BYTES - full.getBytes(StandardCharsets.UTF_8).length));
         for (int payload = 0; payload < payloads.size(); payload++) for (int mask = 0; mask < 8; mask++) for (int size : new int[]{384, 512, 768}) {
             try { assertEquals(payloads.get(payload), PairingQrDecoder.reader(null).decode(image(payloads.get(payload), BarcodeFormat.QR_CODE, size, mask)).getText()); }

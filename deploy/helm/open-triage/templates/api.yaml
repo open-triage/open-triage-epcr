@@ -66,6 +66,16 @@ spec:
               value: {{ default .Values.web.host .Values.agencyBaseDomain | quote }}
             - name: WEB_ORIGIN
               value: "https://{{ .Values.web.host }}"
+            {{- if .Values.api.pairingCa.configMapName }}
+            - name: PAIRING_CA_FILE
+              value: /etc/open-triage/pairing/ca.pem
+            {{- end }}
+          {{- if .Values.api.pairingCa.configMapName }}
+          volumeMounts:
+            - name: pairing-ca
+              mountPath: /etc/open-triage/pairing
+              readOnly: true
+          {{- end }}
           readinessProbe:
             httpGet: { path: /api/health, port: http }
           startupProbe:
@@ -75,6 +85,15 @@ spec:
           livenessProbe:
             httpGet: { path: /api/health, port: http }
           resources: {{- toYaml .Values.api.resources | nindent 12 }}
+      {{- if .Values.api.pairingCa.configMapName }}
+      volumes:
+        - name: pairing-ca
+          configMap:
+            name: {{ .Values.api.pairingCa.configMapName | quote }}
+            items:
+              - key: {{ .Values.api.pairingCa.key | quote }}
+                path: ca.pem
+      {{- end }}
 ---
 apiVersion: v1
 kind: Service

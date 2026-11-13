@@ -3,7 +3,6 @@ import { isAndroidRuntime } from "../app/android-runtime";
 import { AndroidApkLink } from "./android-apk-link";
 import { useAndroidUpgradePolicy } from "./use-android-upgrade-policy";
 import { useAndroidBack } from "./use-android-back";
-import { AndroidInstallationAction } from "./android-installation-action";
 import { APPLICATION_FOREGROUND_EVENT, applicationVisible, foregroundNetworkAllowed } from "../app/application-foreground";
 import {useMeasuredParentHeight} from './use-measured-parent-height';
 import { UnsavedChangesContext, confirmDiscardChanges } from "./unsaved-changes";
@@ -27,6 +26,7 @@ import {
 } from "../app/clinician-session";
 import { beginPersonalClinicianSession,completePersonalClinicianSession,organizationLoginAvailable,PersonalAuthenticationRedirect } from "../app/clinician-session";
 import { LanguageSelector } from "./language-selector";
+import { PairedUnit } from "./paired-unit";
 import { AssignedCalls } from "./assigned-calls";
 import { OpenReports } from "./open-reports";
 import type { ActiveDraftReport } from "../app/draft-report";
@@ -528,10 +528,9 @@ export function ClinicianSessionGate({ children }: {
     {startupState === "loading" ? <LoadingStatus>{t("login.opening")}</LoadingStatus> : <div role="alert">
       <p>{online ? t("login.connectFailed") : t("login.reconnect")}</p>
       {online && startupFailure && <p>{startupFailure === "android.serverUpgradeRequired" ? t(startupFailure) : startupFailure}</p>}
-      <AndroidInstallationAction language={language} />
     </div>}
   </main>;
-  if (!installation) return <main className="login-shell"><p className="login-message" role="alert">{message ?? t("login.configurationUnavailable")}</p><AndroidInstallationAction language={language} /></main>;
+  if (!installation) return <main className="login-shell"><p className="login-message" role="alert">{message ?? t("login.configurationUnavailable")}</p></main>;
   if (!authenticatedSession) {
     return (
       <main className="login-shell">
@@ -552,7 +551,7 @@ export function ClinicianSessionGate({ children }: {
             {installationRecovery && <><p>{t("login.installationRecoveryHelp")}</p><button type="button" onClick={() => setInstallationRecovery(false)}>{t("login.organizationSignIn")}</button></>}
             <label>
               {t("login.username")}
-              <input name="username" autoComplete="username" required />
+              <input name="username" autoCapitalize="none" autoCorrect="off" spellCheck={false} autoComplete="username" required />
             </label>
             <label>
               {t("login.password")}
@@ -561,7 +560,6 @@ export function ClinicianSessionGate({ children }: {
             <button type="submit" disabled={submitting||lockingSession||transitionPending}>{submitting ? t("login.signingIn") : t("login.signIn")}</button>
             </>}
           </div>
-          <AndroidInstallationAction language={language} />
         </form>
       </main>
     );
@@ -596,7 +594,6 @@ export function ClinicianSessionGate({ children }: {
         <p className="eyebrow">{t("login.signedIn")}</p>
         <h1 id="no-workspace-heading">{t("login.noWorkspace")}</h1>
         <p>{t("login.noWorkspaceHelp")}</p>
-        <AndroidInstallationAction language={language} />
         <button type="button" onClick={requestLogout}>{t("navigation.logOut")}</button>
       </section>
     </main>;
@@ -605,8 +602,10 @@ export function ClinicianSessionGate({ children }: {
   if (!session) return <UnsavedChangesContext.Provider value={unsavedEditors.current}>
     <div className="authenticated-shell admin-shell desktop-shell">
       <header className="session-bar">
-        <span className="session-identity">{t("navigation.signedInAs", { name: authenticatedSession.user.displayName })}</span>
-        <AndroidInstallationAction language={language} />
+        <div className="session-identity">
+          <span>{t("navigation.signedInAs", { name: authenticatedSession.user.displayName })}</span>
+          <PairedUnit key={authenticatedSession.user.id} language={language} />
+        </div>
         <button type="button" onClick={requestLogout}>{t("navigation.logOut")}</button>
       </header>
       <main className="admin-shell">
@@ -630,7 +629,10 @@ export function ClinicianSessionGate({ children }: {
           <FeedbackControl language={language} csrfToken={sessionRequestToken(session)} online={online} mode={presentationMode}
             screen={presentationMode === "admin" ? "admin" : presentationMode === "review" ? "review" : activeReport ? "encounter" : "calls"} />}
         <div className="session-account">
-        <span className="session-identity">{t("navigation.signedInAs", { name: session.user.displayName })}</span>
+        <div className="session-identity">
+          <span>{t("navigation.signedInAs", { name: session.user.displayName })}</span>
+          <PairedUnit key={`${session.organization.id}:${session.user.id}`} language={language} />
+        </div>
         {(session.agencies?.length ?? 0) > 1 && <label className="session-agency-selector">
           <select aria-label={t("admin.agency")} value={session.organization.id}
             disabled={!online || activeReport !== null || openingCall !== null}
@@ -656,7 +658,6 @@ export function ClinicianSessionGate({ children }: {
               onClick={() => selectPresentationMode("admin")}>{t("navigation.admin")}</button>}
           </div>
         </div>
-        <AndroidInstallationAction language={language} />
         <button type="button" onClick={requestLogout}>{t("navigation.logOut")}</button>
       </header>
       {logoutWarning && <div className="dialog-backdrop logout-backdrop" role="presentation">

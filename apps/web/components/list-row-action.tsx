@@ -3,6 +3,8 @@
 import { useRef, type MouseEvent, type ReactNode } from "react";
 
 export function activateListRow(event: MouseEvent<HTMLElement>, action?: () => void) {
+  const dialog = (event.target as Element).closest('dialog, [role="dialog"], [role="alertdialog"]');
+  if (event.defaultPrevented || (dialog && !dialog.contains(event.currentTarget))) return;
   if ((event.target as HTMLElement).closest("button, a, input, select, textarea, label, summary, [data-tooltip-trigger]")) return;
   if (action) action();
   else event.currentTarget.querySelector<HTMLButtonElement | HTMLInputElement>("[data-list-row-action]")?.click();

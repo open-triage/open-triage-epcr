@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { randomBytes } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
-import { enrollmentInput } from '../dist/admin/installation-enrollment.service.js';
+import { enrollmentInput, enrollmentExpiryMinutes, enrollmentName } from '../dist/admin/installation-enrollment.service.js';
 import { installationCredential,InstallationEnrollmentController } from '../dist/admin/installation-enrollment.controller.js';
 import { CsrfGuard } from '../dist/sessions/csrf.guard.js';
 const token=randomBytes(32).toString('base64url');
@@ -75,4 +75,23 @@ test('native result recovery shares canonical vectors with Java including Unicod
  const {enrollmentAttemptBinding,enrollmentAttemptCredential}=await import('../dist/admin/enrollment-attempt.js');
  const {vectors}=JSON.parse(await readFile(new URL('../../../android/app/src/test/resources/enrollment-attempt-vectors.json',import.meta.url),'utf8'));
  for(const item of vectors){const binding=enrollmentAttemptBinding(item.origin,item.token,item.name.trim(),item.reassign,item.originalCredential);assert.equal(binding,item.binding);assert.equal(enrollmentAttemptCredential(item.attempt,binding),item.credential);}
+});
+
+test('pairing expiry defaults to 30 minutes and validates whole-minute bounds',()=>{
+ for(const body of [undefined,{}])assert.equal(enrollmentExpiryMinutes(body),30);
+ for(const minutes of [1,30,90,1440])assert.equal(enrollmentExpiryMinutes({expiresInMinutes:minutes}),minutes);
+ for(const body of [null,[],30,{expiresInMinutes:null},{expiresInMinutes:'30'},{expiresInMinutes:0},{expiresInMinutes:-1},{expiresInMinutes:1.5},{expiresInMinutes:1441},{expiresInMinutes:NaN},{expiresInMinutes:Infinity},{expiresAt:'2099-01-01'}])assert.throws(()=>enrollmentExpiryMinutes(body));
+});
+test('issuance controller forwards the selected expiry with the authenticated session',async()=>{
+ const body={expiresInMinutes:90};
+ const controller=new InstallationEnrollmentController({issue:async(session,id,input)=>{assert.equal(session,'session');assert.equal(id,'unit');assert.equal(input,body);return {expiresAt:'expiry'};}});
+ assert.deepEqual(await controller.issue('unit',{headers:{cookie:'open_triage_session=session'}},undefined,body),{expiresAt:'expiry'});
+});
+
+test('administrator installation names are trimmed and bounded independently of expiry',()=>{
+ assert.equal(enrollmentName({name:'  Cab tablet  '}),'Cab tablet');
+ assert.equal(enrollmentExpiryMinutes({name:'Cab tablet',expiresInMinutes:90}),90);
+ for(const name of ['', '  ', null, 42, 'x'.repeat(101), 'Cab\nTablet', 'Cab\u007fTablet'])assert.throws(()=>enrollmentName({name}));
+ // Older admin clients use the selected unit name as the server-owned default.
+ assert.equal(enrollmentName(undefined),undefined);
 });

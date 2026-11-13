@@ -13,6 +13,7 @@ export function localRouting(environment = process.env) {
       // Use a fixed upstream, never a browser-provided host or forwarded header.
       const headers = { ...request.headers };
       for (const key of Object.keys(headers)) if (key.startsWith("x-forwarded-") || key === "forwarded") delete headers[key];
+      if (request.socket.encrypted) headers["x-forwarded-proto"] = "https";
       const proxy = (upstream.protocol === "https:" ? httpsRequest : httpRequest)({
         protocol: upstream.protocol, hostname: upstream.hostname, port: upstream.port,
         method: request.method, path: request.url, headers,
