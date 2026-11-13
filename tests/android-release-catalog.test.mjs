@@ -16,7 +16,7 @@ test('new APK names contain the version once while metadata verifies bytes and h
  assert.deepEqual(parseAndroidReleaseDescriptor(previous),previous);
  const short={...previous,artifact:androidApkArtifactName(previous.versionName)};
  assert.deepEqual(parseAndroidReleaseDescriptor(short),short);
- for(const artifact of ['../'+short.artifact,'opentriage-9.9.9.apk','opentriage-'+previous.versionName+'-wrong.apk',previous.artifact.replace(previous.apkSha256,'0'.repeat(64))])assert.throws(()=>parseAndroidReleaseDescriptor({...short,artifact}));
+ for(const artifact of ['../'+short.artifact,'opentriage-9.9.9.apk','opentriage-'+previous.versionName+'-wrong.apk','opentriage-'+previous.versionName+'-'+previous.versionCode+'-'+'0'.repeat(64)+'.apk'])assert.throws(()=>parseAndroidReleaseDescriptor({...short,artifact}));
  assert.throws(()=>parseAndroidReleaseDescriptor({...short,apkSha256:'invalid'}));
 });
 
