@@ -120,3 +120,16 @@ test('upgrade snapshot accepts cached and bundled local UI while rejecting remot
   }
  }
 });
+
+test('native recovery waits for usable sign-in rather than the intermediate logout form',()=>{
+ const java=readFileSync('android/app/src/androidTest/java/org/opentriage/development/ReportRecoveryJourneyTest.java','utf8');
+ const expression=/LOGIN_READY = "([^"\n]+)"/.exec(java)?.[1];assert(expression);
+ for(const [input,button,disabled,ready]of [[false,false,false,false],[true,false,false,false],[true,true,true,false],[true,true,false,true]]){
+  const document={querySelector:selector=>selector.startsWith('input')?(input?{}:null):(button?{disabled}:null)};
+  assert.equal(Boolean(runInNewContext(expression,{document})),ready);
+ }
+ const login=java.split('private void signIn(')[1].split('private void ')[0];assert(login.includes('waitFor(LOGIN_READY)'));
+ const other=java.split('private void differentClinician()')[1].split('private void ')[0];
+ assert(other.includes('click("Log out"); waitFor(LOGIN_READY)'));
+ assert(other.includes('vault.personalContinuation()'));assert(other.includes('loggedOutCookies'));
+});
