@@ -24,6 +24,22 @@ public class NativeUiUpdatesTest {
         while (System.currentTimeMillis() < until) { if ("true".equals(evaluate(activity, "Boolean(" + condition + ")"))) return; Thread.sleep(100); }
         fail("Hosted UI did not reach: " + condition + "; body=" + evaluate(activity, "document.body.innerText"));
     }
+    private void waitForCachedUi(ActivityScenario<MainActivity> activity, int revision) throws Exception {
+        long until = System.currentTimeMillis() + 45_000;
+        String cacheName = org.json.JSONObject.quote("open-triage-shell-v5-device-hosted-" + revision);
+        String marker = org.json.JSONObject.quote("Hosted UI " + revision);
+        while (System.currentTimeMillis() < until) {
+            // A network document can be visible before its worker finishes installing.
+            // Repeat after navigation too: controllerchange may replace the probe's document.
+            evaluate(activity, "window.__hostedCacheReady=false;(async()=>{const registration=await navigator.serviceWorker.getRegistration();"
+                + "if(!registration || registration.installing || registration.waiting || registration.active?.state!=='activated' || registration.active!==navigator.serviceWorker.controller)return;"
+                + "if(!(await caches.keys()).includes(" + cacheName + "))return;const cache=await caches.open(" + cacheName + ");"
+                + "const response=await cache.match(location.origin+'/');window.__hostedCacheReady=Boolean(response&&(await response.text()).includes(" + marker + "));})().catch(()=>{});");
+            Thread.sleep(100);
+            if ("true".equals(evaluate(activity, "window.__hostedCacheReady===true"))) return;
+        }
+        fail("The active worker must cache UI " + revision + " before the server goes offline");
+    }
     @Test public void pairedServerUpdatesTheMinimalApkAndCachedUiKeepsItsNativeBridgeOffline() throws Exception {
         var instrumentation = InstrumentationRegistry.getInstrumentation(); var context = instrumentation.getTargetContext();
         // The default acceptance owns a cleared app; focused execution uses a separate application ID.
@@ -85,6 +101,7 @@ public class NativeUiUpdatesTest {
             evaluate(activity, "localStorage.setItem('ui-update-device-proof','preserved')");
             revision.set(2); evaluate(activity, "navigator.serviceWorker.getRegistration().then(value=>value.update())");
             waitFor(activity, "document.body.innerText.includes('Hosted UI 2') && document.body.dataset.nativeVersion===" + installedVersion + "");
+            waitForCachedUi(activity, 2);
             running.set(false); server.close();
             String beforeReload = evaluate(activity, "performance.timeOrigin");
             activity.onActivity(screen -> screen.getBridge().getWebView().reload());

@@ -58,6 +58,12 @@ for (const native of [false, true]) test(`${native ? "Android" : "browser"} shar
     expect(await page.evaluate(() => caches.keys())).toContain("open-triage-shell-v5-ui-test-1");
     await page.getByRole("button", { name: "Finish work" }).click();
     await expect(page.getByRole("heading", { name: "Server UI 3" })).toBeVisible(); expect(new URL(page.url()).origin).toBe(origin);
+    await expect.poll(() => page.evaluate(async () => {
+      const registration = await navigator.serviceWorker.getRegistration();
+      if (!registration || registration.installing || registration.waiting || registration.active?.state !== "activated" || registration.active !== navigator.serviceWorker.controller) return false;
+      const cache = await caches.open("open-triage-shell-v5-ui-test-3"), root = await cache.match(location.origin + "/");
+      return Boolean(root && (await root.text()).includes("Server UI 3"));
+    })).toBe(true);
     available = false; await page.reload();
     await expect(page.getByRole("heading", { name: "Server UI 3" })).toBeVisible();
     // A failed worker update must leave the installed shell usable.
