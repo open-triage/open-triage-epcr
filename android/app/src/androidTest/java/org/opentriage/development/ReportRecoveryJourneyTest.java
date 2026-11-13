@@ -33,7 +33,7 @@ public class ReportRecoveryJourneyTest {
             if ("true".equals(evaluate("Boolean(" + expression + ")"))) return;
             Thread.sleep(150);
         }
-        fail("UI condition failed: " + expression + " field=" + evaluate("(" + FIELD + ")?.value ?? null") + " lifecycle=" + evaluate("JSON.stringify({url:location.href,platform:window.Capacitor?.getPlatform?.(),nativePromise:typeof window.Capacitor?.nativePromise,reviewNative:window.__reviewNative,timeOrigin:performance.timeOrigin,oldDocument:window.__beforeUpgradeReload,events:window.__nativeEvents,assignedReads:window.__assignedReads,audio:window.__lastPlayedAudio?{time:window.__lastPlayedAudio.currentTime,paused:window.__lastPlayedAudio.paused,ended:window.__lastPlayedAudio.ended,error:window.__lastPlayedAudio.error?.code}:null})") + " body=" + evaluate("document.body.innerText.slice(0,1800)"));
+        fail("UI condition failed: " + expression + " field=" + evaluate("(" + FIELD + ")?.value ?? null") + " lifecycle=" + evaluate("JSON.stringify({url:location.href,platform:window.Capacitor?.getPlatform?.(),nativePromise:typeof window.Capacitor?.nativePromise,reviewNative:window.__reviewNative,timeOrigin:performance.timeOrigin,oldDocument:window.__beforeUpgradeReload,events:window.__nativeEvents,assignedReads:window.__assignedReads,closeGeometry:window.__closeGeometry,audio:window.__lastPlayedAudio?{time:window.__lastPlayedAudio.currentTime,paused:window.__lastPlayedAudio.paused,ended:window.__lastPlayedAudio.ended,error:window.__lastPlayedAudio.error?.code}:null})") + " body=" + evaluate("document.body.innerText.slice(0,1800)"));
     }
     private void setInput(String expression, String value) throws Exception {
         waitFor("(" + expression + ") && !(" + expression + ").matches(':disabled') && !(" + expression + ").readOnly");
@@ -259,8 +259,9 @@ public class ReportRecoveryJourneyTest {
     }
     private void closeControlReachable() throws Exception {
         String control = "Array.from(document.querySelectorAll('.draft-actions button')).find(button=>button.textContent==='Save & close')";
-        evaluate("(" + control + ").scrollIntoView({block:'center',inline:'center'})");
-        waitFor("(()=>{const button=" + control + ";const r=button.getBoundingClientRect();return r.left>=0&&r.right<=innerWidth+1&&r.top>=0&&r.bottom<=innerHeight+1&&button.contains(document.elementFromPoint(r.x+r.width/2,r.y+r.height/2))})()");
+        // IME visibility can precede the final WebView resize. Scroll against the
+        // current viewport on every probe, including after a late resize/focus pan.
+        waitFor("(()=>{const button=" + control + ";button.scrollIntoView({block:'center',inline:'center',behavior:'instant'});const r=button.getBoundingClientRect();const hit=document.elementFromPoint(r.x+r.width/2,r.y+r.height/2);window.__closeGeometry={x:r.x,y:r.y,width:r.width,height:r.height,viewport:innerHeight,hit:hit?.className};return r.left>=0&&r.right<=innerWidth+1&&r.top>=0&&r.bottom<=innerHeight+1&&button.contains(hit)})()");
     }
     private void endAudioHold() throws Exception {
         evaluate("document.querySelector('.audio-hold-button')?.dispatchEvent(new KeyboardEvent('keyup',{key:' ',bubbles:true}))");
