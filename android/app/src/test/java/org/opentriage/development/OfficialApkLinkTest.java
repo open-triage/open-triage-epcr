@@ -7,6 +7,13 @@ public class OfficialApkLinkTest {
     private static final String PREFIX="https://github.com/open-triage/open-triage-epcr/releases/download/";
     private static final String HASH="ab".repeat(32);
     private String link(String tag,String version,String code,String hash){return PREFIX+tag+"/opentriage-"+version+"-"+code+"-"+hash+".apk";}
+    @Test public void versionOnlyNamesRetainExactRepositoryAndTagBinding() {
+        for(String tag:new String[]{"android-v6-0.1.0-rc.6","android-candidate-6-0.1.0-rc.6"}){
+            String value=PREFIX+tag+"/opentriage-0.1.0-rc.6.apk";
+            assertEquals(value,OfficialApkLink.approved(value).toString());
+            for(String invalid:new String[]{value.replace("github.com","attacker.invalid"),value+"?download=1",value.replace("/opentriage-0.1.0-rc.6.apk","/opentriage-0.1.0-rc.7.apk"),value.replace("opentriage-0.1.0-rc.6.apk","opentriage-0.1.0-rc.6-6.apk"),value.replace("android-v6-","android-v06-").replace("android-candidate-6-","android-candidate-06-")})assertNull(OfficialApkLink.approved(invalid));
+        }
+    }
     @Test public void onlyExactPinnedRepositoryAndCanonicalReleaseMetadataCanOpen() {
         for(String tag:new String[]{"android-v2-0.1.0-rc.2","android-candidate-2-0.1.0-rc.2"}) {
             String value=link(tag,"0.1.0-rc.2","2",HASH);assertEquals(value,OfficialApkLink.approved(value).toString());

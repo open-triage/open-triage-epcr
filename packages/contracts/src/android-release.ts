@@ -1,1 +1,1 @@
-export { parseAndroidReleaseDescriptor, isAndroidReleaseCompatible, approvedAndroidReleaseUrl, type AndroidReleaseDescriptor, type AndroidReleaseAvailability } from "../android-release.mjs";
+export { androidApkArtifactName, parseAndroidReleaseDescriptor, isAndroidReleaseCompatible, approvedAndroidReleaseUrl, type AndroidReleaseDescriptor, type AndroidReleaseAvailability } from "../android-release.mjs";

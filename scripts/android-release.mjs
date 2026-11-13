@@ -1,3 +1,4 @@
+import { androidApkArtifactName } from '@open-triage/contracts/android-release';
 import { verifyNativeStartup } from './android/native-startup.mjs';
 import { verifyApkSignature } from './android/apk-signature.mjs';
 import { execFileSync, spawnSync } from 'node:child_process';
@@ -51,7 +52,7 @@ try {
   execFileSync(jar, ['xf', source, 'assets/public'], { cwd: extracted });
   for (const name of packaged) { uiHash.update(name); uiHash.update('\0'); uiHash.update(readFileSync(join(extracted, name))); }
 } finally { rmSync(extracted, { recursive: true, force: true }); }
-const descriptor = { schemaVersion: 1, ...identity, apkSha256, apkBytes: bytes.length, uiSha256: uiHash.digest('hex'), sourceCommit, compatibility, minAndroidApi: 33, targetAndroidApi: 36, artifact: `opentriage-${identity.versionName}-${identity.versionCode}-${apkSha256}.apk` };
+const descriptor = { schemaVersion: 1, ...identity, apkSha256, apkBytes: bytes.length, uiSha256: uiHash.digest('hex'), sourceCommit, compatibility, minAndroidApi: 33, targetAndroidApi: 36, artifact: androidApkArtifactName(identity.versionName) };
 if (env.ANDROID_PREVIOUS_DESCRIPTOR) validateUpgrade(JSON.parse(readFileSync(env.ANDROID_PREVIOUS_DESCRIPTOR, 'utf8')), descriptor);
 mkdirSync(output, { recursive: true, mode: 0o700 });
 writeFileSync(join(output, descriptor.artifact), bytes, { flag: 'wx', mode: 0o644 });
