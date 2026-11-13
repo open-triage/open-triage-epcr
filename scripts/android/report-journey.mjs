@@ -105,7 +105,7 @@ export async function runReportRecoveryJourney({ root, fixture, adb, serial, run
       const revoked = await api(fixture, ca, `admin/users/${fixture.clinician.userId}/sessions/${session.id}`, 'DELETE', {}, adminHeaders);
       assert.equal(revoked.status, 200, JSON.stringify(revoked.body)); assert.equal(revoked.body.revoked, true);
     }
-    await hooks.beforeReconnect?.({ root, fixture, report, opened, applicationId, adb, serial, run, api, db, ca, setHostCa: value => { ca=value; }, adminHeaders, retainedSha256, prepareUntilKilled, instrument });
+    const finishReconnect = await hooks.beforeReconnect?.({ root, fixture, report, opened, applicationId, adb, serial, run, api, db, ca, setHostCa: value => { ca=value; }, adminHeaders, retainedSha256, prepareUntilKilled, instrument });
     // A second real termination separates offline relaunch from restored connectivity.
     run(adb, ['-s', serial, 'shell', 'am', 'force-stop', applicationId]);
     run(adb, ['-s', serial, 'shell', 'svc', 'wifi', 'enable']); run(adb, ['-s', serial, 'shell', 'svc', 'data', 'enable']);
@@ -193,6 +193,7 @@ export async function runReportRecoveryJourney({ root, fixture, adb, serial, run
       instrument('denied-pdf',report.secondClinician.username,report.secondClinicianPassword,{reportId:opened.id,snapshotId:signed.signed_snapshot_id,organizationId:fixture.organizationId});
       console.log('PASS Android Stationary/Review: unresolved media blocks signing; actual retry and signing; native authorized signed PDF; second-clinician scope denies PDF');
     }
+    await finishReconnect?.();
   } catch (error) {
     primaryError = error;
     try { await captureAndroidFailure({ root, adb, serial, applicationId, secrets: [fixture.administratorPassword, fixture.clinicianPassword, report.secondClinicianPassword, issued.body.token] }); } catch { console.error('Android recovery diagnostics unavailable'); }

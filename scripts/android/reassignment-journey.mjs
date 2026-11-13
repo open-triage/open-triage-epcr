@@ -30,7 +30,15 @@ export async function runReassignmentTransition({fixture,report,applicationId='o
     const {rows:after}=await db.query('select id,unit_id,credential_sha256,revoked_at from app_identity.installation_registration where installation_identity_id=$1 order by enrolled_at',[before.installation_identity_id]);
     assert.equal(after.length,2);assert(after[0].revoked_at);assert.equal(after[1].revoked_at,null);assert.equal(after[1].unit_id,unitId);assert.notEqual(after[1].credential_sha256,before.credential_sha256);
     assert.equal((await db.query("select count(*) n from app_identity.installation_event where installation_id=$1 and event_type='installation-reassigned'",[before.id])).rows[0].n,'1');
-    const revoked=await api(fixture,ca,`admin/units/${unitId}/installations/${after[1].id}/revoke`,'POST',{},adminHeaders);assert.equal(revoked.status,201);assert.equal(revoked.body.revoked,true);
-    console.log('PASS native reassignment: committed reply loss, real process kill, journal retry, one stable identity/rotation, fresh-login boundary, revoked pairing and exact retained ciphertext');
+    console.log('PASS native reassignment: committed reply loss, real process kill, journal retry, one stable identity/rotation, fresh-login boundary and exact retained ciphertext');
+    // Recovery requires a live installation. Test revocation only after the remaining
+    // recovery/signing journey, then prove automatic re-pairing preserves its ciphertext.
+    return async () => {
+      const snapshot=instrument('pairing-snapshot',fixture.clinician.username,fixture.clinicianPassword);
+      const digest=/retained_sha256=([a-f0-9]{64})/.exec(snapshot)?.[1];assert(digest);
+      const revoked=await api(fixture,ca,`admin/units/${unitId}/installations/${after[1].id}/revoke`,'POST',{},adminHeaders);assert.equal(revoked.status,201);assert.equal(revoked.body.revoked,true);
+      instrument('revoked-pairing',fixture.clinician.username,fixture.clinicianPassword,{retainedSha256:digest});
+      console.log('PASS revoked pairing requires a new code and preserves exact encrypted work');
+    };
   }finally{pending.child.kill('SIGTERM');}
 }

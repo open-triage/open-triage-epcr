@@ -815,6 +815,17 @@ public class ReportRecoveryJourneyTest {
         assertEquals(JSONObject.quote(args.getString("installationId")), evaluate("window.__binding.installation.installationId"));
         records(); assertEquals("Reassignment and process loss preserve exact eligible encrypted work", args.getString("retainedSha256"), retainedDigest());
     }
+    private void pairingSnapshot() throws Exception {
+        records();
+        var result = new android.os.Bundle(); result.putString("retained_sha256", retainedDigest());
+        InstrumentationRegistry.getInstrumentation().addResults(result);
+    }
+    private void revokedPairing() throws Exception {
+        waitFor("document.querySelector('input[type=file]') && !document.querySelector('input[name=username]') && !document.querySelector('.session-identity')");
+        assertNull("Revocation removes the saved native authority", new ConnectionVault(InstrumentationRegistry.getInstrumentation().getTargetContext()).read());
+        records();
+        assertEquals("Automatic re-pairing preserves exact encrypted work", InstrumentationRegistry.getArguments().getString("retainedSha256"), retainedDigest());
+    }
     @Test public void realProcessRecovery() throws Exception {
         String phase = InstrumentationRegistry.getArguments().getString("phase", "");
         if (phase.equals("offline")) {
@@ -836,6 +847,8 @@ public class ReportRecoveryJourneyTest {
             case "offline": offlineRestart(); activity.close(); break;
             case "reassign": reassignWithLostResponse(); break;
             case "resume-reassignment": resumeReassignment(); activity.close(); break;
+            case "pairing-snapshot": pairingSnapshot(); activity.close(); break;
+            case "revoked-pairing": revokedPairing(); activity.close(); break;
             case "other": differentClinician(); activity.close(); break;
             case "recover": recover(); activity.close(); break;
             case "sign-review": signReview(); activity.close(); break;
