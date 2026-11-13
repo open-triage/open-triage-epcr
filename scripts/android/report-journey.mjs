@@ -9,6 +9,7 @@ import pg from 'pg';
 import { seedReportFixture } from './report-fixture.mjs';
 import { startLiveInstrumentation } from './live-instrumentation.mjs';
 import { prepareReportJourneyTarget, validateReportTargetPreparation } from './report-target-preparation.mjs';
+import { cleanupAndroidJourney } from './journey-cleanup.mjs';
 
 /** Real radio loss and host process termination; no mocked requests or key/crypto substitutions. */
 export async function runReportRecoveryJourney({ root, fixture, adb, serial, run, api, applicationId = 'org.opentriage.development', afterProcessStop, upgrade = false, preparationProfile = 'current', upgradeReceipt = '', hooks = {}, targetPreparation = 'clear', audio = false, unsavedAudio = false, signReview = false }) {
@@ -59,7 +60,7 @@ export async function runReportRecoveryJourney({ root, fixture, adb, serial, run
     return { ready, closed, child };
   };
   const db = new pg.Client({ connectionString: fixture.databaseUrl }); await db.connect();
-  let preparation;
+  let preparation, primaryError;
   try {
     await prepareReportJourneyTarget({ mode: targetPreparation, prepareTarget: hooks.prepareTarget, root, fixture, report, artifact, applicationId, adb, serial, run, api, db, ca });
     preparation = prepareUntilKilled('prepare', hooks.prepareArguments ?? {}); await preparation.ready;
@@ -193,11 +194,13 @@ export async function runReportRecoveryJourney({ root, fixture, adb, serial, run
       console.log('PASS Android Stationary/Review: unresolved media blocks signing; actual retry and signing; native authorized signed PDF; second-clinician scope denies PDF');
     }
   } catch (error) {
+    primaryError = error;
     try { await captureAndroidFailure({ root, adb, serial, applicationId, secrets: [fixture.administratorPassword, fixture.clinicianPassword, report.secondClinicianPassword, issued.body.token] }); } catch { console.error('Android recovery diagnostics unavailable'); }
-    const diagnostics = (await db.query(`select r.id,r.revision,envelope.ciphertext_revision,envelope.recovery_deadline,
+    const diagnostics = await db.query(`select r.id,r.revision,envelope.ciphertext_revision,envelope.recovery_deadline,
       (select value_text from clinical.element_occurrence where report_id=r.id and element_id=$2 and tombstoned_at is null limit 1) first_name
       from clinical.call_assignment assignment join clinical.report r on r.id=assignment.report_id
-      left join offline_recovery.report_key_envelope envelope on envelope.report_id=r.id where assignment.id=$1`, [report.assignmentId, report.elementId])).rows;
+      left join offline_recovery.report_key_envelope envelope on envelope.report_id=r.id where assignment.id=$1`, [report.assignmentId, report.elementId])
+      .then(result => result.rows, () => []);
     console.log('Synthetic recovery database diagnostics', JSON.stringify(diagnostics));
     if (process.env.ANDROID_RECOVERY_DEBUG_PAUSE === '1') {
       const debugFile = '/tmp/android-003-recovery-debug.json', releaseFile = '/tmp/android-003-recovery-debug.release';
@@ -212,8 +215,11 @@ export async function runReportRecoveryJourney({ root, fixture, adb, serial, run
     }
     throw error;
   } finally {
-    preparation?.child.kill('SIGTERM');
-    run(adb, ['-s', serial, 'shell', 'svc', 'wifi', 'enable']); run(adb, ['-s', serial, 'shell', 'svc', 'data', 'enable']);
-    await db.end();
+    await cleanupAndroidJourney([
+      () => preparation?.child.kill('SIGTERM'),
+      () => run(adb, ['-s', serial, 'shell', 'svc', 'wifi', 'enable']),
+      () => run(adb, ['-s', serial, 'shell', 'svc', 'data', 'enable']),
+      () => db.end(),
+    ], primaryError);
   }
 }

@@ -40,7 +40,7 @@ test('upgrade driver refuses existing or unknown production state before any fix
 test('separate harness provenance rejects all production and unknown path changes',()=>{
  const artifactSource='a'.repeat(40),testSource='b'.repeat(40);
  assertUpgradeHarnessSource({artifactSource,testSource:artifactSource,changedPaths:[]});
- const allowed=['scripts/android-release-upgrade.mjs','android/app/src/androidTest/java/org/opentriage/development/HistoricalUpgradePreparation.java'];
+ const allowed=['scripts/android-release-upgrade.mjs','android/app/src/androidTest/java/org/opentriage/development/HistoricalUpgradePreparation.java','scripts/android/journey-cleanup.mjs','tests/android-journey-cleanup.test.mjs'];
  assertUpgradeHarnessSource({artifactSource,testSource,changedPaths:allowed});
  for(const path of ['apps/api/src/admin/android-upgrade-policy.service.ts','apps/web/app/android-client-policy.ts','packages/contracts/android-client-protocol.mjs','android/app/src/main/java/org/opentriage/development/TrustedConnection.java','android/app/build.gradle','scripts/unknown.mjs']){
   assert.throws(()=>assertUpgradeHarnessSource({artifactSource,testSource,changedPaths:[...allowed,path]}),/explicit test-only paths/);

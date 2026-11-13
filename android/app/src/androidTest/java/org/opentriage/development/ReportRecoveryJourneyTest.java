@@ -739,7 +739,9 @@ public class ReportRecoveryJourneyTest {
     }
     private void reassignWithLostResponse() throws Exception {
         var args = InstrumentationRegistry.getArguments();
-        waitFor("document.querySelector('.session-identity')");
+        // The host deliberately withdrew the retained login before reconnecting.
+        // Legacy transition recovery is also available at the sign-in boundary.
+        waitFor("document.querySelector('.session-identity') || document.querySelector('input[name=username]')");
         evaluate("window.dispatchEvent(new Event('open-triage.android-replace-installation'))");
         JSONObject expiring = new JSONObject(new String(android.util.Base64.decode(args.getString("expiredArtifactBase64"), android.util.Base64.NO_WRAP), StandardCharsets.UTF_8));
         AndroidUiInput.importPairing(this::evaluate, this::waitFor, expiring.toString());
