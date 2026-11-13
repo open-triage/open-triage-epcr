@@ -199,8 +199,10 @@ public class ReportRecoveryJourneyTest {
         String originalSize = override.find() ? override.group(1) : "reset";
         evaluate("window.__navigationRealm=true;window.__navigationTimeOrigin=performance.timeOrigin");
         try {
+            quickActionsRemainPinned();
             device.setOrientationLeft();
             waitFor("innerWidth>innerHeight");
+            quickActionsRemainPinned();
             closeControlReachable();
             assertEquals(JSONObject.quote("ANDROID-CONNECTED-SYNTHETIC"), evaluate("(" + FIELD + ").value"));
             device.setOrientationNatural(); waitFor("innerHeight>innerWidth");
@@ -211,6 +213,7 @@ public class ReportRecoveryJourneyTest {
                 if (zoom.get() == 150) break; Thread.sleep(150);
             } while (System.currentTimeMillis() < end);
             assertEquals("System accessibility text size reaches the actual WebView", 150, zoom.get());
+            quickActionsRemainPinned();
             waitFor("document.documentElement.scrollWidth<=innerWidth+1");
             tapElement(FIELD);
             var keyboard = new java.util.concurrent.atomic.AtomicBoolean();
@@ -248,6 +251,14 @@ public class ReportRecoveryJourneyTest {
             device.executeShellCommand("settings put system font_scale " + originalFont);
             device.setOrientationNatural(); device.unfreezeRotation();
         }
+    }
+    private void quickActionsRemainPinned() throws Exception {
+        click("Mobile");waitFor("document.querySelector('.quick-actions button')");
+        evaluate("window.scrollTo({top:0,behavior:'instant'});window.__quickActionsStart=scrollY;var bar=document.querySelector('.quick-actions');window.scrollTo({top:bar.getBoundingClientRect().top+scrollY+300,behavior:'instant'})");
+        waitFor("scrollY>window.__quickActionsStart+50");
+        waitFor("(()=>{const bar=document.querySelector('.quick-actions'),r=bar.getBoundingClientRect();return getComputedStyle(bar).position==='sticky'&&r.top>=-1&&r.bottom<=innerHeight+1&&[...bar.querySelectorAll('button')].every(button=>{const b=button.getBoundingClientRect();return b.width>=44&&b.height>=44&&button.contains(document.elementFromPoint(b.x+b.width/2,b.y+b.height/2))})})()");
+        assertEquals("Native quick capture stays visible and tappable through real scrolling", "6", evaluate("document.querySelectorAll('.quick-actions button').length"));
+        click("Stationary");waitFor("("+FIELD+")?.value==='ANDROID-CONNECTED-SYNTHETIC'");
     }
     private void closeControlReachable() throws Exception {
         String control = "Array.from(document.querySelectorAll('.draft-actions button')).find(button=>button.textContent==='Save & close')";
@@ -728,8 +739,10 @@ public class ReportRecoveryJourneyTest {
     }
     private void reassignWithLostResponse() throws Exception {
         var args = InstrumentationRegistry.getArguments();
-        waitFor("document.querySelector('[data-change-installation]')");
-        evaluate("document.querySelector('[data-change-installation]').click()");
+        // The host deliberately withdrew the retained login before reconnecting.
+        // Legacy transition recovery is also available at the sign-in boundary.
+        waitFor("document.querySelector('.session-identity') || document.querySelector('input[name=username]')");
+        evaluate("window.dispatchEvent(new Event('open-triage.android-replace-installation'))");
         JSONObject expiring = new JSONObject(new String(android.util.Base64.decode(args.getString("expiredArtifactBase64"), android.util.Base64.NO_WRAP), StandardCharsets.UTF_8));
         AndroidUiInput.importPairing(this::evaluate, this::waitFor, expiring.toString());
         waitFor("document.querySelector('input[type=checkbox]')");

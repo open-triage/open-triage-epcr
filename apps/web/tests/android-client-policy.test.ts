@@ -22,3 +22,12 @@ test("upgrade links bind both approved tag forms to exact replacement metadata",
     ]) assert.throws(() => validatedUpgradeDownload({ ...value, ...change }, 1));
   }
 });
+
+test("short APK names remain pinned to the repository, release version and tag",()=>{
+ for(const candidate of [true,false]){
+  const value=replacement(candidate);
+  value.downloadUrl=value.downloadUrl.replace(/opentriage-[^/]+\.apk$/,`opentriage-${value.versionName}.apk`);
+  assert.equal(validatedUpgradeDownload(value,1),value.downloadUrl);
+  for(const downloadUrl of [value.downloadUrl.replace('github.com','attacker.invalid'),value.downloadUrl+'?download=1',value.downloadUrl.replace('opentriage-0.1.0-rc.2.apk','opentriage-0.1.0-rc.3.apk')])assert.throws(()=>validatedUpgradeDownload({...value,downloadUrl},1));
+ }
+});

@@ -135,7 +135,7 @@ public class TlsRotationJourneyTest {
                 retained(args.getString("retainedSha256"));return;
             }
             if(phase.equals("failure")) {
-                waitFor("document.querySelector('[data-change-installation]')");
+                waitFor("document.querySelector('[role=alert],.session-identity')");
                 evaluate("window.__tlsResult=null;fetch('/api/installations/current').then(response=>window.__tlsResult={status:response.status}).catch(error=>window.__tlsResult={code:error.code})");
                 waitFor("window.__tlsResult");assertEquals(JSONObject.quote("TLS_FAILED"),evaluate("window.__tlsResult.code"));
                 waitFor("document.querySelector('[data-android-tls-failure]')");
@@ -148,7 +148,7 @@ public class TlsRotationJourneyTest {
                 policy(next);waitFor("document.querySelector('[data-managed-status=changed]')");
                 assertFalse(context().getSystemService(android.app.admin.DevicePolicyManager.class).isDeviceOwnerApp(context().getPackageName()));
             }
-            waitFor("document.querySelector('[data-change-installation]')");evaluate("document.querySelector('[data-change-installation]').click()");
+            waitFor("document.querySelector('[role=alert],.session-identity')");evaluate("window.dispatchEvent(new Event('open-triage.android-replace-installation'))");
             if(phase.equals("managed-replace") || phase.equals("managed-conflict")) {
                 var conflict=new JSONObject(next.toString()).put("caPem",artifact("oldArtifactBase64").getString("caPem"));
                 importArtifact(conflict);waitFor("document.querySelector('[role=alert]') && !document.querySelector('input[type=file]').disabled");

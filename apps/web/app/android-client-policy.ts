@@ -1,4 +1,4 @@
-import { approvedAndroidReleaseUrl } from "@open-triage/contracts/android-release";
+import { androidApkArtifactName, approvedAndroidReleaseUrl } from "@open-triage/contracts/android-release";
 import type { AndroidUpgradeClientPolicy } from "@open-triage/contracts/android-upgrade-policy";
 import { applicationVisible } from "./application-foreground";
 import { AndroidConnection } from "./android-runtime";
@@ -9,9 +9,8 @@ export function validatedUpgradeDownload(replacement: NonNullable<AndroidUpgrade
   if (!/^[a-f0-9]{64}$/.test(replacement.apkSha256) || typeof replacement.versionName !== "string" || replacement.versionName.length > 100 ||
       !/^\d+\.\d+\.\d+(?:-[A-Za-z0-9.-]+)?$/.test(replacement.versionName) || !Number.isSafeInteger(replacement.versionCode) ||
       replacement.versionCode <= installedVersion || replacement.versionCode > 21e8) throw new Error("android.policyOnlineRequired");
-  const descriptor = { versionCode: replacement.versionCode, versionName: replacement.versionName,
-    artifact: `opentriage-${replacement.versionName}-${replacement.versionCode}-${replacement.apkSha256}.apk` };
-  if (replacement.downloadUrl !== approvedAndroidReleaseUrl(replacement.tag, descriptor)) throw new Error("android.policyOnlineRequired");
+  const artifacts = [androidApkArtifactName(replacement.versionName), `opentriage-${replacement.versionName}-${replacement.versionCode}-${replacement.apkSha256}.apk`];
+  if (!artifacts.some(artifact => replacement.downloadUrl === approvedAndroidReleaseUrl(replacement.tag, {...replacement, artifact}))) throw new Error("android.policyOnlineRequired");
   return replacement.downloadUrl;
 }
 

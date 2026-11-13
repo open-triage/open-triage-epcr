@@ -3,7 +3,6 @@ import { isAndroidRuntime } from "../app/android-runtime";
 import { AndroidApkLink } from "./android-apk-link";
 import { useAndroidUpgradePolicy } from "./use-android-upgrade-policy";
 import { useAndroidBack } from "./use-android-back";
-import { AndroidInstallationAction } from "./android-installation-action";
 import { APPLICATION_FOREGROUND_EVENT, applicationVisible, foregroundNetworkAllowed } from "../app/application-foreground";
 import {useMeasuredParentHeight} from './use-measured-parent-height';
 import { UnsavedChangesContext, confirmDiscardChanges } from "./unsaved-changes";
@@ -528,10 +527,9 @@ export function ClinicianSessionGate({ children }: {
     {startupState === "loading" ? <LoadingStatus>{t("login.opening")}</LoadingStatus> : <div role="alert">
       <p>{online ? t("login.connectFailed") : t("login.reconnect")}</p>
       {online && startupFailure && <p>{startupFailure === "android.serverUpgradeRequired" ? t(startupFailure) : startupFailure}</p>}
-      <AndroidInstallationAction language={language} />
     </div>}
   </main>;
-  if (!installation) return <main className="login-shell"><p className="login-message" role="alert">{message ?? t("login.configurationUnavailable")}</p><AndroidInstallationAction language={language} /></main>;
+  if (!installation) return <main className="login-shell"><p className="login-message" role="alert">{message ?? t("login.configurationUnavailable")}</p></main>;
   if (!authenticatedSession) {
     return (
       <main className="login-shell">
@@ -561,7 +559,6 @@ export function ClinicianSessionGate({ children }: {
             <button type="submit" disabled={submitting||lockingSession||transitionPending}>{submitting ? t("login.signingIn") : t("login.signIn")}</button>
             </>}
           </div>
-          <AndroidInstallationAction language={language} />
         </form>
       </main>
     );
@@ -596,7 +593,6 @@ export function ClinicianSessionGate({ children }: {
         <p className="eyebrow">{t("login.signedIn")}</p>
         <h1 id="no-workspace-heading">{t("login.noWorkspace")}</h1>
         <p>{t("login.noWorkspaceHelp")}</p>
-        <AndroidInstallationAction language={language} />
         <button type="button" onClick={requestLogout}>{t("navigation.logOut")}</button>
       </section>
     </main>;
@@ -606,7 +602,6 @@ export function ClinicianSessionGate({ children }: {
     <div className="authenticated-shell admin-shell desktop-shell">
       <header className="session-bar">
         <span className="session-identity">{t("navigation.signedInAs", { name: authenticatedSession.user.displayName })}</span>
-        <AndroidInstallationAction language={language} />
         <button type="button" onClick={requestLogout}>{t("navigation.logOut")}</button>
       </header>
       <main className="admin-shell">
@@ -656,7 +651,6 @@ export function ClinicianSessionGate({ children }: {
               onClick={() => selectPresentationMode("admin")}>{t("navigation.admin")}</button>}
           </div>
         </div>
-        <AndroidInstallationAction language={language} />
         <button type="button" onClick={requestLogout}>{t("navigation.logOut")}</button>
       </header>
       {logoutWarning && <div className="dialog-backdrop logout-backdrop" role="presentation">

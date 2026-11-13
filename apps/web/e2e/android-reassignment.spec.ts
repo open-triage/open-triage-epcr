@@ -17,15 +17,16 @@ async function bundle(contents: string, native = false) {
     `}));}}]} : {}),stdin:{resolveDir:path.resolve(__dirname,'..'),loader:'tsx',contents}})).outputFiles[0]!.text;
 }
 
-test('native replacement settles current identity and resumes only the already confirmed journal after reply loss',async({page})=>{
-  const script=await bundle(`import React from 'react';import{createRoot}from'react-dom/client';import{AndroidRuntimeGate}from'./components/android-runtime-gate';import{AndroidInstallationAction}from'./components/android-installation-action';
+// A fixture-only trigger covers transitions from older APKs; current UI has no replacement control.
+test('legacy native replacement settles current identity and resumes only the already confirmed journal after reply loss',async({page})=>{
+  const script=await bundle(`import React from 'react';import{createRoot}from'react-dom/client';import{AndroidRuntimeGate}from'./components/android-runtime-gate';import{ANDROID_REPLACE_INSTALLATION}from'./app/android-installation-events'; const LegacyReplacement=()=> <button onClick={()=>window.dispatchEvent(new Event(ANDROID_REPLACE_INSTALLATION))}>Simulate legacy replacement</button>;
     localStorage.setItem('open-triage.clinician-session.v1','old personal identity');
-    createRoot(document.getElementById('root')!).render(<AndroidRuntimeGate><main data-clinical>Current workspace<AndroidInstallationAction language="en"/></main></AndroidRuntimeGate>);`,true);
+    createRoot(document.getElementById('root')!).render(<AndroidRuntimeGate><main data-clinical>Current workspace<LegacyReplacement/></main></AndroidRuntimeGate>);`,true);
   await page.route('**/__native-reassignment-script',r=>r.fulfill({contentType:'text/javascript',body:script}));
   await page.route('**/__native-reassignment',r=>r.fulfill({contentType:'text/html',body:'<html><body><div id="root"></div><script>window.fixture={begun:0,state:{configured:true,origin:"https://original.example",storageScope:"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",connectionContext:"original"}}</script><script src="/__native-reassignment-script"></script></body></html>'}));
   await page.goto('/__native-reassignment');
   await page.evaluate(()=>{(window as unknown as {fixture:{holdReplacement:boolean}}).fixture.holdReplacement=true;});
-  await page.getByRole('button',{name:'Change installation'}).click();
+  await page.getByRole('button',{name:'Simulate legacy replacement'}).click();
   await expect(page.locator('[data-clinical]')).toHaveCount(0);
   // Appearance is not readiness: native replacement and encrypted locking are still settling.
   await expect(page.locator('input[type=file]')).toBeDisabled();
@@ -35,7 +36,7 @@ test('native replacement settles current identity and resumes only the already c
   await page.getByRole('button',{name:'Return to current installation'}).click();
   await expect(page.locator('[data-clinical]')).toBeVisible();
   expect(await page.evaluate(()=>localStorage.getItem('open-triage.clinician-session.v1'))).toBe('old personal identity');
-  await page.getByRole('button',{name:'Change installation'}).click();
+  await page.getByRole('button',{name:'Simulate legacy replacement'}).click();
   const artifact={version:1,origin:'https://original.example',token:'A'.repeat(43),caPem:'',expiresAt:new Date(Date.now()+240000).toISOString()};
   await page.locator('input[type=file]').setInputFiles({name:'pairing.json',mimeType:'application/json',buffer:Buffer.from(JSON.stringify(artifact))});
   await page.getByRole('textbox').fill('New installation');await page.getByRole('checkbox').check();await page.locator('button[type=submit]').click();
@@ -48,11 +49,11 @@ test('native replacement settles current identity and resumes only the already c
 });
 
 test('proved abandonment in the same live gate removes the stale confirmed preview before accepting a new code',async({page})=>{
-  const script=await bundle(`import React from 'react';import{createRoot}from'react-dom/client';import{AndroidRuntimeGate}from'./components/android-runtime-gate';import{AndroidInstallationAction}from'./components/android-installation-action';
-    createRoot(document.getElementById('root')!).render(<AndroidRuntimeGate><main data-clinical>Current workspace<AndroidInstallationAction language="en"/></main></AndroidRuntimeGate>);`,true);
+  const script=await bundle(`import React from 'react';import{createRoot}from'react-dom/client';import{AndroidRuntimeGate}from'./components/android-runtime-gate';import{ANDROID_REPLACE_INSTALLATION}from'./app/android-installation-events'; const LegacyReplacement=()=> <button onClick={()=>window.dispatchEvent(new Event(ANDROID_REPLACE_INSTALLATION))}>Simulate legacy replacement</button>;
+    createRoot(document.getElementById('root')!).render(<AndroidRuntimeGate><main data-clinical>Current workspace<LegacyReplacement/></main></AndroidRuntimeGate>);`,true);
   await page.route('**/__live-abandon-script',route=>route.fulfill({contentType:'text/javascript',body:script}));
   await page.route('**/__live-abandon',route=>route.fulfill({contentType:'text/html',body:'<html><body><div id="root"></div><script>window.fixture={begun:0,uncommitted:true,state:{configured:true,origin:"https://original.example",storageScope:"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",connectionContext:"original"}}</script><script src="/__live-abandon-script"></script></body></html>'}));
-  await page.goto('/__live-abandon');await page.getByRole('button',{name:'Change installation'}).click();
+  await page.goto('/__live-abandon');await page.getByRole('button',{name:'Simulate legacy replacement'}).click();
   const artifact={version:1,origin:'https://original.example',token:'A'.repeat(43),caPem:'',expiresAt:new Date(Date.now()+240000).toISOString()};
   await page.getByLabel('Import vehicle pairing file').setInputFiles({name:'pairing.json',mimeType:'application/json',buffer:Buffer.from(JSON.stringify(artifact))});
   await page.getByRole('textbox').fill('Old confirmed preview');await page.getByRole('checkbox').check();await page.locator('button[type=submit]').click();

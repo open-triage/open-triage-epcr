@@ -7,7 +7,18 @@ import { spawnSync } from 'node:child_process';
 import catalog from '@open-triage/contracts/config/android-releases.json' with {type:'json'};
 import legacy from './fixtures/android-published-legacy-releases.json' with {type:'json'};
 import {latestApprovedAndroidRelease,syntheticApprovedAndroidRelease} from './helpers/android-release-fixtures.mjs';
-import { approvedAndroidReleaseUrl, parseAndroidReleaseDescriptor } from '@open-triage/contracts/android-release';
+import { androidApkArtifactName, approvedAndroidReleaseUrl, parseAndroidReleaseDescriptor } from '@open-triage/contracts/android-release';
+
+test('new APK names contain the version once while metadata verifies bytes and historical artifacts remain valid',()=>{
+ assert.equal(androidApkArtifactName('0.1.0-rc.6'),'opentriage-0.1.0-rc.6.apk');
+ for(const name of ['', '../0.1.0', '0.1.0/extra', '0.1.0?download=1'])assert.throws(()=>androidApkArtifactName(name));
+ const previous=catalog.releases[0].descriptor;
+ assert.deepEqual(parseAndroidReleaseDescriptor(previous),previous);
+ const short={...previous,artifact:androidApkArtifactName(previous.versionName)};
+ assert.deepEqual(parseAndroidReleaseDescriptor(short),short);
+ for(const artifact of ['../'+short.artifact,'opentriage-9.9.9.apk','opentriage-'+previous.versionName+'-wrong.apk','opentriage-'+previous.versionName+'-'+previous.versionCode+'-'+'0'.repeat(64)+'.apk'])assert.throws(()=>parseAndroidReleaseDescriptor({...short,artifact}));
+ assert.throws(()=>parseAndroidReleaseDescriptor({...short,apkSha256:'invalid'}));
+});
 
 test('every approved catalog entry preserves the owned signing identity and immutable versioned artifact URL',async()=>{
  const identity=JSON.parse(await readFile(new URL('../docs/releases/android/signing-identity.json',import.meta.url),'utf8'));

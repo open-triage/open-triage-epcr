@@ -1,5 +1,13 @@
 # Signed Android releases
 
+New APK filenames use only the version name, for example
+`opentriage-0.1.0-rc.6.apk`. The Android version code and SHA-256 stay in
+`release.json`, with the digest also in `SHA256SUMS`. Existing published artifact
+names and URLs remain immutable and supported by download validation.
+Candidates 1–5 only recognize their original filename format in the installed
+upgrade UI. Update those builds through browser Admin, the public release page,
+MDM or ADB; the new build recognizes both filename formats.
+
 The release owner delegated identity, custody and hosting selection on 2026-11-11
 and authorized provisioning and candidate publication. The selected permanent
 application is `org.opentriage.android`; the organization release maintainers for
