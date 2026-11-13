@@ -65,7 +65,7 @@ test('actual staging controller allows only test-only harness deltas before chec
    await writeFile(join(directory,'controller.mjs'),controller);
    await writeFile(join(directory,'scripts/android/upgrade-harness-source.mjs'),guard);
    await writeFile(join(directory,'runner/preflight-evidence.json'),'{}');
-   const shim=`#!${process.execPath}\nconst fs=require('node:fs'),path=require('node:path');const tool=path.basename(process.argv[1]),args=process.argv.slice(2);fs.appendFileSync(process.env.PROBE_LOG,JSON.stringify({tool,args})+'\\n');
+   const shim=`#!${process.execPath}\nconst fs=require('node:fs'),path=require('node:path');const tool=path.basename(process.argv[1]),args=process.argv.slice(2);fs.appendFileSync(process.env.PROBE_LOG,JSON.stringify({tool,args,production:process.env.ANDROID_PRODUCTION_RELEASE,instrumentation:process.env.ANDROID_RELEASE_INSTRUMENTATION,versionCode:process.env.ANDROID_VERSION_CODE,versionName:process.env.ANDROID_VERSION_NAME})+'\\n');
    if(tool==='gh'){
     if(args[0]==='api')console.log(JSON.stringify([{tag_name:'android-v8-0.1.0-rc.8',draft:false}]));
     else fs.writeFileSync(path.join(args[args.indexOf('--dir')+1],'release.json'),JSON.stringify({versionCode:8}));
@@ -80,7 +80,12 @@ test('actual staging controller allows only test-only harness deltas before chec
    assert.equal(commands.filter(c=>c.tool==='gradlew').length,allowed&&!!harness?1:0);
    assert.equal(commands.filter(c=>c.tool==='npm'&&c.args.includes('android:release')).length,1,'Artifact is built once from the verified source');
    assert.equal(commands.filter(c=>c.tool==='npm'&&c.args.includes('android:test:upgrade')).length,allowed?1:0);
-   if(allowed&&harness)assert.deepEqual(commands.find(c=>c.tool==='gradlew').args,['--no-daemon',':app:assembleReleaseAndroidTest']);
+   if(allowed&&harness){
+    const rebuild=commands.find(c=>c.tool==='gradlew');
+    assert.deepEqual(rebuild.args,['--no-daemon',':app:assembleReleaseAndroidTest']);
+    assert.equal(rebuild.production,'1');assert.equal(rebuild.instrumentation,'1');
+    assert.equal(rebuild.versionCode,'9');assert.equal(rebuild.versionName,'0.1.0-rc.9');
+   }
   }finally{await rm(directory,{recursive:true,force:true});}
  }
 });

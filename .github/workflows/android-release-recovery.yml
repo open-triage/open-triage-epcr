@@ -120,7 +120,7 @@ jobs:
             const changedPaths=execFileSync('git',['diff','--name-only',`${artifactSource}..${env.UPGRADE_HARNESS}`],{encoding:'utf8'}).trim().split('\n').filter(Boolean);
             assertUpgradeHarnessSource({artifactSource,testSource:env.UPGRADE_HARNESS,changedPaths});
             execFileSync('git',['checkout','--detach',env.UPGRADE_HARNESS],{stdio:'inherit'});
-            execFileSync('./gradlew',['--no-daemon',':app:assembleReleaseAndroidTest'],{cwd:'android',env,stdio:'inherit'});
+            execFileSync('./gradlew',['--no-daemon',':app:assembleReleaseAndroidTest'],{cwd:'android',env:{...env,ANDROID_PRODUCTION_RELEASE:'1'},stdio:'inherit'});
           }
           run(['run','android:test:upgrade','--',prior,env.ANDROID_RELEASE_OUTPUT]);
           copyFileSync(`${env.RUNNER_TEMP}/preflight-evidence.json`,`${env.ANDROID_RELEASE_OUTPUT}/preflight-evidence.json`);
