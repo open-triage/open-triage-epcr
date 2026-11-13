@@ -15,9 +15,15 @@ final class OfficialApkLink {
                     ||uri.getPort()!=-1||uri.getRawQuery()!=null||uri.getRawFragment()!=null||!value.equals(uri.toASCIIString()))return null;
             String path=uri.getRawPath();if(path==null||!path.startsWith(PREFIX)||path.contains("%"))return null;
             String[] parts=path.substring(PREFIX.length()).split("/",-1);if(parts.length!=2)return null;
-            var file=FILE.matcher(parts[1]);if(!file.matches())return null;
-            String version=file.group(1),code=file.group(2);if(version.length()>100||Long.parseLong(code)>2100000000L)return null;
-            if(!parts[0].equals("android-v"+code+"-"+version)&&!parts[0].equals("android-candidate-"+code+"-"+version))return null;
+            String tagPrefix=parts[0].startsWith("android-candidate-")?"android-candidate-":parts[0].startsWith("android-v")?"android-v":null;
+            if(tagPrefix==null)return null;
+            String tagged=parts[0].substring(tagPrefix.length());int separator=tagged.indexOf('-');if(separator<1)return null;
+            String code=tagged.substring(0,separator),version=tagged.substring(separator+1);
+            if(!code.matches("[1-9][0-9]{0,9}")||Long.parseLong(code)>2100000000L||version.length()>100||!version.matches("[0-9]+[.][0-9]+[.][0-9]+(?:-[A-Za-z0-9.-]+)?"))return null;
+            // New filenames contain only the version name; retain exact published legacy links.
+            if(!parts[1].equals("opentriage-"+version+".apk")){
+                var file=FILE.matcher(parts[1]);if(!file.matches()||!version.equals(file.group(1))||!code.equals(file.group(2)))return null;
+            }
             return uri;
         }catch(IllegalArgumentException invalid){return null;}
     }
