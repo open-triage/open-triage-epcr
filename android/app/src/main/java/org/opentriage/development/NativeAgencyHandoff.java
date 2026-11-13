@@ -49,7 +49,7 @@ final class NativeAgencyHandoff {
         if (!id.matches("[a-fA-F0-9-]{36}")) throw new IllegalArgumentException("Invalid handoff transaction");
         String targetOrigin = start.getString("targetOrigin");
         // The already approved public CA is reused; never accept a target-supplied CA.
-        var target = new TrustedConnection(targetOrigin, source.caPem);
+        var target = TrustedConnection.personalHandoffTarget(targetOrigin, source.caPem);
         if (target.origin.equals(source.origin)) throw new IllegalArgumentException("Unexpected same-origin handoff");
         destination(start.getString("targetUrl"), target.origin, "prepare", id);
         check.target(target); // Managed-origin conflicts fail before any target request or source revocation.

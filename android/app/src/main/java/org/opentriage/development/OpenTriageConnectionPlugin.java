@@ -446,7 +446,7 @@ public class OpenTriageConnectionPlugin extends LifecycleBoundPlugin {
     /** Check pairing independently of personal login, including while the sign-in screen is open. */
     @PluginMethod public void refreshInstallation(PluginCall call) { execute(call, () -> {
         if (!connectionContext.equals(call.getString("connectionContext"))) throw new IllegalStateException("Installation changed");
-        if (active == null || pendingEnrollment != null || pendingHandoff != null || replacing) return connectionState();
+        if (active == null || !active.requiresInstallation() || pendingEnrollment != null || pendingHandoff != null || replacing) return connectionState();
         var response = managedRequest(active, "/api/installations/current", "GET", new JSONObject(), null);
         if (NativeInstallationStatus.requiresPairing(response.status(), response.body())) {
             // Persist before replying so process death cannot reopen the revoked workspace.

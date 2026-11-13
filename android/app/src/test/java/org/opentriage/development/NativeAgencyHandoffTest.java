@@ -37,8 +37,12 @@ public class NativeAgencyHandoffTest {
         var source=source();var calls=new ArrayList<String>();var phases=new ArrayList<String>();var request=requests(source,calls);
         var pending=NativeAgencyHandoff.prepare(source,AGENCY,"csrf",request,target->assertEquals(TARGET,target.origin));
         assertEquals("prepared",pending.getString("phase"));assertEquals(2,calls.size());
+        assertTrue(source.requiresInstallation());
+        assertFalse(TrustedConnection.restore(pending.getJSONObject("target")).requiresInstallation());
         var result=NativeAgencyHandoff.finish(pending,source,request,target->assertEquals(TARGET,target.origin),value->phases.add(value.getString("phase")));
         assertEquals(List.of("issuing","consuming","consuming"),phases);assertEquals(TARGET,result.connection().origin);assertEquals(AGENCY,result.session().getJSONObject("organization").getString("id"));assertEquals(4,calls.size());
+        assertFalse("Personal handoff cannot be revoked by an absent vehicle enrollment", result.connection().requiresInstallation());
+        assertFalse(TrustedConnection.restore(result.connection().saved()).requiresInstallation());
     }
     @Test public void managedConflictAndUntrustedTargetFailBeforeSourceIssuance() throws Exception {
         for(boolean managed:new boolean[]{true,false}) {

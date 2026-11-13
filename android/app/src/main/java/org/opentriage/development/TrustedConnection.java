@@ -32,6 +32,8 @@ final class TrustedConnection {
     private final List<X509Certificate> caCertificates = new ArrayList<>();
     private final java.util.function.LongSupplier clock;
     private final Map<String, SavedCookie> cookies = new HashMap<>();
+    // Connection purpose survives cookie expiry, process death and personal logout.
+    private boolean installationRequired = true;
     private static final Set<String> COOKIE_NAMES = Set.of("open_triage_session", "open_triage_installation", "open_triage_agency_handoff");
     private static final Set<String> HEADERS = Set.of("accept", "content-type", "x-csrf-token", "x-organization-id", "x-installation-enrollment", "x-personal-authentication", "x-job-confirmation", "x-agency-handoff", "if-match", "if-none-match");
     record SavedCookie(String value, long expires, String path) { SavedCookie(String value, long expires) { this(value, expires, "/api"); } }
@@ -302,6 +304,13 @@ final class TrustedConnection {
         return next;
     }
 
+    static TrustedConnection personalHandoffTarget(String origin, String caPem) throws Exception {
+        TrustedConnection target = new TrustedConnection(origin, caPem);
+        target.installationRequired = false;
+        return target;
+    }
+    boolean requiresInstallation() { return installationRequired; }
+
     private static String cookiePath(String name) { return name.equals("open_triage_agency_handoff") ? "/api/sessions/agency-handoff" : "/api"; }
     void clearPersonalSession() { cookies.remove("open_triage_session"); cookies.remove("open_triage_agency_handoff"); }
     /** Copy only already-approved immutable trust; credential removal does not revalidate or replace it. */
@@ -310,6 +319,7 @@ final class TrustedConnection {
         this.caPem = source.caPem;
         this.socketFactory = source.socketFactory;
         this.clock = source.clock;
+        this.installationRequired = source.installationRequired;
         this.caCertificates.addAll(source.caCertificates);
     }
     TrustedConnection installationOnly() {
@@ -325,13 +335,14 @@ final class TrustedConnection {
     JSONObject saved() throws Exception {
         JSONArray savedCookies = new JSONArray();
         for (var entry : cookies.entrySet()) savedCookies.put(new JSONObject().put("name", entry.getKey()).put("value", entry.getValue().value).put("expires", entry.getValue().expires).put("path", entry.getValue().path));
-        return new JSONObject().put("origin", origin).put("caPem", caPem).put("cookies", savedCookies);
+        return new JSONObject().put("origin", origin).put("caPem", caPem).put("installationRequired", installationRequired).put("cookies", savedCookies);
     }
     static TrustedConnection restore(JSONObject saved) throws Exception {
         return restore(saved, System::currentTimeMillis);
     }
     static TrustedConnection restore(JSONObject saved, java.util.function.LongSupplier clock) throws Exception {
         TrustedConnection connection = new TrustedConnection(saved.getString("origin"), saved.getString("caPem"), clock, true);
+        connection.installationRequired = saved.optBoolean("installationRequired", true);
         JSONArray cookies = saved.getJSONArray("cookies");
         for (int i = 0; i < cookies.length(); i++) {
             JSONObject cookie = cookies.getJSONObject(i);

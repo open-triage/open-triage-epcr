@@ -35,6 +35,25 @@ public class TrustedConnectionTest {
         assertSame(factory.get(original),factory.get(expired));
         assertEquals("Copies cannot mutate the existing connection",2,original.saved().getJSONArray("cookies").length());
     }
+    @Test public void connectionPurposeSurvivesExpiredCookiesRestartAndCredentialRemoval() throws Exception {
+        var paired = new TrustedConnection("https://localhost", "");
+        assertTrue(paired.requiresInstallation());
+        var expired = paired.saved().put("cookies", new org.json.JSONArray().put(new JSONObject()
+            .put("name", "open_triage_installation").put("value", "expired").put("expires", 1)));
+        var restored = TrustedConnection.restore(expired);
+        assertEquals(0, restored.saved().getJSONArray("cookies").length());
+        assertTrue(restored.requiresInstallation());
+        assertTrue(restored.installationOnly().requiresInstallation());
+        expired.remove("installationRequired");
+        assertTrue("Existing paired vaults retain revocation checks", TrustedConnection.restore(expired).requiresInstallation());
+        var personal = TrustedConnection.personalHandoffTarget("https://target.example.test", "");
+        assertFalse(personal.requiresInstallation());
+        assertFalse(TrustedConnection.restore(personal.saved()).requiresInstallation());
+        assertFalse(personal.installationOnly().requiresInstallation());
+        personal.clearPersonalSession();
+        assertFalse(personal.requiresInstallation());
+        assertTrue("New vehicle enrollment restores installation checks", personal.enrollmentCandidate(personal.origin, personal.caPem).requiresInstallation());
+    }
     @Test public void rejectsMalformedExpiredAndOversizedImports() throws Exception {
         assertEquals(1, TrustedConnection.artifact(artifact().toString(), System.currentTimeMillis()).getInt("version"));
         for (JSONObject bad : new JSONObject[]{artifact().put("version", 2), artifact().put("version", 1.5), artifact().put("privateKey", "secret"), artifact().put("token", "bad"), artifact().put("expiresAt", Instant.now().minusSeconds(1).toString())}) {
