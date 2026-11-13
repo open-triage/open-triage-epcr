@@ -6,6 +6,43 @@
   },
   "releases": [
     {
+      "tag": "android-v8-0.1.0-rc.8",
+      "descriptor": {
+        "schemaVersion": 1,
+        "applicationId": "org.opentriage.android",
+        "versionCode": 8,
+        "versionName": "0.1.0-rc.8",
+        "certificateSha256": "2103f9a5fd4b17b113666165b86d52fad495d4e07b1507b18ee66a487a552a3a",
+        "apkSha256": "094433a8aabff92530d47c7b757ff2f57fccc425cf52f74068a373e4dbddbc5a",
+        "apkBytes": 8634385,
+        "uiSha256": "be96821dba96e9f45da4fb14ca05ab959e73fdcc5bf83db6be52b612739a6db9",
+        "sourceCommit": "31d9bcd628ba852a8a9bd90e707d470642aa94a5",
+        "compatibility": {
+          "pairingArtifact": 1,
+          "protectedReportSchema": 1,
+          "recoveryEnvelope": 1,
+          "api": {
+            "minimum": 1,
+            "maximum": 1
+          },
+          "requiredCapabilities": [
+            "native-enrollment-attempt-v1",
+            "native-enrollment-outcome-v1",
+            "native-oidc-return-v1",
+            "audio-webm-live-v1",
+            "android-upgrade-policy-v1",
+            "native-agency-handoff-v1",
+            "android-upgrade-gate-v1",
+            "personal-session-continuation-v1"
+          ]
+        },
+        "minAndroidApi": 33,
+        "targetAndroidApi": 36,
+        "artifact": "opentriage-0.1.0-rc.8.apk"
+      },
+      "downloadUrl": "https://github.com/open-triage/open-triage-epcr/releases/download/android-v8-0.1.0-rc.8/opentriage-0.1.0-rc.8.apk"
+    },
+    {
       "tag": "android-candidate-6-0.1.0-rc.6",
       "descriptor": {
         "schemaVersion": 1,
