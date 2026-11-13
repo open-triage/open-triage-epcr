@@ -82,8 +82,6 @@ export function AnalyticsPicker({ purpose, element, selected, selectedElementIds
   return <dialog className="analytics-dialog" ref={dialog} aria-labelledby="analytics-picker-title" onCancel={(event) => { event.preventDefault(); onClose(); }}>
     <header><h2 id="analytics-picker-title">{element ? element.label : t(`pick.${purpose}`)}</h2><button type="button" onClick={onClose}>{t("close")}</button></header>
     <label>{t("search")}<input type="search" value={search} onChange={(event) => { setSearch(event.target.value); setPage(1); }} /></label>
-    <p>{t(metricPicker ? "configuredCatalog" : data?.scope === "own" ? "catalogOwn" : "catalogAll")}</p>
-    <p className="analytics-caption">{t("countContext")}</p>
     {countError && <p role="alert">{t("countsUnavailable")} {resolveErrorMessage(language, countError, "analytics.unavailable")} <button type="button" onClick={() => setCountRetry((value) => value + 1)}>{t("retry")}</button></p>}
     {error && <p role="alert">{resolveErrorMessage(language, error, "analytics.unavailable")} <button type="button" onClick={() => setRetry((value) => value + 1)}>{t("retry")}</button></p>}
     {busy && <p role="status">{t(metricPicker ? "loadingMetrics" : "loading")}</p>}

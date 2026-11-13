@@ -4,6 +4,7 @@ const serverBackedMock = process.env.OPEN_TRIAGE_E2E_SERVER_MODE === "true";
 
 export default defineConfig({
   testDir: "./e2e",
+  outputDir: "./test-results/a11y",
   testIgnore: "deployment.spec.ts",
   fullyParallel: true,
   reporter: "line",

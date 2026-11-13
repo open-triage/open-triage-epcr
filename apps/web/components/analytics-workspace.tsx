@@ -1,5 +1,4 @@
 "use client";
-import { reviewAccess } from "../app/review-access";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { AnalyticsCatalogValue, AnalyticsDefinition, AnalyticsElement, AnalyticsResult, AnalyticsSavedVisualization, ClinicianSession } from "@open-triage/contracts";
 import { resolveErrorMessage, resolveMessage, type AgencyLanguage } from "../app/localization";
@@ -140,7 +139,6 @@ export function AnalyticsWorkspace({ session, language, online, active }: {
         </select></label>
         {metric.configured?.kind === "rule" && <label>{t("outcome")}<select value={draft.outcome ?? "pass"} onChange={(event) => update({ outcome: event.target.value as "pass" | "fail" })}>
           <option value="pass">{t("outcome.pass")}</option><option value="fail">{t("outcome.fail")}</option></select></label>}
-        {draft.aggregation === "p90" && <small>{t("p90Help")}</small>}
         <small>{t(metric.kind === "numeric" ? "continuous" : "discrete")}{metric.unit && ` · ${metric.unit}`}</small>
         {metric.repeating && metric.kind === "numeric" && <label>{t("reducer")}<select value={draft.reducer ?? ""} required onChange={(event) => update({ reducer: event.target.value as AnalyticsDefinition["reducer"] })}>
           <option value="">{t("chooseValue")}</option>{(["first", "last", "minimum", "maximum"] as const).map((value) => <option key={value} value={value}>{t(`reducer.${value}`)}</option>)}
@@ -154,7 +152,6 @@ export function AnalyticsWorkspace({ session, language, online, active }: {
           {invalidDates && <p id="analytics-date-error" role="alert">{t("dateError")}</p>}</div>
         <div><span className="analytics-control-label" id="analytics-group-label">{t("groupBy")}</span><button className="analytics-picker-trigger" type="button" aria-labelledby="analytics-group-label analytics-group-value"
           aria-haspopup="dialog" onClick={() => openPicker({ purpose: "group" })}><span id="analytics-group-value">{draft.groupBy ? fields[draft.groupBy]?.label : t("noGrouping")}</span><span aria-hidden="true">⌄</span></button></div>
-        <small>{t(reviewAccess(session).all ? "catalogAll" : "catalogOwn")}</small>
         <div className="analytics-filters"><span className="analytics-control-label">{t("filters")} · {draft.filters.length}</span>
           {draft.filters.map((filter) => <div className="analytics-filter-chip" key={filter.element}><button type="button" onClick={() => openPicker({ purpose: "filter", element: fields[filter.element] })}>
             <small>{fields[filter.element]?.label}</small>{filterLabels[filter.element]?.map((value) => value.label).join(", ") ?? filter.values.map((value) => String(value.value)).join(", ")}</button>
