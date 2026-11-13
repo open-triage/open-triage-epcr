@@ -69,9 +69,10 @@ public class ReportRecoveryJourneyTest {
     }
     private void records() throws Exception {
         evaluate("window.__retained=null;(()=>{const request=indexedDB.open('open-triage-protected-clinical-v1');request.onupgradeneeded=()=>{request.transaction.abort();window.__retained=[];};request.onsuccess=()=>{const db=request.result;if(!db.objectStoreNames.contains('encrypted-reports')){window.__retained=[];db.close();return;}const query=db.transaction('encrypted-reports').objectStore('encrypted-reports').getAll();query.onsuccess=()=>{window.__retained=query.result.map(row=>({...row,ciphertext:Array.from(new Uint8Array(row.ciphertext)),nonce:Array.from(new Uint8Array(row.nonce))}));db.close();};};})()");
-        waitFor("window.__retained!==null");
+        waitFor("Array.isArray(window.__retained)");
     }
     private String retainedDigest() throws Exception {
+        assertEquals("Only a completed encrypted-record snapshot can be hashed", "true", evaluate("Array.isArray(window.__retained)"));
         byte[] digest = java.security.MessageDigest.getInstance("SHA-256").digest(evaluate("JSON.stringify(window.__retained)").getBytes(StandardCharsets.UTF_8));
         var encoded = new StringBuilder();
         for (byte value : digest) encoded.append(String.format(java.util.Locale.ROOT, "%02x", value & 255));
@@ -816,6 +817,7 @@ public class ReportRecoveryJourneyTest {
         records(); assertEquals("Reassignment and process loss preserve exact eligible encrypted work", args.getString("retainedSha256"), retainedDigest());
     }
     private void pairingSnapshot() throws Exception {
+        waitFor("document.readyState==='complete' && (document.querySelector('.session-identity') || document.querySelector('input[name=username]'))");
         records();
         var result = new android.os.Bundle(); result.putString("retained_sha256", retainedDigest());
         InstrumentationRegistry.getInstrumentation().addResults(result);

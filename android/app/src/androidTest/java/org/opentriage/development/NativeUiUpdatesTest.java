@@ -22,7 +22,8 @@ public class NativeUiUpdatesTest {
     private void waitFor(ActivityScenario<MainActivity> activity, String condition) throws Exception {
         long until = System.currentTimeMillis() + 45_000;
         while (System.currentTimeMillis() < until) { if ("true".equals(evaluate(activity, "Boolean(" + condition + ")"))) return; Thread.sleep(100); }
-        fail("Hosted UI did not reach: " + condition + "; body=" + evaluate(activity, "document.body.innerText"));
+        fail("Hosted UI did not reach: " + condition + "; body=" + evaluate(activity, "document.body.innerText")
+            + "; bridge=" + evaluate(activity, "JSON.stringify({ready:document.readyState,probe:window.__nativeProbe,error:window.__nativeProbeError,scriptErrors:window.__fixtureErrors,version:document.body.dataset.nativeVersion,nativePromise:typeof window.Capacitor?.nativePromise,resources:performance.getEntriesByType('resource').map(entry=>entry.name)})"));
     }
     private void waitForCachedUi(ActivityScenario<MainActivity> activity, int revision) throws Exception {
         long until = System.currentTimeMillis() + 45_000;
@@ -72,12 +73,12 @@ public class NativeUiUpdatesTest {
                         if (path.equals("/sw.js")) { type = "text/javascript"; body = workerSource.replace("native-bootstrap", "device-hosted-" + version); }
                         else if (path.equals("/_next/static/ui.js")) {
                             type = "text/javascript";
-                            body = "window.Capacitor.nativePromise('OpenTriageConnection','version',{}).then(value=>document.body.dataset.nativeVersion=String(value.versionCode));"
+                            body = "window.__nativeProbe='request';window.Capacitor.nativePromise('OpenTriageConnection','version',{}).then(value=>{window.__nativeProbe='resolved';document.body.dataset.nativeVersion=String(value.versionCode);}).catch(error=>{window.__nativeProbe='rejected';window.__nativeProbeError=String(error);});"
                                 + "navigator.serviceWorker.addEventListener('controllerchange',()=>location.reload());"
                                 + "navigator.serviceWorker.register('/sw.js',{updateViaCache:'none'}).then(value=>value.update()).catch(()=>{});";
                         } else if (path.equals("/manifest.webmanifest")) { type = "application/manifest+json"; body = "{\"name\":\"Synthetic UI\"}"; }
                         else if (path.startsWith("/api/")) { type = "application/json"; body = "{\"enrolled\":true}"; }
-                        else { type = "text/html"; body = "<html><head><script defer src=\"/_next/static/ui.js\"></script></head><body><h1>Hosted UI " + version + "</h1></body></html>"; }
+                        else { type = "text/html"; body = "<html><head><script>window.__fixtureErrors=[];window.addEventListener('error',event=>window.__fixtureErrors.push(String(event.message||event.target?.src)),true);</script><script defer src=\"/_next/static/ui.js\"></script></head><body><h1>Hosted UI " + version + "</h1></body></html>"; }
                         byte[] bytes = body.getBytes(StandardCharsets.UTF_8);
                         String header = "HTTP/1.1 200 OK\r\nContent-Type: " + type + "\r\nCache-Control: no-store\r\nConnection: close\r\nContent-Length: " + bytes.length + "\r\n\r\n";
                         socket.getOutputStream().write(header.getBytes(StandardCharsets.US_ASCII)); socket.getOutputStream().write(bytes); socket.getOutputStream().flush();
