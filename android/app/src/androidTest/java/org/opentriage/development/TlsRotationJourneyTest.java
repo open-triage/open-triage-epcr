@@ -34,7 +34,7 @@ public class TlsRotationJourneyTest {
     private void waitFor(String expression) throws Exception {
         long end=System.currentTimeMillis()+45000;
         while(System.currentTimeMillis()<end){if("true".equals(evaluate("Boolean("+expression+")")))return;Thread.sleep(100);}
-        fail("TLS fixture UI condition failed: "+expression);
+        fail("TLS fixture UI condition failed: "+expression+"; body="+evaluate("document.body.innerText"));
     }
     private void input(String selector,String value) throws Exception {
         waitFor("document.querySelector("+JSONObject.quote(selector)+")");
@@ -42,7 +42,7 @@ public class TlsRotationJourneyTest {
     }
     private String retained(String expected) throws Exception {
         evaluate("window.__retained=null;(()=>{const request=indexedDB.open('open-triage-protected-clinical-v1');request.onupgradeneeded=()=>{request.transaction.abort();window.__retained=[]};request.onsuccess=()=>{const db=request.result;const query=db.transaction('encrypted-reports').objectStore('encrypted-reports').getAll();query.onsuccess=()=>{window.__retained=query.result.map(row=>({...row,ciphertext:Array.from(new Uint8Array(row.ciphertext)),nonce:Array.from(new Uint8Array(row.nonce))}));db.close()}}})()");
-        waitFor("window.__retained!==null");
+        waitFor("Array.isArray(window.__retained)");
         String actual=digest(evaluate("JSON.stringify(window.__retained)"));
         if(expected!=null&&!expected.isEmpty())assertEquals("Only an opaque digest is compared; failed trust must retain the exact pending record",expected,actual);
         assertEquals("true",evaluate("!JSON.stringify(window.__retained).includes('ANDROID-RETAINED-SYNTHETIC')"));
@@ -135,7 +135,7 @@ public class TlsRotationJourneyTest {
                 retained(args.getString("retainedSha256"));return;
             }
             if(phase.equals("failure")) {
-                waitFor("document.querySelector('[role=alert],.session-identity')");
+                waitFor("document.querySelector('[role=alert],.session-identity,input[name=username],.native-ui-loading')");
                 evaluate("window.__tlsResult=null;fetch('/api/installations/current').then(response=>window.__tlsResult={status:response.status}).catch(error=>window.__tlsResult={code:error.code})");
                 waitFor("window.__tlsResult");assertEquals(JSONObject.quote("TLS_FAILED"),evaluate("window.__tlsResult.code"));
                 waitFor("document.querySelector('[data-android-tls-failure]')");
@@ -148,7 +148,7 @@ public class TlsRotationJourneyTest {
                 policy(next);waitFor("document.querySelector('[data-managed-status=changed]')");
                 assertFalse(context().getSystemService(android.app.admin.DevicePolicyManager.class).isDeviceOwnerApp(context().getPackageName()));
             }
-            waitFor("document.querySelector('[role=alert],.session-identity')");evaluate("window.dispatchEvent(new Event('open-triage.android-replace-installation'))");
+            waitFor("document.querySelector('[role=alert],.session-identity,input[name=username],.native-ui-loading')");evaluate("window.dispatchEvent(new Event('open-triage.android-replace-installation'))");
             if(phase.equals("managed-replace") || phase.equals("managed-conflict")) {
                 var conflict=new JSONObject(next.toString()).put("caPem",artifact("oldArtifactBase64").getString("caPem"));
                 importArtifact(conflict);waitFor("document.querySelector('[role=alert]') && !document.querySelector('input[type=file]').disabled");
