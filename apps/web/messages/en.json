@@ -1,4 +1,7 @@
 {
+  "clinicalSelect.chooseValue": "Choose a value",
+  "clinicalSelect.search": "Search {label}",
+  "clinicalSelect.noMatches": "No matching values",
   "navigation.discardChanges": "You have unsaved changes. Leave and discard them? Choose Cancel to stay and save.",
   "platform.error.calls.newJobConnectionRequired": "Creating or opening a call requires a live connection. Reconnect and try again.",
   "platform.error.admin.oidcInvalid": "Invalid OIDC field: {field}.",

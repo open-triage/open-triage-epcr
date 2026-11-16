@@ -123,7 +123,9 @@ test("coded, exceptional, scalar and binary paths wait for an explicit value", a
   await flag.getByRole("combobox", { name: "Flag 1" }).selectOption("true");
   const time = field(page, "Observed at");
   await time.getByRole("button", { name: "Add value" }).click();
-  await time.getByLabel("Observed at 1").fill("2026-09-29T12:30");
+  await page.clock.setFixedTime(new Date("2026-09-29T12:30:00Z"));
+  await time.getByRole("button", { name: /^Observed at:/ }).click();
+  await time.getByRole("button", { name: "Use date & time", exact: true }).click();
   const binary = field(page, "Attachment");
   await binary.getByRole("button", { name: "Add value" }).click();
   await binary.locator('input[type="file"]').setInputFiles({ name: "sample.bin", mimeType: "application/octet-stream", buffer: Buffer.from([1, 2, 3]) });
@@ -141,7 +143,7 @@ test("coded, exceptional, scalar and binary paths wait for an explicit value", a
 test("standard repeated selector commits choices, keeps the list open, and guards exceptional combinations", async ({ page }) => {
   await open(page);
   const race = page.locator('fieldset[data-element-id="ePatient.14"]');
-  const trigger = race.getByRole("button", { name: "Race" });
+  const trigger = race.getByRole("button", { name: "Race", exact: true });
   await trigger.click();
   const popup = page.locator(".clinical-searchable-popup");
   const enabled = popup.getByRole("option", { disabled: false });
