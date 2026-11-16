@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
+import yaml from "js-yaml";
+import { runInNewContext } from "node:vm";
 
 import {
   requireSuccessfulValidations,
@@ -103,10 +105,11 @@ test("database validation is reused once across non-overlapping event coverage",
     readFile(databaseWorkflowPath, "utf8"),
   ]);
 
-  assert.match(demoWorkflow, /^  push:\n    branches: \[main\]$/m);
-  assert.match(demoWorkflow, /^  pull_request:\n    branches: \[main, feature\/ci-cd-deployment\]$/m);
-  assert.match(databaseWorkflow, /^  push:\n    branches: \[feature\/database-foundation\]$/m);
-  assert.match(databaseWorkflow, /^  pull_request:\n    branches: \[feature\/database-foundation\]$/m);
+  const general = yaml.load(demoWorkflow), database = yaml.load(databaseWorkflow);
+  assert.deepEqual(general.on.push, { branches: ["**"] }, "All branch pushes, including nested feature names, receive general validation; tags do not");
+  assert.equal(general.on.pull_request, null, "All PR targets receive general validation");
+  assert.equal(database.on.push, undefined, "Database checks run through the general workflow without duplicate push runs");
+  assert.equal(database.on.pull_request, undefined, "Database checks run through the general workflow without duplicate PR runs");
   assert.match(databaseWorkflow, /^  workflow_dispatch:$/m);
   assert.match(databaseWorkflow, /^  workflow_call:$/m);
   assert.doesNotMatch(databaseWorkflow, /branches: \[[^\]]*main/);
@@ -146,4 +149,36 @@ test("operator configuration is validated on PRs and blocks publication", async 
   assert.equal(jobs["installation-config"].needs, "validate-deployment-revision");
   assert.ok(jobs["validation-gate"].needs.includes("installation-config"));
   assert.ok(jobs["publish-images"].needs.includes("validation-gate"));
+});
+
+// Exercise the actual YAML conditions so broadening triggers cannot accidentally
+// publish feature images, deploy a PR, or serialize feature checks with releases.
+test("publication and deployment stay on main while feature validation runs independently", async () => {
+  const workflow = yaml.load(await readFile(workflowPath, "utf8"));
+  const jobs = ["publish-images", "publish-image-manifest", "deploy-demo"];
+  const needs = Object.fromEntries(["validation-gate", "publish-images", "publish-image-manifest"].map(name => [name, { result: "success" }]));
+  const evaluate = (expression, github, results = needs) => runInNewContext(expression.replace(/^\$\{\{\s*|\s*\}\}$/g, "").replace(/needs\.([\w-]+)/g, 'needs["$1"]'), {
+    github, needs: results, format: (pattern, ref) => pattern.replace("{0}", ref),
+  });
+  for (const [event, ref, deploy] of [
+    ["push", "refs/heads/main", true],
+    ["workflow_dispatch", "refs/heads/main", true],
+    ["push", "refs/heads/feature/android_app", false],
+    ["push", "refs/heads/feature/future/nested", false],
+    ["push", "refs/heads/fix/future", false],
+    ["push", "refs/tags/android-v10-0.1.0", false],
+    ["workflow_dispatch", "refs/heads/feature/future", false],
+    ["pull_request", "refs/pull/123/merge", false],
+    ["pull_request", "refs/heads/main", false],
+  ]) {
+    const github = { event_name: event, ref };
+    for (const job of jobs) assert.equal(evaluate(workflow.jobs[job].if, github), deploy, `${job}: ${event} ${ref}`);
+    assert.equal(evaluate(workflow.concurrency.group, github), deploy ? "demo-deployment" : `demo-validation-${ref}`);
+  }
+  for (const job of jobs) {
+    const failed = Object.fromEntries(Object.keys(needs).map(name => [name, { result: "failure" }]));
+    assert.equal(evaluate(workflow.jobs[job].if, { event_name: "push", ref: "refs/heads/main" }, failed), false);
+  }
+  assert.equal(workflow.concurrency["cancel-in-progress"], false, "Never cancel an active deployment");
+  for (const job of workflow.jobs["validation-gate"].needs) assert.equal(workflow.jobs[job].if, undefined, `${job}: validate every triggering branch and PR`);
 });

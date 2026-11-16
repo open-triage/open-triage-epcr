@@ -3,9 +3,8 @@ name: Verify Android connection journey
 on:
   workflow_call:
   pull_request:
-    branches: [main, feature/android_app]
   push:
-    branches: [feature/android_app]
+    branches: ['**']
   workflow_dispatch:
 
 permissions:

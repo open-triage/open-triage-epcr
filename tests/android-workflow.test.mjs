@@ -34,7 +34,8 @@ test('Android PR validation uses the same compile SDK, native build and minimum-
   const emulator = steps.find(step => step.uses?.startsWith('reactivecircus/android-emulator-runner@'));
   assert.equal(String(emulator.with['api-level']), minimum);
   assert.equal(emulator.with.script, 'npm run android:test -- --skip-build');
-  assert(workflow.on.pull_request.branches.includes('feature/android_app'));
+  assert.equal(workflow.on.pull_request, null, 'Validate PRs against every target branch');
+  assert.deepEqual(workflow.on.push.branches, ['**'], 'Validate pushes to nested and future branches');
 });
 
 test('Android declares network observation so WebView emits real online/offline transitions', async () => {

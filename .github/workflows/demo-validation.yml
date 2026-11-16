@@ -2,9 +2,8 @@ name: Demo validation
 
 on:
   push:
-    branches: [main]
+    branches: ['**']
   pull_request:
-    branches: [main, feature/ci-cd-deployment]
   workflow_dispatch:
     inputs:
       deployment_revision:
@@ -16,7 +15,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: ${{ (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && 'demo-deployment' || format('demo-validation-{0}', github.ref) }}
+  group: ${{ (github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')) && 'demo-deployment' || format('demo-validation-{0}', github.ref) }}
   cancel-in-progress: false
 
 jobs:
@@ -48,6 +47,10 @@ jobs:
         with:
           node-version: 22
           cache: npm
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '21'
       - name: Validate all GitHub workflow expressions and contexts
         run: npm run check:workflows
       - run: npm ci
@@ -286,7 +289,7 @@ jobs:
     name: Publish / ${{ matrix.component }} linux/amd64
     if: >-
       needs.validation-gate.result == 'success' &&
-      (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+      (github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch'))
     needs: [validation-gate, installation-config]
     runs-on: ubuntu-latest
     permissions:
@@ -355,7 +358,7 @@ jobs:
     name: Publish / Deployment image manifest
     if: >-
       needs.publish-images.result == 'success' &&
-      (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+      (github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch'))
     needs: publish-images
     runs-on: ubuntu-latest
     permissions:
@@ -388,7 +391,7 @@ jobs:
     name: Deploy / DOKS demo
     if: >-
       needs.publish-image-manifest.result == 'success' &&
-      (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+      (github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch'))
     needs: [publish-image-manifest, installation-config]
     runs-on: ubuntu-latest
     environment: demo

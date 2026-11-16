@@ -271,6 +271,18 @@ installations use the web image and Helm ingress with TLS. `npm start` does not
 load root `.env.local` or start the API/database. Organization registration and
 access checks still apply; DNS routing alone does not grant access to an agency.
 
+## Continuous integration coverage
+
+Every branch push and every pull request runs general application, browser,
+database/API, scale, container, Helm and installation-configuration validation,
+as well as the Android build and emulator workflow. Branch names and PR target
+branches do not need to be added to workflow allowlists. Database validation is
+called by the general workflow rather than starting a second event-triggered run.
+
+Only successful pushes to `main` or manual runs from `main` can publish demo
+images or deploy the demo. Feature validation has its own concurrency group so
+it does not queue behind a deployment. Android release tag checks remain separate.
+
 ## Before pushing CI/CD fixes
 
 Run `npm run check:ci` to run typechecking, lint, all unit tests, a production
