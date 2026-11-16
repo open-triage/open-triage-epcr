@@ -1,4 +1,4 @@
-import { evaluateValidationBundleSafely, COS_ELEMENT_MAPPINGS, cosMedicationUnitIsRate } from './dist/index.js';
+import { evaluateValidationBundleSafely, validationRuleScope, COS_ELEMENT_MAPPINGS, cosMedicationUnitIsRate } from './dist/index.js';
 
 const PROVENANCE = 'stationary-populate-v1';
 const attributes = () => ({ 'x-open-triage-demo': PROVENANCE });
@@ -116,8 +116,9 @@ export function generateDocument({ source, configuration, model, bundle, dispatc
     model.elements.find(element => element.customId === field.source.elementDefinitionId)?.id;
   const fieldsById = new Map(fields.map(field => [fieldId(field), field]));
   const timeline = operationalTimeline(dispatchedAt, random, preserveExisting ? now : undefined);
-  const protectedElements = new Set(preserveExisting ? source.groups.flatMap(group => group.instances.flatMap(instance =>
-    instance.elements.filter(element => element.values.some(value => {
+  let repairRoot;
+  const protectedByInstance = new Map(preserveExisting ? source.groups.flatMap(group => group.instances.map(instance =>
+    [instance.instanceId, new Set(instance.elements.filter(element => element.values.some(value => {
       if (value.attributes?.['x-open-triage-demo'] === PROVENANCE) return false;
       // Only explicitly dispatch-owned source values may be repaired. Clinician
       // edits and values with unknown ownership remain protected, even if invalid.
@@ -129,7 +130,12 @@ export function generateDocument({ source, configuration, model, bundle, dispatc
       return !restricted || choices(element.id).some(choice => choice.code === value.code
         && (choice.codeSystem ?? '') === (value.system ?? ''));
     }))
-      .map(element => element.id))) : []);
+      .map(element => element.id))])) : []);
+  const globallyProtected = new Set();
+  const protectedElements = {
+    add: id => globallyProtected.add(id),
+    has: id => globallyProtected.has(id) || (metadata.has(id) && protectedByInstance.get(group(metadata.get(id).path.at(-1)).instanceId)?.has(id)),
+  };
   // Operational routing is an explicit clinician decision, never synthetic data.
   if (configuration.catalogFields['eDisposition.01']?.recommendations) {
     for (const id of ['eDisposition.01', 'eDisposition.02']) {
@@ -143,16 +149,50 @@ export function generateDocument({ source, configuration, model, bundle, dispatc
       }
     }
   }
-  const values = id => document.groups.flatMap(group => group.instances.flatMap(instance =>
+  function insideRepairScope(instance) {
+    if (!repairRoot) return true;
+    const visited = new Set();
+    while (instance && !visited.has(instance.instanceId)) {
+      if (instance.instanceId === repairRoot.instanceId) return true;
+      visited.add(instance.instanceId);
+      instance = document.groups.flatMap(group => group.instances).find(parent => parent.instanceId === instance.parentInstanceId);
+    }
+    return false;
+  }
+  function scopedGroup(id) {
+    if (!repairRoot) return false;
+    const visited = new Set();
+    while (id && !visited.has(id)) {
+      if (id === repairRoot.groupId) return true;
+      visited.add(id);
+      id = groupMetadata.get(id)?.parent;
+    }
+    return false;
+  }
+  const values = id => document.groups.flatMap(group => group.instances.filter(instance =>
+    !scopedGroup(group.id) || insideRepairScope(instance)).flatMap(instance =>
     instance.elements.filter(element => element.id === id).flatMap(element => element.values)));
   function group(id, trail = new Set()) {
     const existing = document.groups.find(group => group.id === id);
-    if (existing?.instances.length) return existing.instances[0];
+    // Resolve the repair root and its ancestors by identity, rather than taking
+    // the first group of the requested type from a different observation.
+    if (repairRoot) {
+      let ancestor = document.groups.flatMap(group => group.instances).find(instance => instance.instanceId === repairRoot.instanceId);
+      const visited = new Set();
+      while (ancestor && !visited.has(ancestor.instanceId)) {
+        if (existing?.instances.includes(ancestor)) return ancestor;
+        visited.add(ancestor.instanceId);
+        ancestor = document.groups.flatMap(group => group.instances).find(instance => instance.instanceId === ancestor.parentInstanceId);
+      }
+    }
+    if (!scopedGroup(id) && existing?.instances.length) return existing.instances[0];
     if (trail.has(id)) throw new Error(`Catalog group cycle at ${id}`);
     trail.add(id);
     const spec = groupMetadata.get(id);
     if (!spec) throw new Error(`No clinical group definition for ${id}`);
     const parent = spec.parent ? group(spec.parent, trail) : undefined;
+    const matching = existing?.instances.find(instance => instance.parentInstanceId === parent?.instanceId);
+    if (matching) return matching;
     const instance = { instanceId: createId(`group:${id}:${parent?.instanceId ?? 'root'}`), ...(parent ? { parentInstanceId: parent.instanceId } : {}), attributes: attributes(), elements: [] };
     if (existing) existing.instances.push(instance); else document.groups.push({ id, instances: [instance] });
     return instance;
@@ -231,8 +271,9 @@ export function generateDocument({ source, configuration, model, bundle, dispatc
   }
   function remove(id) {
     if (patientField(id)) return;
-    if (id === 'eRecord.01' || protectedElements.has(id)) return;
+    if (id === 'eRecord.01' || globallyProtected.has(id)) return;
     for (const group of document.groups) for (const instance of group.instances) {
+      if (scopedGroup(group.id) && !insideRepairScope(instance) || protectedByInstance.get(instance.instanceId)?.has(id)) continue;
       instance.elements = instance.elements.filter(element => element.id !== id);
     }
   }
@@ -331,7 +372,14 @@ export function generateDocument({ source, configuration, model, bundle, dispatc
         else set(id);
         break;
       }
-      case 'attribute': if (want && !protectedElements.has(id)) for (const value of values(id)) value.attributes = { ...value.attributes, [expression.name]: expression.value ?? '1' }; break;
+      case 'attribute': if (want && !globallyProtected.has(id)) {
+        for (const group of document.groups) for (const instance of group.instances) {
+          if (scopedGroup(group.id) && !insideRepairScope(instance) || protectedByInstance.get(instance.instanceId)?.has(id)) continue;
+          for (const value of instance.elements.filter(element => element.id === id).flatMap(element => element.values)) {
+            value.attributes = { ...value.attributes, [expression.name]: expression.value ?? '1' };
+          }
+        }
+      } break;
       case 'quantified': if (want && expression.values?.length) set(id, pick(expression.values, random)); break;
       default: if (id && metadata.has(id)) set(id);
     }
@@ -356,11 +404,23 @@ export function generateDocument({ source, configuration, model, bundle, dispatc
     for (const finding of findings) {
       const rule = bundle.rules.find(rule => rule.ruleId === finding.ruleId);
       if (!rule) continue;
+      const scope = validationRuleScope(rule);
+      if (scope) {
+        let target = document.groups.flatMap(group => group.instances).find(instance => instance.instanceId === finding.primaryTarget?.groupInstanceId);
+        const roots = document.groups.find(group => group.id === scope.groupId)?.instances ?? [];
+        const visited = new Set();
+        while (target && !visited.has(target.instanceId)) {
+          if (roots.includes(target)) { repairRoot = { groupId: scope.groupId, instanceId: target.instanceId }; break; }
+          visited.add(target.instanceId);
+          target = document.groups.flatMap(group => group.instances).find(instance => instance.instanceId === target.parentInstanceId);
+        }
+      }
       try { repair(rule.assertion); }
       catch { // Another permitted applicability branch may satisfy a conditional rule.
         if (rule.applicability) { try { repair(rule.applicability, false); } catch {} }
       }
       if (pass % 5 === 4 && rule.applicability) { try { repair(rule.applicability, false); } catch {} }
+      repairRoot = undefined;
     }
   }
   throw new Error(`Could not satisfy active validation after ${maxPasses} passes: ${JSON.stringify(findings.map(finding => ({

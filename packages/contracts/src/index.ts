@@ -26,6 +26,7 @@ export {
   repairNemsisImportedMessage,
   reviewPriorityOfRule,
   validationRuleText,
+  validationRuleScope,
   validationRuleWordingStatuses,
   validationRuleValidity,
   type CompiledValidationBundle,

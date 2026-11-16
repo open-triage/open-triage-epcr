@@ -75,6 +75,114 @@ test("Populate keeps clinician values and fails without changing the draft when 
   assert.deepEqual(document, original);
 });
 
+function repeatedVitalsFixture() {
+  const { document, configuration } = fixture();
+  const root = document.groups.find(group => group.id === "PatientCareReportGroup")!.instances[0]!;
+  document.groups.push({ id: "eVitalsSection", instances: [{ instanceId: "vitals-section", parentInstanceId: root.instanceId, elements: [] }] },
+    { id: "eVitals.VitalGroup", instances: [1, 2, 3].map(index => ({ instanceId: `vitals-${index}`, parentInstanceId: "vitals-section", elements: [] })) },
+    { id: "eVitals.HeartRateGroup", instances: [
+      { instanceId: "pulse-1", parentInstanceId: "vitals-1", elements: [{ id: "eVitals.10", values: [
+        { kind: "scalar", occurrenceId: "generated-pulse", value: 90, attributes: { "x-open-triage-demo": "stationary-populate-v1" } },
+      ] }] },
+      { instanceId: "pulse-2", parentInstanceId: "vitals-2", elements: [{ id: "eVitals.10", values: [
+        { kind: "scalar", occurrenceId: "clinician-pulse", value: 72 },
+      ] }] },
+    ] },
+    { id: "eVitals.BloodPressureGroup", instances: [
+      { instanceId: "pressure-2", parentInstanceId: "vitals-2", elements: [] },
+    ] });
+  configuration.catalogGroups!["eVitals.HeartRateGroup"] = { name: "Pulse", parentId: "eVitals.VitalGroup" };
+  configuration.catalogGroups!["eVitals.BloodPressureGroup"] = { name: "Pressure", parentId: "eVitals.VitalGroup" };
+  configuration.catalogFields["eVitals.10"]!.generation!.path = ["eVitals.HeartRateGroup"];
+  for (const [id, path] of [["eVitals.12", "eVitals.VitalGroup"], ["eVitals.06", "eVitals.BloodPressureGroup"]]) {
+    configuration.definition.sections[0]!.fields.push({ key: id!, source: { kind: "nemsis", elementId: id! } });
+    configuration.catalogFields[id!] = { ...configuration.catalogFields["eVitals.10"]!, generation: {
+      ...configuration.catalogFields["eVitals.10"]!.generation!, id: id!, path: [path!],
+    } };
+    configuration.validation!.bundle.rules.push({ ...configuration.validation!.bundle.rules[0]!, ruleId: `required-${id}`,
+      primaryTarget: { elementId: id! }, scope: { groupId: "eVitals.VitalGroup", iteration: "each" },
+      assertion: { operator: "minimum-occurrences", elementId: id!, count: 1 }, references: { elementIds: [id!], codes: [] } });
+  }
+  Object.assign(configuration.validation!.bundle.rules[0]!, { scope: { groupId: "eVitals.VitalGroup", iteration: "each" } });
+  const second = document.groups.find(group => group.id === "eVitals.VitalGroup")!.instances[1]!;
+  Object.assign(second, { elements: [...second.elements, { id: "eVitals.12", values: [{ kind: "scalar", occurrenceId: "clinician-saturation", value: 98 }] }] });
+  configuration.validation!.compiledSha256 = compiledValidationBundleSha256(configuration.validation!.bundle);
+  return { document, configuration };
+}
+
+test("Populate repairs every vital set and its nested groups while preserving clinician values in sibling sets", () => {
+  const { document, configuration } = repeatedVitalsFixture();
+  const original = structuredClone(document);
+  const populated = populateSyntheticRecord(document, configuration, now);
+  assert.deepEqual(document, original);
+  assert.deepEqual(validationProblems(configuration.validation!.bundle, populated, now.toISOString()), []);
+  const hearts = populated.groups.find(group => group.id === "eVitals.HeartRateGroup")!.instances;
+  for (const index of [1, 2, 3]) {
+    const heart = hearts.find(instance => instance.parentInstanceId === `vitals-${index}`)!;
+    assert.ok(heart, `pulse group belongs to vital set ${index}`);
+    assert.equal((heart.elements.find(element => element.id === "eVitals.10")!.values[0] as { value: number }).value, 72);
+    assert.ok(populated.groups.find(group => group.id === "eVitals.BloodPressureGroup")!.instances
+      .find(instance => instance.parentInstanceId === `vitals-${index}`)!.elements.some(element => element.id === "eVitals.06"));
+    assert.ok(populated.groups.find(group => group.id === "eVitals.VitalGroup")!.instances[index - 1]!.elements.some(element => element.id === "eVitals.12"));
+  }
+  for (const id of ["clinician-pulse", "clinician-saturation"]) {
+    const occurrence = (value: Parameters<typeof populateSyntheticRecord>[0]) => value.groups.flatMap(group => group.instances.flatMap(instance => instance.elements.flatMap(element => element.values)))
+      .find(value => value.occurrenceId === id);
+    assert.deepEqual(occurrence(populated), occurrence(original));
+  }
+  assert.deepEqual(populateSyntheticRecord(populated, configuration, now), populated);
+});
+
+test("Populate fails without changing any set when a clinician value contradicts a scoped rule", () => {
+  const { document, configuration } = repeatedVitalsFixture();
+  const value = document.groups.find(group => group.id === "eVitals.HeartRateGroup")!.instances[1]!.elements[0]!.values[0]!;
+  assert.equal(value.kind, "scalar");
+  if (value.kind === "scalar") Object.assign(value, { value: 90 });
+  const original = structuredClone(document);
+  assert.throws(() => populateSyntheticRecord(document, configuration, now), /Could not satisfy active validation.*pulse-rule/);
+  assert.deepEqual(document, original);
+});
+
+test("document-wide attribute repairs preserve clinician values in other instances", () => {
+  const { document, configuration } = repeatedVitalsFixture();
+  const protectedHeart = structuredClone(document.groups.find(group => group.id === "eVitals.HeartRateGroup")!.instances[1]!);
+  Object.assign(configuration.validation!.bundle, { rules: [{ ...configuration.validation!.bundle.rules[0]!, scope: undefined,
+    assertion: { operator: "attribute", elementId: "eVitals.10", name: "SyntheticTest", value: "yes" } }] });
+  configuration.validation!.compiledSha256 = compiledValidationBundleSha256(configuration.validation!.bundle);
+  const populated = populateSyntheticRecord(document, configuration, now);
+  assert.deepEqual(validationProblems(configuration.validation!.bundle, populated, now.toISOString()), []);
+  assert.deepEqual(populated.groups.find(group => group.id === "eVitals.HeartRateGroup")!.instances[1], protectedHeart);
+});
+
+test("Populate uses the validator's effective scope for pinned legacy requirements", () => {
+  for (const scope of [undefined, { groupId: "eVitals.BloodPressureGroup", iteration: "each" as const }]) {
+    const { document, configuration } = repeatedVitalsFixture();
+    const rule = configuration.validation!.bundle.rules.find(rule => rule.ruleId === "required-eVitals.06")!;
+    Object.assign(rule, { name: "SBP (Systolic Blood Pressure) form required",
+      message: "SBP (Systolic Blood Pressure) is required by the form", scope });
+    configuration.validation!.compiledSha256 = compiledValidationBundleSha256(configuration.validation!.bundle);
+    const populated = populateSyntheticRecord(document, configuration, now);
+    assert.deepEqual(validationProblems(configuration.validation!.bundle, populated, now.toISOString()), []);
+    assert.equal(populated.groups.find(group => group.id === "eVitals.BloodPressureGroup")!.instances.length, 3);
+  }
+});
+
+test("scoped removal affects only the failing vital set", () => {
+  const { document, configuration } = repeatedVitalsFixture();
+  const first = document.groups.find(group => group.id === "eVitals.HeartRateGroup")!.instances[0]!.elements[0]!;
+  Object.assign(first, { values: [{ kind: "scalar", occurrenceId: "first-clinician-pulse", value: 90 }] });
+  Object.assign(configuration.validation!.bundle, { rules: [{ ...configuration.validation!.bundle.rules[0]!,
+    primaryTarget: { elementId: "eVitals.12" },
+    applicability: { operator: "equals", elementId: "eVitals.10", value: 90 },
+    assertion: { operator: "undocumented", elementId: "eVitals.12" }, references: { elementIds: ["eVitals.10", "eVitals.12"], codes: [] } }] });
+  configuration.validation!.compiledSha256 = compiledValidationBundleSha256(configuration.validation!.bundle);
+  const populated = populateSyntheticRecord(document, configuration, now);
+  const sets = populated.groups.find(group => group.id === "eVitals.VitalGroup")!.instances;
+  assert.ok(!sets[0]!.elements.some(element => element.id === "eVitals.12"));
+  assert.equal((sets[1]!.elements.find(element => element.id === "eVitals.12")!.values[0] as { value: number }).value, 98);
+  assert.deepEqual(validationProblems(configuration.validation!.bundle, populated, now.toISOString()), []);
+});
+
 test("Populate uses pinned custom field constraints and parent groups", () => {
   const { document, configuration } = fixture();
   configuration.definition.sections[0]!.fields.push({ key: "score", source: { kind: "custom", elementDefinitionId: "custom-score" } });

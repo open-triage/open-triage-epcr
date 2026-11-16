@@ -199,6 +199,11 @@ function legacyGeneratedRuleScope(rule: CompiledValidationRule): CompiledValidat
   return generated ? { groupId, iteration: "each" } : undefined;
 }
 
+/** Share effective scope with producers that repair findings from pinned legacy bundles. */
+export function validationRuleScope(rule: CompiledValidationRule): CompiledValidationRule["scope"] {
+  return legacyGeneratedRuleScope(rule) ?? rule.scope;
+}
+
 /** A pinned, unconditional minimum or presence rule owns an equivalent form/catalog requirement.
  * Per-instance requirements cannot be replaced by a document-wide rule when several instances exist.
  */
@@ -213,7 +218,7 @@ export function minimumRuleCoversRequirement(
 ): boolean {
   if (!bundle || minimum <= 0) return false;
   return bundle.rules.some((rule) => {
-    const scope = legacyGeneratedRuleScope(rule) ?? rule.scope;
+    const scope = validationRuleScope(rule);
     return rule.enabled && rule.executionTargets.includes(executionTarget) &&
       !rule.applicability && (scope ? scope.groupId === groupId : allowUnscoped) &&
       (rule.severity === "error" || requiredSeverity === "warning" && rule.severity === "warning") &&
@@ -1254,7 +1259,7 @@ export function evaluateValidationBundle(bundle: CompiledValidationBundle, docum
     const outcome: ValidationRuleOutcome = { ruleId: rule.ruleId, validationVersionId: bundle.validationVersionId,
       state: "not-applicable", value: null, occurrences: [], metricEvidence: [] };
     options.outcomes?.push(outcome);
-    const ruleScope = legacyGeneratedRuleScope(rule) ?? rule.scope;
+    const ruleScope = validationRuleScope(rule);
     const scopes: Array<{ elements: DocumentElement[]; rootGroupInstanceId?: string; scopeElementIds?: ReadonlySet<string>;
       groupInstances: DocumentGroupInstance[] }> = ruleScope
       ? scopedRows(ruleScope.groupId) : [{ elements, groupInstances }];
