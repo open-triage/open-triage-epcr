@@ -18,6 +18,16 @@ function isApprovedStaticRequest(request: Request): boolean {
     ["script", "style", "font", "image"].includes(request.destination);
 }
 
+/** A native/package fallback can return HTML with status 200 for a missing chunk. */
+function usableShellResponse(url: string, response: Response): boolean {
+  if (!response.ok) return false;
+  const pathname = new URL(url).pathname;
+  const type = response.headers.get("content-type")?.split(";", 1)[0]?.trim().toLowerCase();
+  if (pathname.endsWith(".js")) return type === "application/javascript" || type === "text/javascript";
+  if (pathname.endsWith(".css")) return type === "text/css";
+  return true;
+}
+
 async function cacheStaticShell(): Promise<void> {
   const cache = await caches.open(cacheName);
   const rootResponse = await fetch(appRoot);
@@ -27,7 +37,11 @@ async function cacheStaticShell(): Promise<void> {
     .map(([, value]) => new URL(value!, appRoot).toString())
     .filter((value) => new URL(value).origin === self.location.origin);
   await cache.put(appRoot, rootResponse);
-  await cache.addAll([...new Set([...appShell.slice(1), ...linkedAssets])]);
+  await Promise.all([...new Set([...appShell.slice(1), ...linkedAssets])].map(async (url) => {
+    const response = await fetch(url);
+    if (!usableShellResponse(url, response)) throw new Error("Application shell asset unavailable");
+    await cache.put(url, response);
+  }));
 }
 
 self.addEventListener("install", (event) => {
@@ -63,7 +77,7 @@ self.addEventListener("fetch", (event) => {
   if (requestUrl.pathname.startsWith("/api/") || requestUrl.pathname.endsWith(".json")) return;
 
   event.respondWith(fetch(event.request).then((response) => {
-    if (!response.ok && (isApprovedStaticRequest(event.request) || event.request.mode === "navigate")) throw new Error("Application shell unavailable");
+    if (!usableShellResponse(event.request.url, response) && (isApprovedStaticRequest(event.request) || event.request.mode === "navigate")) throw new Error("Application shell unavailable");
     if (response.ok && isApprovedStaticRequest(event.request)) {
       // Clone before returning: the browser can consume the body while CacheStorage opens.
       const cachedResponse = response.clone();

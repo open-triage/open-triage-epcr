@@ -29,13 +29,14 @@ for (const native of [false, true]) test(`${native ? "Android" : "browser"} shar
     (window as unknown as { controllerChanges: number }).controllerChanges = 0;
     navigator.serviceWorker.addEventListener("controllerchange", () => { (window as unknown as { controllerChanges: number }).controllerChanges++; });
   });
-  let version = 1, available = true, failShell = false, failedShellRequests = 0, failWorker = false, bootstrapServed = false;
+  let version = 1, available = true, failShell = false, failedShellRequests = 0, failAsset = false, failedAssetRequests = 0, failWorker = false, bootstrapServed = false;
   const server = createServer((request, response) => {
     response.setHeader("Cache-Control", "no-store");
     if (!available) { response.writeHead(503).end("Offline fixture"); return; }
     const url = new URL(request.url!, "http://localhost"), pathname = url.pathname;
     if (failWorker && pathname === "/sw.js") { response.writeHead(503).end("Worker unavailable"); return; }
     if (failShell && pathname === "/") { failedShellRequests++; response.writeHead(503).end("Shell unavailable"); return; }
+    if (failAsset && pathname === "/_next/static/app.js") { failedAssetRequests++; response.setHeader("Content-Type", "text/html"); response.end("<html>Packaged fallback</html>"); return; }
     if (pathname === "/sw.js") { response.setHeader("Content-Type", "text/javascript"); response.end(workers.get(version)); }
     else if (pathname === "/_next/static/app.js") { response.setHeader("Content-Type", "text/javascript"); response.end(bundled.outputFiles[0]!.text); }
     else if (pathname === "/manifest.webmanifest") { response.setHeader("Content-Type", "application/manifest+json"); response.end('{"name":"UI fixture"}'); }
@@ -82,6 +83,13 @@ for (const native of [false, true]) test(`${native ? "Android" : "browser"} shar
     await expect.poll(() => failedShellRequests).toBeGreaterThan(0);
     await expect.poll(() => page.evaluate(() => caches.keys())).not.toContain("open-triage-shell-v5-ui-test-4");
     available = false; await page.reload(); await expect(page.getByRole("heading", { name: "Server UI 3" })).toBeVisible();
+    // A 200 HTML fallback for a chunk must reject the new worker just like an HTTP failure.
+    available = true; failShell = false; failAsset = true;
+    await page.getByRole("button", { name: "Check update" }).click();
+    await expect.poll(() => failedAssetRequests).toBeGreaterThan(0);
+    await expect.poll(() => page.evaluate(() => caches.keys())).not.toContain("open-triage-shell-v5-ui-test-4");
+    available = false; await page.reload(); await expect(page.getByRole("heading", { name: "Server UI 3" })).toBeVisible();
+    failAsset = false;
     if (native) {
       // Restoring trust must adopt the UI even when its active worker bytes are unchanged.
       available = true; version = 3; failShell = false; failWorker = true;
