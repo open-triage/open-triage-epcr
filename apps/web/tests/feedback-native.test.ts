@@ -3,7 +3,7 @@ import test from "node:test";
 import { Capacitor } from "@capacitor/core";
 import { clearFeedbackTelemetry, feedbackTelemetrySnapshot } from "../app/feedback-telemetry";
 import { diagnosticsForSubmission } from "../app/feedback-diagnostics";
-import { clearNativeFeedback, feedbackRuntimeSnapshot, nativeFeedbackSnapshot, observeNativeFeedback,
+import { captureFeedbackAndroidVersion, clearNativeFeedback, feedbackRuntimeSnapshot, nativeFeedbackSnapshot, observeNativeFeedback,
   recordNativeFeedback, recordNativeMediaFailure, setFeedbackAndroidVersion } from "../app/feedback-native";
 
 test("Android context and native failures are bounded, sanitized, and excluded from feature detail", async () => {
@@ -13,6 +13,9 @@ test("Android context and native failures are bounded, sanitized, and excluded f
   try {
     clearFeedbackTelemetry();
     setFeedbackAndroidVersion({ versionCode: 17 }); // Older APK compatibility.
+    assert.deepEqual(feedbackRuntimeSnapshot(), { platform: "android", versionCode: 17 });
+    await assert.doesNotReject(captureFeedbackAndroidVersion(() => { throw new TypeError("Unavailable bridge method"); }));
+    await assert.doesNotReject(captureFeedbackAndroidVersion(async () => { throw new Error("Native rejection"); }));
     assert.deepEqual(feedbackRuntimeSnapshot(), { platform: "android", versionCode: 17 });
     setFeedbackAndroidVersion({ versionCode: 18, versionName: "0.1.7", androidApiLevel: 36,
       webViewVersion: "142.0.7444.48", token: "SECRET", origin: "https://SECRET" });

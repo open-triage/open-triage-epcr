@@ -1,4 +1,4 @@
-import { observeNativeFeedback, setFeedbackAndroidVersion } from "./feedback-native";
+import { observeNativeFeedback, captureFeedbackAndroidVersion } from "./feedback-native";
 import type { AuthenticatedSession } from "@open-triage/contracts";
 import { foregroundNetworkAllowed, APPLICATION_FOREGROUND_EVENT } from "./application-foreground";
 import { setNativeStorageScope } from "./native-storage-context";
@@ -80,7 +80,7 @@ export function configureNativeConnection(state: AndroidConnectionState): void {
 export function installAndroidTransport(): void {
   if (installed || !isAndroidRuntime()) return;
   installed = true;
-  void AndroidConnection.version().then(setFeedbackAndroidVersion).catch(() => {});
+  void captureFeedbackAndroidVersion(() => AndroidConnection.version());
   const browserFetch = window.fetch.bind(window);
   window.fetch = androidFetch(browserFetch, options => AndroidConnection.request(options), window.location.origin);
   installAndroidAuthenticationReturn();

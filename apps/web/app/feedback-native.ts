@@ -18,6 +18,10 @@ export function setFeedbackAndroidVersion(value: Record<string, unknown>): void 
   }
   androidVersion = next;
 }
+/** Optional metadata must never interrupt native startup, including synchronous bridge failures. */
+export async function captureFeedbackAndroidVersion(read: () => Promise<Record<string, unknown>>): Promise<void> {
+  try { setFeedbackAndroidVersion(await read()); } catch { /* Runtime context can omit unavailable version details. */ }
+}
 export function feedbackRuntimeSnapshot(): FeedbackRuntime {
   return android() ? { platform: "android", ...androidVersion } : { platform: "browser" };
 }

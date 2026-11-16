@@ -11,6 +11,7 @@ test.beforeAll(async () => {
     plugins: [{name: 'managed-native-fixture', setup(builder) {
       builder.onResolve({filter: /^@capacitor\/core$/}, () => ({path: 'capacitor-fixture', namespace: 'managed-capacitor'}));
       builder.onLoad({filter: /.*/, namespace: 'managed-capacitor'}, () => ({loader: 'js', contents: `
+        export const Capacitor={isNativePlatform:()=>true,getPlatform:()=>"android"};
         export const registerPlugin=name=>name==='OpenTriageScanner'?{scan:async()=>{const f=window.managedFixture,result={cancelled:false,artifact:f.artifact};return f.holdScan?new Promise(resolve=>{f.releaseScan=()=>resolve(result)}):result}}:{addListener:async()=>({remove:async()=>{}}),state:async()=>({active:true})};
       `}));
       builder.onResolve({filter: /android-runtime$/}, () => ({path: 'native-fixture', namespace: 'managed-fixture'}));
