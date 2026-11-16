@@ -55,7 +55,7 @@ import { apiRequestUrl, browserRequestConfiguration, browserRequestInit } from "
 import { ClinicalDemoBanner } from "./clinical-demo-banner";
 import { shouldShowClinicalDemoBanner } from "../app/clinical-demo";
 import { FeedbackControl } from "./feedback-control";
-import { clearFeedbackTelemetry, installFeedbackRequestTracking, recordFeedbackInteraction } from "../app/feedback-telemetry";
+import { clearFeedbackTelemetry, installFeedbackRequestTracking, installFeedbackRuntimeTracking, recordFeedbackInteraction } from "../app/feedback-telemetry";
 import { TransientNotice } from "./transient-notice";
 import { LoadingStatus } from "./loading-status";
 import {
@@ -178,7 +178,9 @@ export function ClinicianSessionGate({ children }: {
   }, [activeReport?.id]);
 
   useEffect(() => {
-    return installFeedbackRequestTracking(window);
+    const stopRequests = installFeedbackRequestTracking(window);
+    const stopErrors = installFeedbackRuntimeTracking(window);
+    return () => { stopRequests(); stopErrors(); };
   }, []);
 
   useEffect(() => {

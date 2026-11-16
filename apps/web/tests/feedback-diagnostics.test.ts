@@ -20,7 +20,7 @@ function fakeWindow(body: FakeElement, overrides: Record<string, unknown> = {}):
     innerWidth: 390,
     innerHeight: 844,
     navigator: { userAgent: "SensitiveBrowser Chrome/120 token=secret", onLine: true },
-    document: { body, cookie: "session=patient-secret; token=credential-secret" },
+    document: { body, querySelectorAll: () => [], cookie: "session=patient-secret; token=credential-secret" },
     location: { href: "https://user:password@example.test/report/private-record?token=secret" },
     localStorage: { secret: "patient-secret" },
     ...overrides
@@ -62,6 +62,8 @@ test("feature diagnostics retain only lightweight context", () => {
     assert.equal(feature.payload.browserFamily, "chromium");
     assert.equal(feature.payload.interactions, undefined);
     assert.equal(feature.payload.requestFailures, undefined);
+    assert.equal(feature.payload.visibleAlerts, undefined);
+    assert.equal(feature.payload.runtimeErrors, undefined);
   }
 });
 
@@ -147,5 +149,15 @@ test("capture failure returns a safe unavailable category without error detail",
   const broken = fakeWindow(new FakeElement("BODY"), { document: { get body() { throw new Error("SECRET STACK DETAIL"); } } });
   assert.deepEqual(captureFeedbackDiagnostics(broken, "mobile", "calls"), {
     status: "unavailable", schemaVersion: 1, reason: "capture-failed"
+  });
+});
+
+test("submission rechecks the total size after telemetry attachment and preserves safe failure behavior", () => {
+  const captured = captureFeedbackDiagnostics(fakeWindow(new FakeElement("BODY")), "mobile", "calls");
+  assert.equal(captured.status, "available");
+  if (captured.status !== "available") return;
+  captured.payload.buildVersion = "x".repeat(16_384);
+  assert.deepEqual(diagnosticsForSubmission(captured, "bug"), {
+    status: "unavailable", schemaVersion: 1, reason: "serialization-failed"
   });
 });

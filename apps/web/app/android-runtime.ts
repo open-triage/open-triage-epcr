@@ -1,3 +1,4 @@
+import { observeNativeFeedback, setFeedbackAndroidVersion } from "./feedback-native";
 import type { AuthenticatedSession } from "@open-triage/contracts";
 import { foregroundNetworkAllowed, APPLICATION_FOREGROUND_EVENT } from "./application-foreground";
 import { setNativeStorageScope } from "./native-storage-context";
@@ -18,7 +19,7 @@ type ConnectionPlugin = {
   resumeAgencyHandoff(options: {connectionContext?:string}): Promise<AndroidConnectionState & {session?:AuthenticatedSession}>;
   acknowledgeAgencyHandoff(options: {connectionContext?:string}): Promise<AndroidConnectionState>;
   cancelAgencyHandoff(options: {connectionContext?: string}): Promise<AndroidConnectionState & {session?: AuthenticatedSession}>;
-  version(): Promise<{versionCode: number}>;
+  version(): Promise<{versionCode: number; versionName?: string; androidApiLevel?: number; webViewVersion?: string}>;
   beginAuthentication(options: { purpose: "login" | "switch"; csrfToken?: string }): Promise<void>;
   finishAuthentication(): Promise<{outcome: "idle" | "waiting" | "succeeded" | "pending" | "denied" | "failed"}>;
   state(): Promise<AndroidConnectionState>;
@@ -35,7 +36,15 @@ type ConnectionPlugin = {
   cancel(): Promise<void>;
   request(options: { path: string; method: string; headers: Record<string, string>; bodyBase64?: string; connectionContext?: string }): Promise<NativeResponse>;
 };
-export const AndroidConnection = registerPlugin<ConnectionPlugin>("OpenTriageConnection");
+export const AndroidConnection = observeNativeFeedback(registerPlugin<ConnectionPlugin>("OpenTriageConnection"), {
+  request: "request", openPdf: "pdf", closePdf: "pdf",
+  beginAuthentication: "authentication", finishAuthentication: "authentication",
+  preview: "pairing", confirm: "pairing", cancel: "pairing", previewPendingTrust: "pairing", confirmPendingTrust: "pairing",
+  beginReplacement: "pairing", resumeEnrollment: "recovery", abandonUncommittedEnrollment: "recovery",
+  state: "configuration", refreshInstallation: "configuration", reconcileTransition: "recovery",
+  resumePersonalSession: "recovery", prepareAgencyHandoff: "handoff", confirmAgencyHandoff: "handoff",
+  switchAgency: "handoff", resumeAgencyHandoff: "handoff", acknowledgeAgencyHandoff: "handoff", cancelAgencyHandoff: "handoff"
+});
 export const isAndroidRuntime = () => Capacitor.isNativePlatform() && Capacitor.getPlatform() === "android";
 /** PDF controls use an opaque native operation; no file/credential bytes enter browser storage or an external URL. */
 export async function openAndroidPdf(options: {operationId:string;path:string;headers:Record<string,string>;action:"view"|"save";language:"en"|"sv";signal:AbortSignal}):Promise<void> {
@@ -71,6 +80,7 @@ export function configureNativeConnection(state: AndroidConnectionState): void {
 export function installAndroidTransport(): void {
   if (installed || !isAndroidRuntime()) return;
   installed = true;
+  void AndroidConnection.version().then(setFeedbackAndroidVersion).catch(() => {});
   const browserFetch = window.fetch.bind(window);
   window.fetch = androidFetch(browserFetch, options => AndroidConnection.request(options), window.location.origin);
   installAndroidAuthenticationReturn();

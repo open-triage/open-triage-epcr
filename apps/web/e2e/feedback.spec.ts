@@ -16,7 +16,7 @@ async function openAuthenticatedMobile(page: Page, language: "en" | "sv" = "en")
   await page.route("**/api/sessions/current", (route) => route.fulfill({ json: session }));
   await page.route("**/api/installation", (route) => route.fulfill({ json: { settings: { ...productionSettings, language } } }));
   await page.route("**/api/calls/assigned", (route) => route.fulfill({ json: { assignedCalls: [], canceledAssignmentIds: [], refreshedAt: new Date().toISOString() } }));
-  await page.route("**/api/reports/open", (route) => route.fulfill({ json: { reports: [] } }));
+  await page.route("**/api/reports/open", (route) => route.fulfill({ json: { openCalls: [], completedReportIds: [] } }));
   await page.goto("/");
   await expect(page.getByRole("button", { name: language === "sv" ? "Skicka återkoppling" : "Send feedback" })).toBeVisible();
 }
@@ -73,6 +73,56 @@ test("feedback cancel restores focus and failure preserves the selected draft", 
   expect(JSON.stringify(bugSubmission.diagnostics)).not.toMatch(/PATIENT-123|BEARER-SECRET|AUTH-SECRET|SENSITIVE BODY|SENSITIVE RESPONSE/);
 });
 
+for (const language of ["en", "sv"] as const) test(`bug feedback captures visible error identity and size without text in ${language}`, async ({ page }) => {
+  await openAuthenticatedMobile(page, language);
+  await page.evaluate(({ language }) => {
+    for (let index = 0; index < 220; index++) document.body.append(document.createElement("section"));
+    const add = (text: string, style: string, parent = document.body) => {
+      const alert = document.createElement("p");
+      alert.setAttribute("role", "alert");
+      alert.className = "safety-notice";
+      alert.setAttribute("data-feedback-source", "synthetic-population");
+      alert.style.cssText = style;
+      alert.textContent = text;
+      parent.append(alert);
+      return alert;
+    };
+    const text = language === "en" ? "Protected storage could not finish. Keep the report open and retry."
+      : "Den skyddade lagringen kunde inte slutföras. Behåll journalen öppen och försök igen.";
+    add(text, "position:fixed;top:100px;left:0;width:500px;font-size:48px;z-index:1");
+    add("PATIENT SECRET unknown error", "position:fixed;top:200px;left:0;width:120px;font-size:20px");
+    add("HIDDEN SECRET", "display:none;width:137px");
+    add("OFFSCREEN SECRET", "position:fixed;top:10000px;width:139px");
+    const privateField = document.createElement("div");
+    privateField.setAttribute("data-element-id", "ePatient.01");
+    document.body.append(privateField);
+    add("IDENTIFYING SECRET", "position:fixed;top:50px;width:141px", privateField);
+    window.dispatchEvent(new ErrorEvent("error", { error: new TypeError("PATIENT SECRET token"), message: "SECRET" }));
+  }, { language });
+  let submitted: any;
+  await page.route("**/api/feedback/v1/submissions", async route => {
+    submitted = route.request().postDataJSON();
+    await route.fulfill({ status: 201, json: { accepted: true, referenceCode: "J7M4Q2K8X5PN" } });
+  });
+  await page.locator('.feedback-trigger').click();
+  // The snapshot must precede feedback's own dialog, even if the original error disappears.
+  await page.locator('body > p[role="alert"]').evaluateAll(nodes => nodes.forEach(node => node.remove()));
+  const dialog = page.locator('.feedback-dialog');
+  await dialog.getByRole("button", { name: language === "en" ? "Bug" : "Bugg", exact: true }).click();
+  await dialog.getByRole("textbox").fill("Big error text");
+  await dialog.getByRole("button", { name: language === "en" ? "Submit feedback" : "Skicka återkoppling", exact: true }).click();
+  await expect(dialog).toHaveCount(0);
+  expect(submitted.diagnostics.status).toBe("available");
+  expect(submitted.diagnostics.payload.structure.truncated).toBe(true);
+  const alerts = submitted.diagnostics.payload.visibleAlerts;
+  expect(alerts).toEqual(expect.arrayContaining([expect.objectContaining({ area: "storage", messageKey: "mobile.protectedBeforeClose", fontSizePx: 48, overflowing: true })]));
+  expect(alerts.find((alert: any) => alert.fontSizePx === 20)).toMatchObject({ source: "synthetic-population", area: "notice" });
+  expect(alerts.find((alert: any) => alert.fontSizePx === 20)).not.toHaveProperty("messageKey");
+  expect(alerts.some((alert: any) => [137, 139, 141].includes(alert.width))).toBe(false);
+  expect(submitted.diagnostics.payload.runtimeErrors).toEqual(expect.arrayContaining([expect.objectContaining({ source: "error", kind: "TypeError" })]));
+  expect(JSON.stringify(submitted.diagnostics)).not.toMatch(/SECRET|PATIENT|token|Keep the report|Håll rapporten/);
+});
+
 test("feature feedback submits the type-specific prompt and announces its opaque reference", async ({ page }) => {
   await openAuthenticatedMobile(page);
   let submitted: unknown;
@@ -105,6 +155,8 @@ test("feature feedback submits the type-specific prompt and announces its opaque
   expect(diagnostics.payload).not.toHaveProperty("structure");
   expect(diagnostics.payload).not.toHaveProperty("interactions");
   expect(diagnostics.payload).not.toHaveProperty("requestFailures");
+  expect(diagnostics.payload).not.toHaveProperty("visibleAlerts");
+  expect(diagnostics.payload).not.toHaveProperty("runtimeErrors");
 });
 
 test("feedback remains first in each authenticated mode and is unavailable offline", async ({ page, context }) => {

@@ -74,6 +74,38 @@ test("feedback diagnostics reject unknown, oversized, type-inappropriate, and va
   })).diagnostics, { status: "unavailable", schemaVersion: 1, reason: "capture-failed" });
 });
 
+test("feedback accepts bounded error evidence while rejecting arbitrary error content", () => {
+  const visibleAlert = { area: "storage", source: "close", messageKey: "mobile.protectedBeforeClose", fontSizePx: 48, width: 371, height: 100, overflowing: true };
+  const runtimeError = { source: "error", kind: "TypeError", timestamp: "2026-11-16T12:00:00.000Z" };
+  const validate = (extra, type = "bug") => validateCreateFeedback({ idempotencyKey, type, description: "Valid",
+    diagnostics: { status: "available", payload: { ...(type === "bug" ? bugDiagnostics.payload : context), ...extra } } });
+  const extra = { visibleAlerts: [visibleAlert], runtimeErrors: [runtimeError],
+    requestFailures: [{ ...bugDiagnostics.payload.requestFailures[0], endpointPattern: "/api/reports/{value}/eps/context", failureKind: "http" }] };
+  assert.deepEqual(validate(extra).diagnostics.payload.visibleAlerts, [visibleAlert]);
+  assert.deepEqual(validate(extra).diagnostics.payload.runtimeErrors, [runtimeError]);
+  assert.equal(validate(extra).diagnostics.payload.requestFailures[0].failureKind, "http");
+  for (const forbidden of ["text", "message", "stack", "url", "value", "patientId"]) {
+    assert.throws(() => validate({ visibleAlerts: [{ ...visibleAlert, [forbidden]: "SECRET" }] }), new RegExp(forbidden));
+    assert.throws(() => validate({ runtimeErrors: [{ ...runtimeError, [forbidden]: "SECRET" }] }), new RegExp(forbidden));
+  }
+  for (const invalid of [{ messageKey: "PATIENT SECRET" }, { source: "SECRET" }, { area: "SECRET" }, { fontSizePx: -1 }, { width: 10_001 }, { height: 1.5 }, { overflowing: "yes" }]) {
+    assert.throws(() => validate({ visibleAlerts: [{ ...visibleAlert, ...invalid }] }), BadRequestException);
+  }
+  for (const invalid of [{ kind: "PATIENT SECRET" }, { source: "console" }, { timestamp: "invalid" }]) {
+    assert.throws(() => validate({ runtimeErrors: [{ ...runtimeError, ...invalid }] }), BadRequestException);
+  }
+  assert.throws(() => validate({ visibleAlerts: Array(11).fill(visibleAlert) }), /at most 10/);
+  assert.throws(() => validate({ runtimeErrors: Array(11).fill(runtimeError) }), /at most 10/);
+  for (const field of ["visibleAlerts", "runtimeErrors"]) assert.throws(() => validate({ [field]: [] }, "feature"), new RegExp(field));
+  for (const failureKind of ["SECRET", "network", "cancelled"]) {
+    assert.throws(() => validate({ requestFailures: [{ ...bugDiagnostics.payload.requestFailures[0], failureKind }] }), /failure kind/);
+  }
+  for (const failureKind of ["network", "cancelled"]) {
+    assert.equal(validate({ requestFailures: [{ ...bugDiagnostics.payload.requestFailures[0], status: 0, failureKind }] })
+      .diagnostics.payload.requestFailures[0].failureKind, failureKind);
+  }
+});
+
 test("feedback references are fixed-length opaque base32 values", () => {
   assert.match(createFeedbackReference(Buffer.from("01234567")), /^[A-Z2-7]{12}$/);
 });
@@ -158,4 +190,28 @@ test("the feedback controller exposes create only and requires authentication", 
   assert.deepEqual(methods, ["create"]);
   const controller = new FeedbackController({ create: async () => ({ accepted: true, referenceCode: "ABCDEFGHIJKL" }) });
   assert.throws(() => controller.create({ type: "bug", description: "Valid" }), UnauthorizedException);
+});
+
+test("optional Android diagnostics accept old clients and APKs while strictly bounding new fields", () => {
+  const event = { operation: "request", code: "TLS_FAILED", timestamp: "2026-11-16T12:00:00.000Z", durationMs: 12 };
+  const runtime = { platform: "android", versionCode: 17, versionName: "0.1.7", androidApiLevel: 36, webViewVersion: "142.0.7444.48" };
+  const command = (extra, type = "bug") => ({ idempotencyKey, type, description: "Valid", diagnostics: {
+    status: "available", payload: { ...(type === "bug" ? bugDiagnostics.payload : context), ...extra }
+  } });
+  for (const value of [{}, { runtime: { platform: "browser" } }, { runtime: { platform: "android", versionCode: 1 } }, { runtime, nativeEvents: [event] }]) {
+    assert.deepEqual(validateCreateFeedback(command(value)), command(value));
+  }
+  assert.deepEqual(validateCreateFeedback(command({ runtime }, "feature")), command({ runtime }, "feature"));
+  for (const invalid of [
+    { runtime, nativeEvents: Array(21).fill(event) },
+    { runtime, nativeEvents: [{ ...event, code: "SECRET" }] },
+    { runtime, nativeEvents: [{ ...event, operation: "SECRET" }] },
+    { runtime, nativeEvents: [{ ...event, message: "SECRET" }] },
+    { runtime, nativeEvents: [{ ...event, timestamp: "SECRET" }] },
+    { runtime, nativeEvents: [{ ...event, durationMs: 300001 }] },
+    { nativeEvents: [event] }, { runtime: { platform: "browser" }, nativeEvents: [event] },
+    { runtime: { ...runtime, versionCode: -1 } }, { runtime: { ...runtime, androidApiLevel: 1001 } },
+    { runtime: { ...runtime, webViewVersion: "SECRET /patient" } }, { runtime: { ...runtime, deviceId: "SECRET" } }
+  ]) assert.throws(() => validateCreateFeedback(command(invalid)), BadRequestException);
+  assert.throws(() => validateCreateFeedback(command({ runtime, nativeEvents: [event] }, "feature")), /nativeEvents/);
 });

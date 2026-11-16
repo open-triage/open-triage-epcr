@@ -13,7 +13,7 @@ test('packaged pairing check exercises real file and scanner validators, rejecti
       stdin:{resolveDir:resolve('apps/web'),loader:'ts',contents:"export {parseAndroidPairing} from './app/android-pairing';export {parseAndroidPairingQr} from './app/android-scanner';"},
       plugins:[{name:'platform-registration',setup(builder){
         builder.onResolve({filter:/^@capacitor\/core$/},()=>({path:'capacitor',namespace:'fixture'}));
-        builder.onLoad({filter:/.*/,namespace:'fixture'},()=>({contents:'export const registerPlugin=()=>({});'}));
+        builder.onLoad({filter:/.*/,namespace:'fixture'},()=>({contents:'export const registerPlugin=()=>({});export const Capacitor={isNativePlatform:()=>false,getPlatform:()=>"web"};'}));
       }}]});
     const wrapper = stale => `var OpenTriageBootstrap=(()=>{const module={exports:{}};${result.outputFiles[0].text}
       const pairing=module.exports;return {mount(){},parseAndroidPairing:pairing.parseAndroidPairing,

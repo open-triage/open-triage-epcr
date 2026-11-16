@@ -88,9 +88,10 @@ public class NativeStartupTest {
             activity.onActivity(screen->screen.getBridge().getWebView().loadUrl(url.toString()));
             waitForDocument(activity,"document.readyState==='complete' && performance.timeOrigin!=="+before+" && location.pathname==="+org.json.JSONObject.quote(url.getPath())+" && Boolean(window.Capacitor?.nativePromise)");
             for(int pass=0;pass<2;pass++){
-                evaluate(activity,"window.__routeProof=null;(async()=>{const state=await window.Capacitor.nativePromise('OpenTriageConnection','state',{});const version=await window.Capacitor.nativePromise('OpenTriageConnection','version',{});window.__routeProof={context:state.connectionContext,version:version.versionCode,platform:window.Capacitor.getPlatform()};})()");
+                evaluate(activity,"window.__routeProof=null;(async()=>{const state=await window.Capacitor.nativePromise('OpenTriageConnection','state',{});const version=await window.Capacitor.nativePromise('OpenTriageConnection','version',{});window.__routeProof={context:state.connectionContext,version:version.versionCode,runtime:version,platform:window.Capacitor.getPlatform()};})()");
                 waitForDocument(activity,"Boolean(window.__routeProof)");
                 assertEquals(originalContext,evaluateString(activity,"window.__routeProof.context"));assertEquals("android",evaluateString(activity,"window.__routeProof.platform"));assertEquals("true",evaluate(activity,"window.__routeProof.version>0"));
+                assertEquals("true",evaluate(activity,"typeof window.__routeProof.runtime.versionName==='string' && window.__routeProof.runtime.androidApiLevel>0 && /^[0-9.]+$/.test(window.__routeProof.runtime.webViewVersion)"));
                 assertEquals("The visible document path is preserved",url.getEncodedPath(),evaluateString(activity,"location.pathname"));
                 assertEquals("The document remains on the approved bundled origin","https://localhost",evaluateString(activity,"location.origin"));
                 assertEquals("The visible document query is preserved",url.getEncodedQuery(),evaluateString(activity,"location.search.slice(1)"));

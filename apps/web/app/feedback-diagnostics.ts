@@ -6,8 +6,10 @@ import type {
   FeedbackDiagnostics,
   FeedbackStructuralKind
 } from "@open-triage/contracts";
+import { feedbackRuntimeSnapshot } from "./feedback-native";
 import identifyingPolicy from "../../../packages/database/config/identifying-elements.json";
 import { feedbackTelemetrySnapshot } from "./feedback-telemetry";
+import { captureVisibleFeedbackAlerts } from "./feedback-alerts";
 
 export const FEEDBACK_DIAGNOSTIC_SCHEMA_VERSION = 1 as const;
 export const FEEDBACK_DIAGNOSTIC_MAX_BYTES = 16_384;
@@ -37,6 +39,7 @@ function context(windowObject: Window, mode: FeedbackDiagnosticMode, screen: Fee
     buildVersion: process.env.NEXT_PUBLIC_BUILD_VERSION ?? "development",
     mode,
     screen,
+    runtime: feedbackRuntimeSnapshot(),
     browserFamily: browserFamily(windowObject.navigator.userAgent),
     viewport: { width, height, category: width < 640 ? "narrow" : width < 1200 ? "standard" : "wide" },
     connectivity: windowObject.navigator.onLine ? "online" : "offline"
@@ -82,7 +85,8 @@ export function captureFeedbackDiagnostics(
   screen: FeedbackDiagnosticScreen
 ): FeedbackDiagnostics {
   try {
-    const payload = { ...context(windowObject, mode, screen), structure: structuralSnapshot(windowObject.document) };
+    const payload = { ...context(windowObject, mode, screen), structure: structuralSnapshot(windowObject.document),
+      visibleAlerts: captureVisibleFeedbackAlerts(windowObject) };
     if (new TextEncoder().encode(JSON.stringify(payload)).byteLength > FEEDBACK_DIAGNOSTIC_MAX_BYTES) {
       return { status: "unavailable", schemaVersion: 1, reason: "serialization-failed" };
     }
@@ -94,12 +98,21 @@ export function captureFeedbackDiagnostics(
 
 export function diagnosticsForType(capture: FeedbackDiagnostics, type: "bug" | "feature"): FeedbackDiagnostics {
   if (capture.status === "unavailable" || type === "bug") return capture;
-  const { structure: _structure, interactions: _interactions, requestFailures: _requestFailures, ...payload } = capture.payload;
+  const { structure: _structure, interactions: _interactions, requestFailures: _requestFailures, nativeEvents: _nativeEvents,
+    visibleAlerts: _visibleAlerts, runtimeErrors: _runtimeErrors, ...payload } = capture.payload;
   return { status: "available", payload };
 }
 
 export function diagnosticsForSubmission(capture: FeedbackDiagnostics, type: "bug" | "feature"): FeedbackDiagnostics {
   const typed = diagnosticsForType(capture, type);
   if (typed.status === "unavailable" || type === "feature") return typed;
-  return { status: "available", payload: { ...typed.payload, ...feedbackTelemetrySnapshot() } };
+  try {
+    const payload = { ...typed.payload, ...feedbackTelemetrySnapshot() };
+    if (new TextEncoder().encode(JSON.stringify(payload)).byteLength > FEEDBACK_DIAGNOSTIC_MAX_BYTES) {
+      return { status: "unavailable", schemaVersion: 1, reason: "serialization-failed" };
+    }
+    return { status: "available", payload };
+  } catch {
+    return { status: "unavailable", schemaVersion: 1, reason: "serialization-failed" };
+  }
 }

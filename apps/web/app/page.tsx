@@ -1004,10 +1004,10 @@ function EncounterWorkspace({ session, report, presentationMode, language, onSav
     <main className={`app-shell ${presentationMode}-presentation${presentationMode === "stationary" && stationaryTimelineOpen ? " stationary-timeline-open" : ""}`} data-presentation-mode={presentationMode}
       data-editing-blocked={editingBlocked || signing || cosBusy || undefined} onClickCapture={blockProtectedEdit}
       onBeforeInputCapture={blockProtectedEdit} onKeyDownCapture={blockProtectedEdit}>
-      {closeError && <p className="safety-notice" role="alert">{t("mobile.protectedBeforeClose")}</p>}
-      {recoveryNotice && !bestEffortNoticeInDemoBanner && <aside className="safety-notice" role="status"><strong>{recoveryNoticeHeading}</strong><span>{recoveryNotice}</span></aside>}
+      {closeError && <p className="safety-notice" role="alert" data-feedback-source="close">{t("mobile.protectedBeforeClose")}</p>}
+      {recoveryNotice && !bestEffortNoticeInDemoBanner && <aside className="safety-notice" role="status" data-feedback-source="protected-storage"><strong>{recoveryNoticeHeading}</strong><span>{recoveryNotice}</span></aside>}
       {cosBusy&&<aside className="safety-notice" role="status">{t(epsBusy?"epsSubmission.signingPending":"cosSigning.pending")}</aside>}
-      {populateError && <aside className="safety-notice" role="alert">{populateError}</aside>}
+      {populateError && <aside className="safety-notice" role="alert" data-feedback-source="synthetic-population">{populateError}</aside>}
       {dispatchCancellation && <aside className="dispatch-canceled-notice" role="status">
         <strong>{t("mobile.dispatchCancelled")}</strong>
         <span>{t("mobile.cancellationNotice", { date: formatClinicalDate(dispatchCancellation.canceledAt, region, undefined, zone) })}</span>
@@ -1159,7 +1159,7 @@ function EncounterWorkspace({ session, report, presentationMode, language, onSav
               ))}
             </ul>
           ) : null}
-          {signError && <p className="finish-help" role="alert">{signError}</p>}
+          {signError && <p className="finish-help" role="alert" data-feedback-source="signing">{signError}</p>}
           <DispatchConflictList language={language} conflicts={dispatchConflicts} onDispose={disposeConflict} />
           {conflictError && <p className="finish-help" role="alert">{conflictError}</p>}
           {integrations}
@@ -1264,7 +1264,7 @@ function EncounterWorkspace({ session, report, presentationMode, language, onSav
                 }}
               />
               <small id="report-text-note-count">{t("mobile.characters", { count: formatClinicalNumber(textNoteValidation.characterCount, region), max: formatClinicalNumber(REPORT_TEXT_NOTE_MAX_CHARACTERS, region) })}</small>
-              <p id="report-text-note-error" className="finish-help" role={noteError || textNoteValidation.error ? "alert" : undefined}>
+              <p id="report-text-note-error" className="finish-help" data-feedback-source="note" role={noteError || textNoteValidation.error ? "alert" : undefined}>
                 {noteError ?? (textNoteDraft.content ? textNoteValidation.error : null)}
               </p>
               <div className="note-dialog-actions">
@@ -1413,7 +1413,7 @@ function ReviewPanel({ language, findings, errors, warnings, noteBlockers, group
         <button className={validationClear ? "validation-clear" : undefined} type="button" disabled={!canFinish || signing} onClick={onSign}>{signing ? resolveMessage(language, "mobile.signing") : resolveMessage(language, "mobile.sign")}</button>
       </div>
       {!canFinish && <p className="finish-help" role="status">{blockedReason ?? resolveMessage(language, "mobile.signBlocked")}</p>}
-      {signError && <p className="finish-help" role="alert">{signError}</p>}
+      {signError && <p className="finish-help" role="alert" data-feedback-source="signing">{signError}</p>}
     </section>
   );
 }

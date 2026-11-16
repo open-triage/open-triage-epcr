@@ -99,7 +99,57 @@ export interface FeedbackRequestFailure {
   endpointPattern: string;
   status: number;
   durationMs: number;
+  failureKind?: "http" | "network" | "cancelled";
 }
+
+/** Only application-authored message identifiers may describe visible errors. */
+export const feedbackAlertMessageKeys = [
+  "mobile.protectedBeforeClose", "mobile.protectedBeforeSign", "mobile.signFailed",
+  "mobile.noteSaveFailed", "mobile.noteDeleteFailed", "mobile.saveNeedsAttention",
+  "stationary.validationFallback", "navigation.adminUnavailable",
+] as const;
+export const feedbackAlertAreas = ["validation", "storage", "signing", "notice", "other"] as const;
+export const feedbackAlertSources = ["protected-storage", "close", "synthetic-population", "signing", "note", "validation"] as const;
+export interface FeedbackVisibleAlert {
+  area: typeof feedbackAlertAreas[number];
+  source?: typeof feedbackAlertSources[number];
+  messageKey?: typeof feedbackAlertMessageKeys[number];
+  fontSizePx: number;
+  width: number;
+  height: number;
+  overflowing: boolean;
+}
+export const feedbackRuntimeErrorKinds = ["Error", "TypeError", "RangeError", "ReferenceError", "SyntaxError", "other"] as const;
+export interface FeedbackRuntimeError {
+  source: "error" | "unhandledrejection";
+  kind: typeof feedbackRuntimeErrorKinds[number];
+  timestamp: string;
+}
+
+/** Shared allowlists: no native messages, paths, identifiers, or bridge arguments. */
+export const feedbackNativeOperations = [
+  "request", "authentication", "pairing", "configuration", "handoff", "pdf", "camera", "microphone", "lifecycle", "recovery"
+] as const;
+export const feedbackNativeCodes = [
+  "TLS_FAILED", "CONNECTION_FAILED", "MANAGED_BLOCKED", "MANAGED_CONFLICT", "SERVER_INCOMPATIBLE",
+  "ENROLLMENT_NOT_COMMITTED", "ENROLLMENT_UNAVAILABLE", "CAMERA_DENIED", "SCANNER_FAILED", "QR_TOO_LARGE", "INVALID_QR",
+  "PERMISSION_DENIED", "UNAVAILABLE", "FAILED", "DENIED", "PENDING", "BACKGROUND", "FOREGROUND", "INTERRUPTED",
+  "pdf.unavailable", "pdf.media-unavailable", "pdf.media-decode-failed", "pdf.media-too-large", "pdf.audio-metadata-unavailable",
+  "pdf.amendment-evidence-unavailable", "pdf.invalid-version", "pdf.definitions-unavailable", "pdf.unsupported-text", "pdf.too-large"
+] as const;
+export interface FeedbackNativeEvent {
+  operation: typeof feedbackNativeOperations[number];
+  code: typeof feedbackNativeCodes[number];
+  timestamp: string;
+  durationMs: number;
+}
+export type FeedbackRuntime = { platform: "browser" } | {
+  platform: "android";
+  versionCode?: number;
+  versionName?: string;
+  androidApiLevel?: number;
+  webViewVersion?: string;
+};
 
 export interface FeedbackDiagnosticContext {
   schemaVersion: 1;
@@ -108,6 +158,7 @@ export interface FeedbackDiagnosticContext {
   mode: FeedbackDiagnosticMode;
   screen: FeedbackDiagnosticScreen;
   browserFamily: FeedbackBrowserFamily;
+  runtime?: FeedbackRuntime;
   viewport: { width: number; height: number; category: "narrow" | "standard" | "wide" };
   connectivity: "online" | "offline";
 }
@@ -119,6 +170,9 @@ export interface FeedbackDiagnosticPayload extends FeedbackDiagnosticContext {
   };
   interactions?: FeedbackInteractionName[];
   requestFailures?: FeedbackRequestFailure[];
+  nativeEvents?: FeedbackNativeEvent[];
+  visibleAlerts?: FeedbackVisibleAlert[];
+  runtimeErrors?: FeedbackRuntimeError[];
 }
 
 export type FeedbackDiagnostics =

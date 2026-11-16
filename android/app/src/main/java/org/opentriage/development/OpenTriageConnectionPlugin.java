@@ -186,7 +186,12 @@ public class OpenTriageConnectionPlugin extends LifecycleBoundPlugin {
         return getContext().getPackageManager().getPackageInfo(getContext().getPackageName(), 0).getLongVersionCode();
     }
     @PluginMethod public void version(PluginCall call) { execute(call, () -> {
-        JSObject result = new JSObject(); result.put("versionCode", installedVersion()); return result;
+        JSObject result = new JSObject(); result.put("versionCode", installedVersion());
+        result.put("versionName", getContext().getPackageManager().getPackageInfo(getContext().getPackageName(), 0).versionName);
+        result.put("androidApiLevel", android.os.Build.VERSION.SDK_INT);
+        android.content.pm.PackageInfo webView = android.webkit.WebView.getCurrentWebViewPackage();
+        if (webView != null) result.put("webViewVersion", webView.versionName);
+        return result;
     }); }
     @PluginMethod public void state(PluginCall call) { execute(call, () -> {
         return connectionState();

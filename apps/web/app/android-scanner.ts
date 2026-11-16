@@ -1,10 +1,11 @@
+import { observeNativeFeedback } from "./feedback-native";
 import { registerPlugin } from "@capacitor/core";
 import { parseAndroidPairing, type AndroidPairing } from "./android-pairing";
 
 /** QR 40-M permits 2,331 byte-mode bytes. Leave space for reliable camera decoding. */
 export const MAX_PAIRING_QR_BYTES = 2048;
 export type PairingScanResult = { cancelled: true } | { cancelled: false; artifact: string };
-export const AndroidScanner = registerPlugin<{ scan(): Promise<PairingScanResult> }>("OpenTriageScanner");
+export const AndroidScanner = observeNativeFeedback(registerPlugin<{ scan(): Promise<PairingScanResult> }>("OpenTriageScanner"), { scan: "camera" });
 export class PairingQrError extends Error {
   constructor(readonly code: "QR_TOO_LARGE" | "INVALID_QR") { super(code); }
 }

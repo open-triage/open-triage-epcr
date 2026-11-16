@@ -1,15 +1,19 @@
+import { nativeFeedbackSnapshot, clearNativeFeedback } from "./feedback-native";
 import type { FeedbackInteractionName, FeedbackRequestFailure } from "@open-triage/contracts";
+import { feedbackRuntimeErrorKinds, type FeedbackRuntimeError } from "@open-triage/contracts";
 
 export const FEEDBACK_INTERACTION_MAX = 20;
 export const FEEDBACK_REQUEST_FAILURE_MAX = 10;
 
 const interactions: FeedbackInteractionName[] = [];
 const requestFailures: FeedbackRequestFailure[] = [];
+const runtimeErrors: FeedbackRuntimeError[] = [];
+let telemetryGeneration = 0;
 const methods = new Set<FeedbackRequestFailure["method"]>(["GET", "POST", "PUT", "PATCH", "DELETE"]);
 const literalSegments = new Set([
   "api", "admin", "review", "calls", "assigned", "synthetic-generation", "feedback", "v1", "submissions",
   "installation", "reports", "open", "sessions", "current", "password", "reauthenticate",
-  "context", "users", "roles", "catalogs", "forms", "draft", "changes", "sign", "amend",
+  "context", "eps", "cos", "users", "roles", "catalogs", "forms", "draft", "changes", "sign", "amend",
   "reopen", "assignments", "cancel", "complete", "ownership", "transfer", "preview", "publish",
   "options", "capabilities", "packages", "import", "export", "generate", "delete"
 ]);
@@ -57,31 +61,61 @@ function recordRequestFailure(value: FeedbackRequestFailure): void {
 }
 
 export function feedbackTelemetrySnapshot(): Pick<
-  NonNullable<import("@open-triage/contracts").FeedbackDiagnosticPayload>, "interactions" | "requestFailures"
+  NonNullable<import("@open-triage/contracts").FeedbackDiagnosticPayload>, "interactions" | "requestFailures" | "nativeEvents" | "runtimeErrors"
 > {
-  return { interactions: [...interactions].reverse(), requestFailures: [...requestFailures].reverse() };
+  return { interactions: [...interactions].reverse(), requestFailures: [...requestFailures].reverse(), runtimeErrors: [...runtimeErrors].reverse(),
+    ...(nativeFeedbackSnapshot().length ? { nativeEvents: nativeFeedbackSnapshot() } : {}) };
 }
 
 export function clearFeedbackTelemetry(): void {
+  telemetryGeneration += 1;
+  runtimeErrors.length = 0;
+  clearNativeFeedback();
   interactions.length = 0;
   requestFailures.length = 0;
+}
+
+/** Error messages, rejection values, stack traces and source URLs are never retained. */
+export function installFeedbackRuntimeTracking(windowObject: Window): () => void {
+  const record = (source: FeedbackRuntimeError["source"], error: unknown) => {
+    let kind: FeedbackRuntimeError["kind"] = "other";
+    try {
+      if (error instanceof Error && (feedbackRuntimeErrorKinds as readonly string[]).includes(error.name)) {
+        kind = error.name as FeedbackRuntimeError["kind"];
+      }
+    } catch { /* Arbitrary rejection objects may have throwing accessors. */ }
+    boundedPush(runtimeErrors, { source, kind, timestamp: new Date().toISOString() }, 10);
+  };
+  const onError = (event: ErrorEvent) => record("error", event.error);
+  const onRejection = (event: PromiseRejectionEvent) => record("unhandledrejection", event.reason);
+  windowObject.addEventListener("error", onError);
+  windowObject.addEventListener("unhandledrejection", onRejection);
+  return () => {
+    windowObject.removeEventListener("error", onError);
+    windowObject.removeEventListener("unhandledrejection", onRejection);
+  };
 }
 
 /** Observes only request metadata and response timing; headers and bodies are never read. */
 export function installFeedbackRequestTracking(windowObject: Window): () => void {
   const original = windowObject.fetch.bind(windowObject);
   const tracked: typeof windowObject.fetch = async (input, init) => {
+    const generation = telemetryGeneration;
     const startedAt = Date.now();
     const timestamp = new Date(startedAt).toISOString();
     const method = safeMethod(input, init);
     const endpointPattern = normalizeFeedbackEndpoint(input, windowObject.location.origin);
     try {
       const response = await original(input, init);
-      if (method && (response.status === 0 || response.status >= 400)) recordRequestFailure({ timestamp, method, endpointPattern, status: response.status,
+      if (generation === telemetryGeneration && method && (response.status === 0 || response.status >= 400)) recordRequestFailure({ timestamp, method, endpointPattern, status: response.status,
+        failureKind: response.status === 0 ? "network" : "http",
         durationMs: Math.min(300_000, Math.max(0, Date.now() - startedAt)) });
       return response;
     } catch (error) {
-      if (method) recordRequestFailure({ timestamp, method, endpointPattern, status: 0,
+      const signal = init?.signal ?? (typeof Request !== "undefined" && input instanceof Request ? input.signal : undefined);
+      const cancelled = signal?.aborted || (error instanceof DOMException && error.name === "AbortError");
+      if (generation === telemetryGeneration && method) recordRequestFailure({ timestamp, method, endpointPattern, status: 0,
+        failureKind: cancelled ? "cancelled" : "network",
         durationMs: Math.min(300_000, Math.max(0, Date.now() - startedAt)) });
       throw error;
     }

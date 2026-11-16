@@ -304,3 +304,49 @@ helper calls. All five confirmed modules require automated coverage.
   component names, endpoint version notation, reference-code encoding, payload
   byte limit, and executable retention scheduling mechanism may follow existing
   repository conventions as long as they preserve the requirements above.
+
+## Android diagnostic extension
+
+Schema version 1 accepts optional `runtime` context: browser or Android, with
+native version code/name, Android API level, and WebView version when available.
+Web app/build versions continue to identify the hosted UI independently. Older
+clients may omit runtime; older APKs supply only the native version code.
+
+Bug reports may attach up to 20 newest-first, memory-only `nativeEvents`, each
+containing an approved operation and code, timestamp, and bounded duration.
+Bridge failures cover requests/TLS, pairing, authentication return, managed
+configuration, handoff, recovery, scanning and PDF operations. Media capture
+records permission/failure categories and interrupted recording; lifecycle
+records background/resume events. Stable polled authentication/configuration
+outcomes are recorded only when they change. Feature requests omit event detail.
+Buffers clear with existing session/installation telemetry boundaries, and late
+bridge completions cannot repopulate a cleared buffer. The complete diagnostic
+payload, including attached telemetry, remains limited to 16,384 bytes.
+
+Do not retain bridge arguments, result bodies, raw exceptions, device identifiers,
+file paths, credentials or clinical content. New fields use shared allowlists and
+strict API validation. Deploy the accepting API before the updated hosted UI:
+older API versions reject these new fields. The existing authenticated,
+online-only submission route does not provide startup crash collection or a
+reporting route for failures that prevent reaching the authenticated application.
+
+## Error evidence extension
+
+Bug snapshots independently scan visible alerts before opening feedback, so a
+truncated structural snapshot cannot hide them. Up to ten alerts retain only
+approved component source/category identifiers, an exact match to an approved
+localized message key when available, font size, bounding width/height, and
+horizontal overflow. Hidden/offscreen alerts, identifying field subtrees and
+custom elements are excluded. Unknown and interpolated error text is never
+retained; component source markers still identify storage, close, signing,
+note and synthetic-population failures without copying their messages.
+
+Up to ten recent runtime errors retain only timestamp, error event versus
+unhandled rejection, and an approved exception class. Messages, rejection
+values, stacks and source URLs are excluded. Failed requests distinguish HTTP,
+network and cancellation outcomes; EPS and COS remain literal route segments
+while report identifiers stay redacted. In-flight requests completing after a
+session telemetry clear cannot repopulate the buffer. All new evidence is
+memory-only, omitted for feature requests and subject to the existing byte
+limit and strict API allowlists. Older clients and stored reports may omit
+these optional schema-version-1 fields. Deploy the accepting API before the UI.

@@ -1,4 +1,5 @@
 "use client";
+import { recordNativeMediaFailure } from "../app/feedback-native";
 import { LocalDateTime } from "./local-date-time";
 import { DialogCancelButton, DialogRemoveButton } from "./documentation-dialog-buttons";
 import React from "react";
@@ -203,6 +204,7 @@ export function PhotoNoteDialog({
         setDeviceIndex(Math.max(0, ids.indexOf(activeDeviceId ?? "")));
         setCameraError(null);
       } catch (error) {
+        recordNativeMediaFailure("camera", error);
         const denied = error instanceof DOMException && (error.name === "NotAllowedError" || error.name === "SecurityError");
         if (mounted.current && denied) {
           // Permission dialogs pause/resume Android. Preserve denial instead of automatically prompting again.

@@ -1,4 +1,7 @@
+import { feedbackNativeCodes, feedbackNativeOperations, type FeedbackRuntime, type FeedbackNativeEvent } from "@open-triage/contracts";
 import { BadRequestException } from "@nestjs/common";
+import { feedbackAlertAreas, feedbackAlertMessageKeys, feedbackAlertSources, feedbackRuntimeErrorKinds,
+  type FeedbackVisibleAlert, type FeedbackRuntimeError } from "@open-triage/contracts";
 import type {
   CreateFeedbackCommand, FeedbackDiagnosticPayload, FeedbackDiagnostics, FeedbackInteractionName,
   FeedbackRequestFailure, FeedbackStructuralKind
@@ -30,7 +33,7 @@ const requestMethods = new Set(["GET", "POST", "PUT", "PATCH", "DELETE"]);
 const endpointLiteralSegments = new Set([
   "api", "admin", "review", "calls", "assigned", "synthetic-generation", "feedback", "v1", "submissions",
   "installation", "reports", "open", "sessions", "current", "password", "reauthenticate",
-  "context", "users", "roles", "catalogs", "forms", "draft", "changes", "sign", "amend",
+  "context", "eps", "cos", "users", "roles", "catalogs", "forms", "draft", "changes", "sign", "amend",
   "reopen", "assignments", "cancel", "complete", "ownership", "transfer", "preview", "publish",
   "options", "capabilities", "packages", "import", "export", "generate", "delete"
 ]);
@@ -95,7 +98,7 @@ function validateRequestFailures(value: unknown): FeedbackRequestFailure[] {
   }
   return value.map((item, index) => {
     const failure = record(item, `Diagnostic request failure ${index} must be an object`);
-    exact(failure, new Set(["timestamp", "method", "endpointPattern", "status", "durationMs"]), `diagnostic request failure ${index}`);
+    exact(failure, new Set(["timestamp", "method", "endpointPattern", "status", "durationMs", "failureKind"]), `diagnostic request failure ${index}`);
     if (typeof failure.timestamp !== "string" || !isoTimestamp.test(failure.timestamp)
       || Number.isNaN(Date.parse(failure.timestamp))) throw new BadRequestException(`Diagnostic request failure ${index} has an invalid timestamp`);
     if (!requestMethods.has(failure.method as string)) throw new BadRequestException(`Diagnostic request failure ${index} has an invalid method`);
@@ -108,8 +111,93 @@ function validateRequestFailures(value: unknown): FeedbackRequestFailure[] {
     if (!Number.isInteger(failure.durationMs) || Number(failure.durationMs) < 0 || Number(failure.durationMs) > 300_000) {
       throw new BadRequestException(`Diagnostic request failure ${index} has an invalid duration`);
     }
-    return { timestamp: failure.timestamp, method: failure.method, endpointPattern: failure.endpointPattern,
+    if (failure.failureKind !== undefined && (!(["http", "network", "cancelled"] as unknown[]).includes(failure.failureKind)
+      || (failure.status === 0 ? failure.failureKind === "http" : failure.failureKind !== "http"))) {
+      throw new BadRequestException("Invalid diagnostic request failure kind");
+    }
+    return { ...(failure.failureKind === undefined ? {} : { failureKind: failure.failureKind }),
+      timestamp: failure.timestamp, method: failure.method, endpointPattern: failure.endpointPattern,
       status: Number(failure.status), durationMs: Number(failure.durationMs) } as FeedbackRequestFailure;
+  });
+}
+
+function validateRuntime(value: unknown): FeedbackRuntime {
+  const runtime = record(value, "Diagnostic runtime must be an object");
+  if (runtime.platform === "browser") {
+    exact(runtime, new Set(["platform"]), "diagnostic runtime");
+    return { platform: "browser" };
+  }
+  if (runtime.platform !== "android") throw new BadRequestException("Invalid diagnostic runtime platform");
+  exact(runtime, new Set(["platform", "versionCode", "versionName", "androidApiLevel", "webViewVersion"]), "diagnostic runtime");
+  const result: Extract<FeedbackRuntime, { platform: "android" }> = { platform: "android" };
+  for (const key of ["versionCode", "androidApiLevel"] as const) {
+    if (runtime[key] === undefined) continue;
+    if (!Number.isSafeInteger(runtime[key]) || Number(runtime[key]) < 1 || (key === "androidApiLevel" && Number(runtime[key]) > 1000)) {
+      throw new BadRequestException(`Invalid diagnostic runtime ${key}`);
+    }
+    result[key] = Number(runtime[key]);
+  }
+  for (const key of ["versionName", "webViewVersion"] as const) {
+    if (runtime[key] === undefined) continue;
+    if (typeof runtime[key] !== "string" || runtime[key].length > 64 || !/^[0-9]+(?:\.[0-9]+){0,3}(?:[-+][A-Za-z0-9.]+)?$/.test(runtime[key])) {
+      throw new BadRequestException(`Invalid diagnostic runtime ${key}`);
+    }
+    result[key] = runtime[key];
+  }
+  return result;
+}
+function validateNativeEvents(value: unknown): FeedbackNativeEvent[] {
+  if (!Array.isArray(value) || value.length > 20) throw new BadRequestException("Diagnostic native events must contain at most 20 summaries");
+  return value.map(item => {
+    const event = record(item, "Diagnostic native event must be an object");
+    exact(event, new Set(["operation", "code", "timestamp", "durationMs"]), "diagnostic native event");
+    if (!(feedbackNativeOperations as readonly unknown[]).includes(event.operation) || !(feedbackNativeCodes as readonly unknown[]).includes(event.code)) {
+      throw new BadRequestException("Unsupported diagnostic native event category");
+    }
+    if (typeof event.timestamp !== "string" || !isoTimestamp.test(event.timestamp) || Number.isNaN(Date.parse(event.timestamp))) {
+      throw new BadRequestException("Invalid diagnostic native event timestamp");
+    }
+    if (!Number.isInteger(event.durationMs) || Number(event.durationMs) < 0 || Number(event.durationMs) > 300_000) {
+      throw new BadRequestException("Invalid diagnostic native event duration");
+    }
+    return { operation: event.operation, code: event.code, timestamp: event.timestamp, durationMs: event.durationMs } as FeedbackNativeEvent;
+  });
+}
+
+function validateVisibleAlerts(value: unknown): FeedbackVisibleAlert[] {
+  if (!Array.isArray(value) || value.length > 10) throw new BadRequestException("Diagnostic visible alerts must contain at most 10 summaries");
+  return value.map(item => {
+    const alert = record(item, "Diagnostic visible alert must be an object");
+    exact(alert, new Set(["area", "source", "messageKey", "fontSizePx", "width", "height", "overflowing"]), "diagnostic visible alert");
+    if (!(feedbackAlertAreas as readonly unknown[]).includes(alert.area)
+      || (alert.source !== undefined && !(feedbackAlertSources as readonly unknown[]).includes(alert.source))
+      || (alert.messageKey !== undefined && !(feedbackAlertMessageKeys as readonly unknown[]).includes(alert.messageKey))) {
+      throw new BadRequestException("Unsupported diagnostic visible alert category");
+    }
+    for (const key of ["fontSizePx", "width", "height"] as const) {
+      if (!Number.isInteger(alert[key]) || Number(alert[key]) < 0 || Number(alert[key]) > 10_000) {
+        throw new BadRequestException("Invalid diagnostic visible alert measurement");
+      }
+    }
+    if (typeof alert.overflowing !== "boolean") throw new BadRequestException("Invalid diagnostic visible alert overflow");
+    return { area: alert.area, ...(alert.source === undefined ? {} : { source: alert.source }), ...(alert.messageKey === undefined ? {} : { messageKey: alert.messageKey }),
+      fontSizePx: alert.fontSizePx, width: alert.width, height: alert.height, overflowing: alert.overflowing } as FeedbackVisibleAlert;
+  });
+}
+
+function validateRuntimeErrors(value: unknown): FeedbackRuntimeError[] {
+  if (!Array.isArray(value) || value.length > 10) throw new BadRequestException("Diagnostic runtime errors must contain at most 10 summaries");
+  return value.map(item => {
+    const error = record(item, "Diagnostic runtime error must be an object");
+    exact(error, new Set(["source", "kind", "timestamp"]), "diagnostic runtime error");
+    if ((error.source !== "error" && error.source !== "unhandledrejection")
+      || !(feedbackRuntimeErrorKinds as readonly unknown[]).includes(error.kind)) {
+      throw new BadRequestException("Unsupported diagnostic runtime error category");
+    }
+    if (typeof error.timestamp !== "string" || !isoTimestamp.test(error.timestamp) || Number.isNaN(Date.parse(error.timestamp))) {
+      throw new BadRequestException("Invalid diagnostic runtime error timestamp");
+    }
+    return { source: error.source, kind: error.kind, timestamp: error.timestamp } as FeedbackRuntimeError;
   });
 }
 
@@ -117,7 +205,7 @@ function validatePayload(value: unknown, type: "bug" | "feature"): FeedbackDiagn
   const payload = record(value, "Diagnostic payload must be an object");
   exact(payload, new Set([
     "schemaVersion", "appVersion", "buildVersion", "mode", "screen", "browserFamily",
-    "viewport", "connectivity", ...(type === "bug" ? ["structure", "interactions", "requestFailures"] : [])
+    "viewport", "connectivity", "runtime", ...(type === "bug" ? ["structure", "interactions", "requestFailures", "nativeEvents", "visibleAlerts", "runtimeErrors"] : [])
   ]), "diagnostic payload");
   if (payload.schemaVersion !== 1) throw new BadRequestException("Unsupported diagnostic schema version");
   if (typeof payload.appVersion !== "string" || !safeVersion.test(payload.appVersion)) throw new BadRequestException("Invalid diagnostic app version");
@@ -137,7 +225,10 @@ function validatePayload(value: unknown, type: "bug" | "feature"): FeedbackDiagn
   if (type === "bug" && payload.interactions === undefined) throw new BadRequestException("Bug diagnostics require interaction history");
   if (type === "bug" && payload.requestFailures === undefined) throw new BadRequestException("Bug diagnostics require request-failure history");
 
+  const runtime = payload.runtime === undefined ? undefined : validateRuntime(payload.runtime);
+  if (payload.nativeEvents !== undefined && runtime?.platform !== "android") throw new BadRequestException("Native events require Android runtime");
   return {
+    ...(runtime ? { runtime } : {}),
     schemaVersion: 1,
     appVersion: payload.appVersion,
     buildVersion: payload.buildVersion,
@@ -149,7 +240,10 @@ function validatePayload(value: unknown, type: "bug" | "feature"): FeedbackDiagn
     ...(type === "bug" ? {
       structure: validateStructure(payload.structure),
       interactions: validateInteractions(payload.interactions),
-      requestFailures: validateRequestFailures(payload.requestFailures)
+      requestFailures: validateRequestFailures(payload.requestFailures),
+      ...(payload.visibleAlerts === undefined ? {} : { visibleAlerts: validateVisibleAlerts(payload.visibleAlerts) }),
+      ...(payload.runtimeErrors === undefined ? {} : { runtimeErrors: validateRuntimeErrors(payload.runtimeErrors) }),
+      ...(payload.nativeEvents === undefined ? {} : { nativeEvents: validateNativeEvents(payload.nativeEvents) })
     } : {})
   };
 }

@@ -1,4 +1,5 @@
 "use client";
+import { recordNativeFeedback, recordNativeMediaFailure } from "../app/feedback-native";
 import { LocalDateTime } from "./local-date-time";
 import { DialogCancelButton, DialogRemoveButton } from "./documentation-dialog-buttons";
 import React from "react";
@@ -182,6 +183,7 @@ export function AudioNoteDialog({ dialogRef, reportId, note, csrfToken, revision
   }, [note, reportId]);
 
   const finishRecording = useCallback((interrupted = false) => {
+    if (interrupted && !interruptedRef.current && recorder.current?.state === "recording") recordNativeFeedback("microphone", "INTERRUPTED");
     interruptedRef.current ||= interrupted;
     if (recorder.current?.state === "recording") {
       elapsedRef.current = Math.min(REPORT_AUDIO_MAX_MILLISECONDS, Math.max(elapsedRef.current, performance.now() - captureStartedAt.current));
@@ -315,6 +317,7 @@ export function AudioNoteDialog({ dialogRef, reportId, note, csrfToken, revision
       };
       animation.current = requestAnimationFrame(sample);
     } catch (caught) {
+      recordNativeMediaFailure("microphone", caught);
       stream.current?.getTracks().forEach((track) => track.stop()); stream.current = null;
       if (previewIdentity.current) await removeProtectedAudioPreview(reportId, previewIdentity.current);
       if (mounted.current && !discarded.current) { setMode("ready"); setError(mediaCaptureErrorMessage("microphone", caught, language)); }

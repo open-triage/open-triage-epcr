@@ -1,3 +1,4 @@
+import { recordNativeFeedback } from "./feedback-native";
 import { registerPlugin, type PluginListenerHandle } from "@capacitor/core";
 import { isAndroidRuntime } from "./android-runtime";
 import { setNativeForeground } from "./application-foreground";
@@ -20,7 +21,7 @@ export function installAndroidLifecycle(): Promise<void> {
     const listeners: PluginListenerHandle[] = [];
     try {
       listeners.push(await lifecycle.addListener("foreground", state => {
-        if (active) { revision++; setNativeForeground(state.active); }
+        if (active) { revision++; recordNativeFeedback("lifecycle", state.active ? "FOREGROUND" : "BACKGROUND"); setNativeForeground(state.active); }
       }));
       listeners.push(await lifecycle.addListener("back", () => {
         // Failed initialization cannot leave a second Back callback on retry.
