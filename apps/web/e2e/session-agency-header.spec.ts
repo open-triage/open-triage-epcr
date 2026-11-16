@@ -35,7 +35,7 @@ for (const mode of ["Mobile", "Stationary"] as const) {
     await expect(header.getByRole("combobox", { name: "Agency", exact: true })).toBeVisible();
     await expect(header.getByText("Agency", { exact: true })).toHaveCount(0);
     await page.getByRole("button", { name: mode, exact: true }).click();
-    for (const width of [320, 390, 620, 621, 768, 1024, 1440]) {
+    for (const width of [320, 360, 370, 371, 390, 620, 621, 768, 1024, 1440]) {
       await page.setViewportSize({ width, height: 900 });
       const identityBounds = await header.getByText("Signed in as Installation Owner", {exact:true}).boundingBox();
       const unitBounds = await unit.boundingBox();
@@ -52,8 +52,12 @@ for (const mode of ["Mobile", "Stationary"] as const) {
         const logout = await header.getByRole("button", { name: "Log out" }).boundingBox();
         const language = await header.locator(".language-trigger").boundingBox();
         const selector = await header.locator(".presentation-selector-scroll").boundingBox();
+        const account = await header.locator(".session-account").boundingBox();
         const bounds = await header.boundingBox();
         expect(Math.abs(logout!.y - language!.y)).toBeLessThan(2);
+        expect(account!.x + account!.width).toBeLessThanOrEqual(logout!.x);
+        expect(account!.y).toBeLessThan(logout!.y + logout!.height);
+        expect(account!.y + account!.height).toBeGreaterThan(logout!.y);
         expect(logout!.y + logout!.height).toBeLessThanOrEqual(selector!.y);
         expect(Math.abs(selector!.x - (bounds!.x + 12))).toBeLessThan(2);
         expect(Math.abs(selector!.width - (bounds!.width - 24))).toBeLessThan(2);
@@ -62,9 +66,9 @@ for (const mode of ["Mobile", "Stationary"] as const) {
         const selector = await header.getByRole("combobox", { name: "Agency" }).boundingBox();
         expect(Math.abs(logout!.y - selector!.y)).toBeLessThan(2);
       }
-      if (width === 390) {
-        await testInfo.attach(`${mode}-narrow-session-bar`, {
-          body: await header.screenshot(), contentType: "image/png",
+      if (width === 320 || width === 390) {
+        await testInfo.attach(`${mode}-session-bar-${width}`, {
+          body: await header.screenshot({ path: testInfo.outputPath(`session-bar-${width}.png`) }), contentType: "image/png",
         });
       }
     }

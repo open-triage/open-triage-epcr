@@ -809,10 +809,6 @@ fieldset { min-inline-size: 0; }
 .review-actions button:disabled { cursor: not-allowed; }
 .finish-help { margin: 9px 18px 0; color: var(--muted); font-size: var(--text-caption); text-align: right; }
 @media (max-width: 410px) { .vital-grid { grid-template-columns: 1fr; } }
-@media (max-width: 370px) {
-  .authenticated-shell .session-bar:has(> .session-account) > .session-account { grid-column: 1 / -1; grid-row: 2; }
-  .authenticated-shell .session-bar:has(> .session-account) > .presentation-selector-scroll { grid-row: 3; }
-}
 @media (max-width: 620px) {
   .stationary-inline-group { margin-left: 0; }
   .session-bar { grid-template-columns: auto auto minmax(0, 1fr) auto; }
