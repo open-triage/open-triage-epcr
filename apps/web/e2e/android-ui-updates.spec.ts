@@ -25,6 +25,7 @@ for (const native of [false, true]) test(`${native ? "Android" : "browser"} shar
       define: { __OPEN_TRIAGE_BUILD_SHA__: JSON.stringify(`ui-test-${version}`) } }); workers.set(version, result.outputFiles[0]!.text);
   }
   await page.addInitScript(() => {
+    sessionStorage.setItem("ui-navigation-count", String(Number(sessionStorage.getItem("ui-navigation-count") ?? 0) + 1));
     (window as unknown as { controllerChanges: number }).controllerChanges = 0;
     navigator.serviceWorker.addEventListener("controllerchange", () => { (window as unknown as { controllerChanges: number }).controllerChanges++; });
   });
@@ -52,6 +53,9 @@ for (const native of [false, true]) test(`${native ? "Android" : "browser"} shar
     const origin = `http://127.0.0.1:${address.port}`; await page.goto(origin);
     await expect.poll(() => page.evaluate(() => Boolean(navigator.serviceWorker.controller))).toBe(true);
     await expect(page.getByRole("heading", { name: "Server UI 1" })).toBeVisible();
+    // First worker control must not reload an already usable server UI on either platform.
+    await expect.poll(() => page.evaluate(async () => (await navigator.serviceWorker.getRegistration())?.active?.state)).toBe("activated");
+    expect(await page.evaluate(() => sessionStorage.getItem("ui-navigation-count"))).toBe("1");
     const changes = await page.evaluate(() => (window as unknown as { controllerChanges: number }).controllerChanges);
     await page.getByRole("button", { name: "Start work" }).click(); version = 2;
     await page.getByRole("button", { name: "Check update" }).click();

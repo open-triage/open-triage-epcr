@@ -24,8 +24,9 @@ export function ServiceWorkerRegistration() {
       window.location.reload();
     };
     const useUpdatedShell = () => {
-      // Android's first page can be the bundled bootstrap; adopt the server UI once it is cached.
-      if (!hasController && !native) { hasController = true; return; }
+      // First control only needs navigation when replacing Android's APK loader.
+      // A server UI already on screen must keep its current state and input.
+      if (!hasController && (!native || !document.querySelector(".native-ui-loading"))) { hasController = true; return; }
       hasController = true;
       pending = true; applyUpdatedShell();
     };

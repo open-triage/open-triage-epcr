@@ -36,6 +36,8 @@ A new worker precaches the shell and linked assets before activating. Failed
 installations leave the previous worker in use. Reloads wait until the app is
 visible and no clinical report or explicit-save editor is open. The previous
 shell cache remains available for older asset requests from an open page.
+First worker control preserves an already loaded server UI; only the APK
+loading screen needs navigation to adopt that first cached shell.
 Offline navigation uses the current worker's shell, rather than accidentally
 selecting an older cached root document. API responses and clinical JSON are
 never cached by this mechanism.
