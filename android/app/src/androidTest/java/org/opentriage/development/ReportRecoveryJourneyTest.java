@@ -87,7 +87,7 @@ public class ReportRecoveryJourneyTest {
         waitFor("document.querySelector('.sync-status')?.textContent==='Saved'");
     }
     private void observeNativeLifecycle() throws Exception {
-        evaluate("window.__nativeEvents=[];window.__nativeActive=true;window.__backgroundRequests=0;window.__assignedReads=0;window.addEventListener('open-triage.foreground-changed',event=>{window.__nativeActive=event.detail.active;window.__nativeEvents.push(event.detail.active)},true);window.__originalFetch=window.fetch;window.fetch=(input,init)=>{const url=typeof input==='string'?input:input.url;if(url.includes('/api/')){if(!window.__nativeActive){window.__backgroundRequests++;window.__backgroundPaths?.push(url)}if(url.includes('/calls/assigned'))window.__assignedReads++;}return window.__originalFetch(input,init)}");
+        evaluate("window.__nativeEvents=[];window.__nativeActive=true;window.__backgroundRequests=0;window.__backgroundPaths=[];window.__assignedReads=0;window.addEventListener('open-triage.foreground-changed',event=>{window.__nativeActive=event.detail.active;window.__nativeEvents.push(event.detail.active)},true);window.__originalFetch=window.fetch;window.fetch=(input,init)=>{const url=typeof input==='string'?input:input.url;if(url.includes('/api/')){if(!window.__nativeActive){window.__backgroundRequests++;if(window.__backgroundPaths.length<32)window.__backgroundPaths.push(new URL(url,location.href).pathname)}if(url.includes('/calls/assigned'))window.__assignedReads++;}return window.__originalFetch(input,init)}");
     }
     private void photoOfflineCapture() throws Exception {
         click("Mobile");
@@ -496,7 +496,7 @@ public class ReportRecoveryJourneyTest {
         observeNativeLifecycle();
         activity.moveToState(Lifecycle.State.CREATED); Thread.sleep(1200); activity.moveToState(Lifecycle.State.RESUMED);
         waitFor("window.__nativeEvents.includes(false) && window.__nativeEvents.includes(true) && window.__assignedReads>0");
-        assertEquals("No new API drains while the native activity is paused", "0", evaluate("window.__backgroundRequests"));
+        assertEquals("No new API drains while the native activity is paused: " + evaluate("JSON.stringify(window.__backgroundPaths)"), "0", evaluate("window.__backgroundRequests"));
         assertEquals("Actual Android runtime supplies protected-storage primitives", "true", evaluate("Boolean(crypto.subtle && indexedDB && navigator.locks?.request && navigator.storage)"));
         // Missing primitives retain online-only editing without an unprotected clinical copy.
         evaluate("window.__locks=navigator.locks;Object.defineProperty(navigator,'locks',{configurable:true,value:undefined})");

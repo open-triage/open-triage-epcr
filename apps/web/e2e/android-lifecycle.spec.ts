@@ -249,3 +249,46 @@ test("signing, review attention and EPS readers wait through paused reconnect an
   await page.clock.fastForward(350);
   await expect.poll(() => reads).toEqual({ signing: before.signing + 1, attention: before.attention + 1, eps: before.eps + 2 });
 });
+
+test('native pause between authenticated render and passive effects prevents new review requests', async ({page}) => {
+  const session = {csrfToken:'synthetic-csrf',user:{id:demoOpenAssignment.report.documentingUserId,displayName:'Synthetic clinician'},
+    organization:{id:'32000000-0000-4000-8000-000000000001',name:'Synthetic agency'},capabilities:['clinical:document','review:self'],
+    workspaceAvailable:true,startedAt:new Date().toISOString(),expiresAt:'2099-01-01T00:00:00Z'};
+  const bundled = await build({bundle:true,write:false,format:'iife',platform:'browser',jsx:'automatic',
+    define:{'process.env':JSON.stringify({NEXT_PUBLIC_API_URL:'same-origin',NEXT_PUBLIC_USE_LOCAL_DEMO_SESSION:'false'})},
+    plugins:[{name:'pause-before-passive-effects',setup(builder){
+      builder.onResolve({filter:/use-native-foreground$/},args=>args.importer.endsWith('clinician-session-gate.tsx')?{path:'pause-hook',namespace:'pause-hook'}:undefined);
+      builder.onLoad({filter:/.*/,namespace:'pause-hook'},()=>({loader:'ts',resolveDir:path.resolve(__dirname,'..'),contents:`
+        import {useLayoutEffect} from 'react';import {useNativeForeground as original} from './components/use-native-foreground';
+        import {setNativeForeground} from './app/application-foreground';
+        export function useNativeForeground(){const value=original();useLayoutEffect(()=>{
+          if(!window.pausedAtCommit&&document.querySelector('.session-identity')){window.pausedAtCommit=true;setNativeForeground(false);}
+        });return value;}` }));
+    }}],stdin:{resolveDir:path.resolve(__dirname,'..'),loader:'tsx',contents:`
+      import React from 'react';import{createRoot}from'react-dom/client';import{ClinicianSessionGate}from'./components/clinician-session-gate';
+      import{foregroundNetworkAllowed,setNativeForeground}from'./app/application-foreground';
+      window.backgroundRequests=[];const original=window.fetch.bind(window);window.fetch=(input,init)=>{
+        if(!foregroundNetworkAllowed())window.backgroundRequests.push(String(input));return original(input,init);
+      };
+      window.resume=()=>setNativeForeground(true);
+      createRoot(document.getElementById('root')).render(<ClinicianSessionGate><p>Clinical workspace</p></ClinicianSessionGate>);`}});
+  await page.addInitScript(stored=>localStorage.setItem('open-triage.clinician-session.v1',JSON.stringify(stored)),session);
+  await page.route('**/__pause-at-commit',route=>route.fulfill({contentType:'text/html',body:`<html><body><div id="root"></div><script>${bundled.outputFiles[0]!.text}</script></body></html>`}));
+  let attention=0;
+  await page.route('**/api/**',route=>{
+    const endpoint=new URL(route.request().url()).pathname;
+    if(endpoint==='/api/installation')return route.fulfill({json:{settings:productionSettings}});
+    if(endpoint==='/api/sessions/current')return route.fulfill({json:session});
+    if(endpoint==='/api/calls/assigned')return route.fulfill({json:demoAssignedCalls});
+    if(endpoint==='/api/reports/open')return route.fulfill({json:{openCalls:[],completedReportIds:[],refreshedAt:new Date().toISOString()}});
+    if(endpoint==='/api/review/attention'){attention++;return route.fulfill({json:{dataset:'real',asOf:new Date().toISOString(),total:0}});}
+    return route.fulfill({status:404,json:{}});
+  });
+  await page.goto('/__pause-at-commit');
+  await expect.poll(()=>page.evaluate(()=>(window as any).pausedAtCommit)).toBe(true);
+  await expect(page.locator('.session-identity')).toBeVisible();
+  expect(await page.evaluate(()=>(window as any).backgroundRequests)).toEqual([]);
+  expect(attention).toBe(0);
+  await page.evaluate(()=>(window as any).resume());
+  await expect.poll(()=>attention).toBe(1);
+});

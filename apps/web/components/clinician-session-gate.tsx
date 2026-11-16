@@ -154,7 +154,8 @@ export function ClinicianSessionGate({ children }: {
     const controller = new AbortController();
     const url = apiRequestUrl(`/api/review/attention?dataset=${reviewAttentionDataset}`);
     const load = () => {
-      if (!url || controller.signal.aborted) return;
+      // Native pause can arrive after render but before this passive effect.
+      if (!url || controller.signal.aborted || !foregroundNetworkAllowed()) return;
       void fetch(url, browserRequestInit({ signal: controller.signal })).then(async (response) => {
         if (!response.ok) throw new Error(String(response.status));
         const value = await response.json() as ReviewAttentionResponse;
