@@ -10,6 +10,8 @@ const nextConfig: NextConfig = {
   allowedDevOrigins: ["*.localhost"],
   // Native UI transport carries HTTP assets, so keep React debug data in the RSC payload.
   experimental: { reactDebugChannel: false },
+  // Production uses Turbopack; the Webpack adaptation below is development-only.
+  turbopack: {},
   webpack(config, { dev, isServer, webpack }) {
     if (dev && !isServer) {
       // Adapt both Next's initial connection and its HotReload ping consumer.
