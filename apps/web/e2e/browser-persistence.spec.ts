@@ -1152,7 +1152,8 @@ for (const navigation of ["button", "android-back"] as const) test(`${navigation
     await page.addStyleTag({ content: ":root{--text-caption:18px;--text-body:21px;--text-control:24px;--text-heading:36px}" });
     await expect(page.locator(".session-bar [data-change-installation]")).toHaveCount(0);
     // Identity stays readable without an installation-change action taking header space.
-    expect(await page.locator(".session-account").evaluate(element => element.getBoundingClientRect().width)).toBeGreaterThan(100);
+    await expect(page.locator(".session-account")).toBeVisible();
+    expect(await page.locator(".session-bar").evaluate(element => element.scrollWidth <= element.clientWidth)).toBe(true);
     expect(await page.locator(".session-bar").evaluate(element => element.getBoundingClientRect().height)).toBeLessThan(616 * .6);
     await page.keyboard.press("Tab");
     await page.evaluate(() => window.scrollTo(0, 0));

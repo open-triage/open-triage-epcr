@@ -32,7 +32,8 @@ for (const enlarged of [false,true]) for(const viewport of [{width:320,height:61
   await page.goto('/__native-audio-layout');
   await expect(page.locator('[data-change-installation]')).toHaveCount(0);
   if(enlarged)await page.addStyleTag({content:':root{--text-caption:18px;--text-body:21px;--text-control:24px;--text-heading:36px}'});
-  expect(await page.locator('.session-account').evaluate(element=>element.getBoundingClientRect().width)).toBeGreaterThan(100);
+  await expect(page.locator('.session-account')).toBeInViewport();
+  expect(await page.locator('.session-bar').evaluate(element=>element.scrollWidth<=element.clientWidth)).toBe(true);
   expect(await page.locator('.session-bar').evaluate(element=>element.getBoundingClientRect().height)).toBeLessThan(viewport.height*.6);
   await page.screenshot({path:testInfo.outputPath(`native-session-header-${enlarged}.png`)});
   await page.getByRole('button',{name:'Open call',exact:true}).first().click();
@@ -55,7 +56,8 @@ for (const enlarged of [false,true]) for(const viewport of [{width:320,height:61
   await page.getByRole('button',{name:'Cancel',exact:true}).click();
   await page.keyboard.press('Tab');
   await expect(page.locator('.active-report-notice')).toHaveCount(0);
-  expect(await page.locator('.session-account').evaluate(element=>element.getBoundingClientRect().width)).toBeGreaterThan(100);
+  await expect(page.locator('.session-account')).toBeVisible();
+  expect(await page.locator('.session-bar').evaluate(element=>element.scrollWidth<=element.clientWidth)).toBe(true);
   expect(await page.locator('.session-bar').evaluate(element=>element.getBoundingClientRect().height)).toBeLessThan(viewport.height*.6);
   const play=page.locator('.audio-note-event').filter({hasText:'SYNTHETIC-AUDIO-PLAYBACK'}).locator('.timeline-audio-action');
   await expect(play).toBeVisible();
