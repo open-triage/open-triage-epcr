@@ -11,7 +11,9 @@ const { values } = parseArgs({ options: {
 const port = Number(values.port || process.env.PORT || 3000);
 const hostname = values.hostname || "0.0.0.0";
 const route = localRouting();
-const app = next({ dev: true, port, hostname });
+// Released native clients require the stable asset names emitted by Webpack.
+// Turbopack development chunks can contain encoded package scopes such as @swc.
+const app = next({ dev: true, webpack: true, port, hostname });
 await app.prepare();
 const handle = app.getRequestHandler();
 const server = developmentServer((request, response) => {

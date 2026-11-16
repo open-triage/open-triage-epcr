@@ -24,6 +24,7 @@ try {
   npm(["run", "lint"], env);
   npm(["test"], env);
   npm(["run", "build"], { ...env, NEXT_PUBLIC_API_URL: "same-origin" });
+  npm(["run", "test:development", "-w", "@open-triage/web"], env);
   npm(["run", "test:deployment", "-w", "@open-triage/web"], { ...env, NEXT_PUBLIC_API_URL: "same-origin" });
   run(docker, ["run", "--detach", "--name", container, "--publish", "127.0.0.1::5432",
     "--env", "POSTGRES_PASSWORD=postgres", "--env", "POSTGRES_DB=open_triage_test",

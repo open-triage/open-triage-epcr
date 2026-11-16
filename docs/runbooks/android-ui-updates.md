@@ -22,6 +22,15 @@ A normal web deployment publishes the UI and `/sw.js` together. The existing
 and Android clients check the shared worker on load and when returning online or
 to the foreground. Android also checks when pairing establishes a server.
 Local development uses this computer's paired HTTPS server in the same way.
+The development server uses Webpack for compatibility with released APK asset
+filters; Turbopack can emit package-scoped chunk names rejected by RC9.
+React development debug data stays in the HTTP response because the native UI
+transport does not forward Next.js debugging WebSockets.
+The development client leaves HMR disconnected on native Android; otherwise
+Next's exhausted WebSocket retries force repeated full-page reloads during use.
+Browser development retains its normal HMR connection. The development browser
+checks exercise the real Next client past its reconnect budget and verify that
+native input survives online and visibility events without navigation.
 
 A new worker precaches the shell and linked assets before activating. Failed
 installations leave the previous worker in use. Reloads wait until the app is

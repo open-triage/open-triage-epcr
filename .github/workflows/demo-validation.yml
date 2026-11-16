@@ -92,6 +92,8 @@ jobs:
           deploy/docker/nginx.conf apps/web/out /tmp/open-triage-nginx.conf
       - name: Install Chromium
         run: npx playwright install --with-deps chromium
+      - name: Test native-compatible development startup
+        run: npm run test:development -w @open-triage/web
       - name: Test the root-hosted web artifact
         run: npm run test:deployment -w @open-triage/web
       - name: Build the web runtime image

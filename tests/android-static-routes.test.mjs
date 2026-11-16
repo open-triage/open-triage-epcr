@@ -13,7 +13,8 @@ public class StaticRoutes {
  static void check(boolean value){if(!value)throw new AssertionError("Static document crossed its packaged route boundary");}
  public static void main(String[]args){
   for(String path:new String[]{"/","/sw.js","/manifest.webmanifest","/_next/static/chunks/app.js","/review-call/?report=synthetic"})check(NativeUiRequest.path("https://localhost"+path,"GET").equals(path));
-  for(String url:new String[]{"http://localhost/sw.js","https://foreign.test/sw.js","https://localhost/api/reports","https://localhost/demo-open-assignment.json","https://localhost/_next/static/../secret.js","https://localhost/_next/static/%2e%2e/secret.js","https://user@localhost/sw.js","https://localhost:443/sw.js"})check(NativeUiRequest.path(url,"GET")==null);
+  for(String path:new String[]{"/_next/static/chunks/node_modules_%40swc_helpers_cjs_runtime.js","/_next/static/chunks/@scope/module.js","/_next/static/chunks/vendors~runtime.js"})check(NativeUiRequest.path("https://localhost"+path,"GET").equals(path));
+  for(String url:new String[]{"http://localhost/sw.js","https://foreign.test/sw.js","https://localhost/api/reports","https://localhost/demo-open-assignment.json","https://localhost/_next/static/../secret.js","https://localhost/_next/static/%2e%2e/secret.js","https://user@localhost/sw.js","https://localhost:443/sw.js","https://localhost/_next/static/@scope/%2e%2e/secret.js","https://localhost/_next/static/x%0a.js","https://localhost/_next/static/x%5csecret.js"})check(NativeUiRequest.path(url,"GET")==null);
   check(NativeUiRequest.path("https://localhost/enroll?language=sv","GET").equals("/enroll/?language=sv"));
   check(NativeUiRequest.path("https://localhost/sw.js","POST")==null);check(!NativeUiRequest.accepts("/_next/static/app.js","text/html"));check(NativeUiRequest.accepts("/sw.js","text/javascript; charset=utf-8"));
   var assets=Set.of("public/review-call/index.html","public/enroll/index.html","public/404/index.html");

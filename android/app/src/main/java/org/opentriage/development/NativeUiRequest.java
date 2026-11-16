@@ -11,7 +11,7 @@ final class NativeUiRequest {
         try { uri = URI.create(url); } catch (IllegalArgumentException invalid) { return null; }
         if (!"https".equals(uri.getScheme()) || !"localhost".equals(uri.getRawAuthority()) || uri.getRawFragment() != null) return null;
         String path = uri.getPath();
-        if (path == null || !path.matches("/[A-Za-z0-9_./()\\[\\]-]*") || path.contains("..") || path.contains("//") || path.contains("/./")) return null;
+        if (path == null || !path.matches("/[A-Za-z0-9_@~./()\\[\\]-]*") || path.contains("..") || path.contains("//") || path.contains("/./")) return null;
         boolean document = Set.of("/", "/index.html", "/enroll/", "/enroll", "/review-call/", "/review-call", "/admin-preview/", "/admin-preview").contains(path);
         boolean asset = path.startsWith("/_next/static/") && path.matches(".*\\.(?:js|css|woff2?|ttf|png|jpe?g|webp|svg|ico)$");
         if (!document && !asset && !Set.of("/sw.js", "/manifest.webmanifest", "/favicon.ico").contains(path)) return null;
