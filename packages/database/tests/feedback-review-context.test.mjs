@@ -50,6 +50,21 @@ test("local resolution reads only the selected local database configuration", ()
   }), /does not target localhost/);
 });
 
+test("local resolution prefers the persisted dedicated reviewer over the application login", () => {
+  const read = () => `DATABASE_URL=postgresql://application:secret@127.0.0.1:54322/postgres\nFEEDBACK_REVIEW_DATABASE_URL='${localUrl}'\n`;
+  assert.equal(resolveReviewConnection("local", { env: {}, read }), localUrl);
+  const override = "postgresql://override:secret@localhost:54322/postgres";
+  assert.equal(resolveReviewConnection("local", {
+    env: { FEEDBACK_REVIEW_DATABASE_URL: override }, read,
+  }), override);
+});
+
+test("an invalid persisted reviewer target is rejected without falling back to the application login", () => {
+  assert.throws(() => resolveReviewConnection("local", {
+    env: {}, read: () => `DATABASE_URL=${localUrl}\nFEEDBACK_REVIEW_DATABASE_URL=${demoUrl}\n`,
+  }), /does not target localhost/);
+});
+
 test("the connection is passed only in the child environment and never in arguments", () => {
   let invocation;
   const status = runWithContext(["--instance", "public-demo", "apply", "--confirm-bulk"], {

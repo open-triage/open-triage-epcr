@@ -35,8 +35,9 @@ It accepts only the documented commands and options; there is no SQL option.
 
 The repository wrapper can resolve the selected installation without placing a
 connection URI on the command line. For `local`, it prefers an already supplied
-`FEEDBACK_REVIEW_DATABASE_URL` and otherwise reads `DATABASE_URL` from the root
-`.env.local`. For `public-demo`, it first requires the exact Kubernetes context
+`FEEDBACK_REVIEW_DATABASE_URL` from the environment, then the same key in the root
+`.env.local`, and otherwise falls back to `DATABASE_URL` in that file.
+For `public-demo`, it first requires the exact Kubernetes context
 `do-ams3-k8s-open-triage-demo`, then reads only
 `FEEDBACK_REVIEW_DATABASE_URL` from the cluster-owned
 `open-triage-feedback-reviewer` Secret in the `open-triage` namespace.

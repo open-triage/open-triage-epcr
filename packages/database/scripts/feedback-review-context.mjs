@@ -69,7 +69,7 @@ export function resolveReviewConnection(instance, {
     try { contents = read(path.join(root, ".env.local"), "utf8"); } catch {
       throw new ReviewContextError("Local database configuration is unavailable");
     }
-    const connection = envFileValue(contents, "DATABASE_URL");
+    const connection = envFileValue(contents, REVIEW_URL_KEY) || envFileValue(contents, "DATABASE_URL");
     if (!connection) throw new ReviewContextError("Local database configuration has no DATABASE_URL");
     return validateTarget(connection, instance);
   }
