@@ -105,6 +105,15 @@ jobs:
           --build-arg NEXT_PUBLIC_API_URL="$NEXT_PUBLIC_API_URL"
           --build-arg OPEN_TRIAGE_BUILD_SHA="${{ inputs.deployment_revision || github.sha }}"
           -t open-triage-web:runtime-validation .
+      - name: Verify public UI resources through the runtime web server
+        run: |
+          docker run --detach --name web-shell-validation -p 127.0.0.1:3110:8080 open-triage-web:runtime-validation
+          trap 'docker rm -f web-shell-validation' EXIT
+          for attempt in $(seq 1 30); do
+            if curl --fail --silent http://127.0.0.1:3110/ > /dev/null; then break; fi
+            sleep 1
+          done
+          node scripts/verify-web-shell.mjs http://127.0.0.1:3110
 
   api-runtime-image-validation:
     name: Validate / Pruned API runtime image
