@@ -13,11 +13,12 @@ Run the probe with the demo cluster selected in the current kubeconfig:
 node scripts/check-node-runtime.mjs
 ```
 
-It reads node/agent inventory and runs `df` in existing Cilium agents against
+It reads node/agent inventory and the `cilium-config` ConfigMap, checks the active
+CNI configuration on every node, and runs `df` in existing Cilium agents against
 their host-mounted runtime directory. It creates no pods and changes no node
-files. The Kubernetes credentials need to list nodes and kube-system pods and
-execute the read-only probe in Cilium's agent container. Scheduled CI reuses the
-existing demo environment and its short-lived DOKS kubeconfig.
+files. The Kubernetes credentials need to read that ConfigMap, list nodes and
+kube-system pods, and execute the read-only probe in Cilium's agent container.
+Scheduled CI reuses the existing demo environment and its short-lived DOKS kubeconfig.
 
 Run `npm run check:workflows` to validate GitHub expression/context availability
 as well as workflow syntax. The pinned actionlint container runs in PR application
@@ -25,11 +26,12 @@ validation and the local CI preflight; `DOCKER_COMMAND=docker.exe` is supported
 on WSL. This catches invalid contexts in scheduled workflows before merge, even
 when those workflows do not run on pull requests.
 
-The check fails when either bytes or inodes reach 70% use, fewer than 32 MiB
-remain, a node is not Ready, or a worker cannot be inspected. Each successful
-probe logs a JSON measurement containing the node, mount, available bytes and
-byte/inode usage. Review consecutive workflow logs to identify growth before
-the runtime becomes unable to start containers.
+The check fails when the saved CNI log path is outside `/var/log`, a worker's
+installed CNI log path differs, either bytes or inodes reach 70% use, fewer than
+32 MiB remain, a node is not Ready, or a worker cannot be inspected. Each
+successful probe logs a JSON measurement containing the node, mount, available
+bytes and byte/inode usage, plus the CNI log destination. Review consecutive
+workflow logs to identify growth before the runtime becomes unable to start containers.
 
 ## Why ordinary disk and readiness checks missed the incident
 
@@ -44,6 +46,48 @@ The reboot cleared the accumulated state, so the specific source of the original
 growth is not established. The new checks provide warning headroom and block
 deployments against an exhausted runtime; they do not impose a storage quota or
 repair a provider/runtime leak automatically.
+
+## CNI log placement
+
+On 2026-11-17, inspection during a recurrence identified the files consuming the
+197.4 MiB runtime filesystem: a 100 MiB rotated CNI log and an approximately
+92 MiB active log in `/run/cilium`. Endpoint state and BPF templates occupied only
+about 2 MiB. The CNI plugin's 100 MiB rotation size allows its logs to exhaust this
+filesystem before the next rotation. Removing a preserved, checksum-verified
+archive restored container execution and deployment without rebooting the node.
+
+The demo now uses `/var/log/cilium-cni.log` on the worker's main disk. Both
+`cilium-config.data.cni-log-file` and the Cilium plugin's `log-file` field in
+`/etc/cni/net.d/05-cilium.conflist` must use this path. The saved ConfigMap supplies
+subsequent agent starts; changing the active JSON atomically lets new CNI calls
+use it immediately without restarting the agent or changing networking settings.
+The plugin retains its built-in log rotation. The old inactive log was preserved
+as `/var/log/cilium-cni-recovered-2026-11-17.log`; it is an incident archive, not an
+active log destination.
+
+[Cilium exposes the log destination as `cni.logFile`](https://docs.cilium.io/en/stable/helm-reference/).
+[DigitalOcean manages Cilium and may revert custom settings](https://docs.digitalocean.com/products/kubernetes/details/managed/).
+This is a targeted operator override, not a provider-guaranteed persistent
+setting. The shared deployment and scheduled check detects a reset in either
+the ConfigMap or the active node configuration before log growth fills `/run`.
+Check it after provider maintenance, node replacement, or a cluster upgrade.
+Inspect provider changes before reapplying the override; do not replace the
+whole managed ConfigMap or install a loop that repeatedly overwrites it.
+
+When correcting placement, back up the ConfigMap and active JSON first, verify
+the host's `/var/log` filesystem has disk headroom, change only the log-path
+fields, and preserve the active configuration's ownership and permissions.
+Validate a fresh pod's networking and DNS and confirm new log writes on the main
+disk. Only remove old runtime log files after preserving and verifying them and
+checking that no process still has them open. Never remove endpoint state or
+container runtime bundles as log cleanup.
+
+If exec is unavailable, the node's kubelet API can still expose filesystem
+metrics at `/api/v1/nodes/<node>/proxy/metrics/cadvisor`; inspect the root
+`container_fs_usage_bytes` and `container_fs_limit_bytes` series for
+`device="/run"`, plus inode counts. The `/proxy/logs/` endpoint can also expose
+host journal files for local inspection with `journalctl --file`. These paths
+need `nodes/proxy` authorization and do not require starting a container.
 
 ## Respond to a warning
 

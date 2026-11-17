@@ -1,4 +1,5 @@
 import { spawnSync } from "node:child_process";
+import { posix } from "node:path";
 import { fileURLToPath } from "node:url";
 
 export function parseFilesystem(output) {
@@ -29,6 +30,14 @@ export function checkNodeRuntime({ run = kubectl, log = console.log, thresholdPe
   const nodes = JSON.parse(run(["get", "nodes", "--output=json"])).items;
   const pods = JSON.parse(run(["get", "pods", "--namespace=kube-system", "--selector=k8s-app=cilium", "--output=json"])).items;
   if (!Array.isArray(nodes) || nodes.length === 0 || !Array.isArray(pods)) throw new Error("No node/network-agent inventory available");
+  const configuration = JSON.parse(run(["get", "configmap", "cilium-config", "--namespace=kube-system", "--output=json"])).data;
+  const cniLogFile = configuration?.["cni-log-file"];
+  // CNI rotates 100 MiB files. Even two files exhaust the demo's ~198 MiB /run.
+  // Check placement before growth, including after a managed-addon reset.
+  if (typeof cniLogFile !== "string" || !cniLogFile.startsWith("/var/log/") ||
+      cniLogFile.endsWith("/") || posix.normalize(cniLogFile) !== cniLogFile || /[\x00-\x1f\x7f]/.test(cniLogFile)) {
+    throw new Error("CNI logs must use a canonical file path under the host's disk-backed /var/log directory");
+  }
   const failures = [];
   const reports = [];
   for (const node of nodes) {
@@ -45,6 +54,20 @@ export function checkNodeRuntime({ run = kubectl, log = console.log, thresholdPe
       const container = pod.spec.containers.find((candidate) => candidate.name === "cilium-agent");
       const mount = volume && container?.volumeMounts?.find((candidate) => candidate.name === volume.name);
       if (!mount) throw new Error("Cilium agent does not expose the host runtime filesystem");
+      const cniVolume = pod.spec.volumes?.find((candidate) => candidate.hostPath?.path === "/etc/cni/net.d");
+      const cniMount = cniVolume && container?.volumeMounts?.find((candidate) => candidate.name === cniVolume.name);
+      const cniConfigFile = configuration["write-cni-conf-when-ready"];
+      if (!cniMount || typeof cniConfigFile !== "string" || posix.normalize(cniConfigFile) !== cniConfigFile ||
+          posix.dirname(cniConfigFile) !== cniMount.mountPath || !cniConfigFile.endsWith(".conflist")) {
+        throw new Error("CNI configuration is not inspectable within the mounted host CNI directory");
+      }
+      const installed = JSON.parse(run(["exec", "--namespace=kube-system", pod.metadata.name,
+        "--container=cilium-agent", "--", "cat", cniConfigFile]));
+      const plugins = installed?.plugins?.filter((plugin) => plugin?.type === "cilium-cni");
+      if (!plugins?.length) throw new Error("No Cilium CNI plugin found in the installed configuration");
+      if (plugins.some((plugin) => plugin["log-file"] !== cniLogFile)) {
+        throw new Error("Installed CNI log destination differs from the saved disk-backed log destination");
+      }
       const probe = (flag) => parseFilesystem(run(["exec", "--namespace=kube-system", pod.metadata.name,
         "--container=cilium-agent", "--", "env", "LC_ALL=C", "df", flag, mount.mountPath]));
       const bytes = probe("-Pk");
@@ -52,7 +75,7 @@ export function checkNodeRuntime({ run = kubectl, log = console.log, thresholdPe
       if (bytes.filesystem !== inodes.filesystem || bytes.mount !== inodes.mount) throw new Error("Filesystem probes do not agree");
       const freeBytes = bytes.available * 1024;
       const healthy = bytes.usedPercent < thresholdPercent && inodes.usedPercent < thresholdPercent && freeBytes >= minimumFreeBytes;
-      const report = { event: "node_runtime_health", node: name, mount: bytes.mount, freeBytes,
+      const report = { event: "node_runtime_health", node: name, mount: bytes.mount, freeBytes, cniLogFile,
         bytesUsedPercent: Number(bytes.usedPercent.toFixed(2)), inodesUsedPercent: Number(inodes.usedPercent.toFixed(2)), healthy };
       reports.push(report);
       log(JSON.stringify(report));

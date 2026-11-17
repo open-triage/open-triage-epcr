@@ -8,19 +8,26 @@ const filesystem = (total, available, mount = "/run/cilium") =>
   `Filesystem Blocks Used Available Capacity Mounted on\ntmpfs ${total} ${total - available} ${available} 3% ${mount}\n`;
 
 function fixture({ freeBlocks = 196760, freeInodes = 251201, totalBlocks = 202124 } = {}) {
+  const configuration = { data: { "cni-log-file": "/var/log/cilium-cni.log", "write-cni-conf-when-ready": "/host/etc/cni/net.d/05-cilium.conflist" } };
+  const installed = { plugins: [{ type: "cilium-cni", "log-file": "/var/log/cilium-cni.log" }] };
   const nodes = [{ metadata: { name: "worker-a" }, status: { nodeInfo: { operatingSystem: "linux" }, conditions: [{ type: "Ready", status: "True" }] } }];
   const pods = [{ metadata: { name: "cilium-fixture" }, spec: {
-    nodeName: "worker-a", volumes: [{ name: "runtime", hostPath: { path: "/var/run/cilium" } }],
-    containers: [{ name: "cilium-agent", volumeMounts: [{ name: "runtime", mountPath: "/var/run/cilium" }] }],
+    nodeName: "worker-a", volumes: [{ name: "runtime", hostPath: { path: "/var/run/cilium" } }, { name: "cni", hostPath: { path: "/etc/cni/net.d" } }],
+    containers: [{ name: "cilium-agent", volumeMounts: [{ name: "runtime", mountPath: "/var/run/cilium" }, { name: "cni", mountPath: "/host/etc/cni/net.d" }] }],
   }, status: { phase: "Running", containerStatuses: [{ name: "cilium-agent", ready: true }] } }];
   const calls = [];
   const run = (args) => {
     calls.push(args);
+    if (args[0] === "get" && args[1] === "configmap") return JSON.stringify(configuration);
     if (args[0] === "get") return JSON.stringify({ items: args[1] === "nodes" ? nodes : pods });
+    if (args.includes("cat")) {
+      assert.deepEqual(args.slice(args.indexOf("--")), ["--", "cat", "/host/etc/cni/net.d/05-cilium.conflist"]);
+      return JSON.stringify(installed);
+    }
     assert.deepEqual(args.slice(args.indexOf("--")), ["--", "env", "LC_ALL=C", "df", args.includes("-Pk") ? "-Pk" : "-Pi", "/var/run/cilium"]);
     return args.includes("-Pk") ? filesystem(totalBlocks, freeBlocks) : filesystem(252652, freeInodes);
   };
-  return { nodes, pods, calls, run, log() {} };
+  return { nodes, pods, configuration, installed, calls, run, log() {} };
 }
 
 test("runtime health measures the host mount in both bytes and inodes without changing the cluster", () => {
@@ -28,8 +35,41 @@ test("runtime health measures the host mount in both bytes and inodes without ch
   const [report] = checkNodeRuntime(probe);
   assert.equal(report.healthy, true);
   assert.equal(report.freeBytes, 196760 * 1024);
-  assert.equal(probe.calls.filter((args) => args[0] === "exec").length, 2);
+  assert.equal(report.cniLogFile, "/var/log/cilium-cni.log");
+  assert.equal(probe.calls.filter((args) => args[0] === "exec").length, 3);
   assert.ok(probe.calls.every((args) => ["get", "exec"].includes(args[0])));
+});
+
+test("unsafe CNI log destinations fail before runtime storage fills", () => {
+  for (const path of ["/var/run/cilium/cilium-cni.log", "/run/cilium/cilium-cni.log", "/tmp/cilium.log", "relative.log", "/var/log/../../run/cilium.log", "", undefined]) {
+    const probe = fixture();
+    probe.configuration.data["cni-log-file"] = path;
+    probe.installed.plugins[0]["log-file"] = path;
+    assert.throws(() => checkNodeRuntime(probe), /CNI logs must use/);
+  }
+});
+
+test("saved configuration and every node's installed CNI log destination must agree", () => {
+  const probe = fixture();
+  probe.installed.plugins[0]["log-file"] = "/var/run/cilium/cilium-cni.log";
+  assert.throws(() => checkNodeRuntime(probe), /worker-a:.*CNI log destination/);
+  probe.installed.plugins = [{ type: "other-plugin" }];
+  assert.throws(() => checkNodeRuntime(probe), /No Cilium CNI plugin/);
+  probe.installed.plugins = [{ type: "other-plugin" }, { type: "cilium-cni", "log-file": "/var/log/cilium-cni.log" }];
+  assert.equal(checkNodeRuntime(probe)[0].healthy, true);
+  probe.installed.plugins.push({ type: "cilium-cni" });
+  assert.throws(() => checkNodeRuntime(probe), /CNI log destination/);
+});
+
+test("the active CNI config must be inspectable within the host's mounted CNI directory", () => {
+  for (const mutate of [
+    (probe) => { probe.pods[0].spec.volumes[1].hostPath.path = "/unrelated"; },
+    (probe) => { probe.configuration.data["write-cni-conf-when-ready"] = "/host/etc/cni/net.d/../secret"; },
+    (probe) => { delete probe.configuration.data["write-cni-conf-when-ready"]; },
+  ]) {
+    const probe = fixture(); mutate(probe);
+    assert.throws(() => checkNodeRuntime(probe), /CNI configuration/);
+  }
 });
 
 test("low runtime bytes fail even when df reports an incorrect percentage", () => {
