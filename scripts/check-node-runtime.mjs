@@ -1,6 +1,7 @@
 import { spawnSync } from "node:child_process";
 import { posix } from "node:path";
 import { fileURLToPath } from "node:url";
+import { runtimeLoggingProbe, verifyRuntimeLoggingPolicy } from "./node-runtime-logging.mjs";
 
 export function parseFilesystem(output) {
   const lines = output.trim().split(/\r?\n/);
@@ -28,15 +29,16 @@ export function checkNodeRuntime({ run = kubectl, log = console.log, thresholdPe
   if (!Number.isFinite(thresholdPercent) || thresholdPercent <= 0 || thresholdPercent >= 100 ||
       !Number.isSafeInteger(minimumFreeBytes) || minimumFreeBytes < 0) throw new Error("Invalid runtime-space thresholds");
   const nodes = JSON.parse(run(["get", "nodes", "--output=json"])).items;
-  const pods = JSON.parse(run(["get", "pods", "--namespace=kube-system", "--selector=k8s-app=cilium", "--output=json"])).items;
+  const pods = JSON.parse(run(["get", "pods", "--namespace=kube-system", "--output=json"])).items;
   if (!Array.isArray(nodes) || nodes.length === 0 || !Array.isArray(pods)) throw new Error("No node/network-agent inventory available");
   const configuration = JSON.parse(run(["get", "configmap", "cilium-config", "--namespace=kube-system", "--output=json"])).data;
   const cniLogFile = configuration?.["cni-log-file"];
-  // CNI rotates 100 MiB files. Even two files exhaust the demo's ~198 MiB /run.
-  // Check placement before growth, including after a managed-addon reset.
-  if (typeof cniLogFile !== "string" || !cniLogFile.startsWith("/var/log/") ||
+  const requiresRotation = ["/var/run/cilium/cilium-cni.log", "/run/cilium/cilium-cni.log"].includes(cniLogFile);
+  // DOKS restores its runtime log path. Require the operator's bounded rotation
+  // policy on every worker when that provider default is in use.
+  if (typeof cniLogFile !== "string" || (!requiresRotation && !cniLogFile.startsWith("/var/log/")) ||
       cniLogFile.endsWith("/") || posix.normalize(cniLogFile) !== cniLogFile || /[\x00-\x1f\x7f]/.test(cniLogFile)) {
-    throw new Error("CNI logs must use a canonical file path under the host's disk-backed /var/log directory");
+    throw new Error("CNI logs must use a canonical /var/log file or the bounded Cilium runtime log path");
   }
   const failures = [];
   const reports = [];
@@ -66,7 +68,17 @@ export function checkNodeRuntime({ run = kubectl, log = console.log, thresholdPe
       const plugins = installed?.plugins?.filter((plugin) => plugin?.type === "cilium-cni");
       if (!plugins?.length) throw new Error("No Cilium CNI plugin found in the installed configuration");
       if (plugins.some((plugin) => plugin["log-file"] !== cniLogFile)) {
-        throw new Error("Installed CNI log destination differs from the saved disk-backed log destination");
+        throw new Error("Installed CNI log destination differs from the saved log destination");
+      }
+      if (requiresRotation) {
+        const inspector = pods.find((candidate) => candidate.spec.nodeName === name && !candidate.metadata.deletionTimestamp &&
+          candidate.status.phase === "Running" && candidate.status.containerStatuses?.some((status) => status.name === "telemetry-config-reloader" && status.ready));
+        const hostVolume = inspector?.spec.volumes?.find((candidate) => candidate.hostPath?.path === "/");
+        const hostMount = inspector?.spec.containers.find((candidate) => candidate.name === "telemetry-config-reloader")
+          ?.volumeMounts?.find((candidate) => candidate.name === hostVolume?.name);
+        if (hostMount?.mountPath !== "/host") throw new Error("No host inspector available to verify CNI log rotation policy");
+        verifyRuntimeLoggingPolicy(run(["exec", "--namespace=kube-system", inspector.metadata.name,
+          "--container=telemetry-config-reloader", "--", "env", "SYSTEMCTL_FORCE_BUS=1", "chroot", "/host", "/bin/sh", "-c", runtimeLoggingProbe]));
       }
       const probe = (flag) => parseFilesystem(run(["exec", "--namespace=kube-system", pod.metadata.name,
         "--container=cilium-agent", "--", "env", "LC_ALL=C", "df", flag, mount.mountPath]));
@@ -76,6 +88,7 @@ export function checkNodeRuntime({ run = kubectl, log = console.log, thresholdPe
       const freeBytes = bytes.available * 1024;
       const healthy = bytes.usedPercent < thresholdPercent && inodes.usedPercent < thresholdPercent && freeBytes >= minimumFreeBytes;
       const report = { event: "node_runtime_health", node: name, mount: bytes.mount, freeBytes, cniLogFile,
+        cniLogRotation: requiresRotation ? "verified" : "disk-backed",
         bytesUsedPercent: Number(bytes.usedPercent.toFixed(2)), inodesUsedPercent: Number(inodes.usedPercent.toFixed(2)), healthy };
       reports.push(report);
       log(JSON.stringify(report));

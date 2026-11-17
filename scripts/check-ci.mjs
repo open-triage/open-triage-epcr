@@ -15,6 +15,7 @@ const container = `open-triage-check-${randomUUID()}`;
 let started = false;
 try {
   verifyAudioToolchain();
+  if (process.platform === "linux") run("/usr/sbin/logrotate", ["--version"]);
   // Match clean CI jobs; developer database/private settings must not affect units.
   const env = { ...process.env };
   delete env.DATABASE_URL;

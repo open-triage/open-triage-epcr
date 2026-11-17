@@ -15,10 +15,11 @@ node scripts/check-node-runtime.mjs
 
 It reads node/agent inventory and the `cilium-config` ConfigMap, checks the active
 CNI configuration on every node, and runs `df` in existing Cilium agents against
-their host-mounted runtime directory. It creates no pods and changes no node
-files. The Kubernetes credentials need to read that ConfigMap, list nodes and
-kube-system pods, and execute the read-only probe in Cilium's agent container.
-Scheduled CI reuses the existing demo environment and its short-lived DOKS kubeconfig.
+their host-mounted runtime directory. For runtime log paths it also verifies the
+operator's log policy and timer through the existing DOKS telemetry helper's
+host mount. It creates no pods and changes no node files. Credentials must read
+that ConfigMap, list nodes and kube-system pods, and execute these read-only
+probes. Scheduled CI reuses the demo environment and short-lived DOKS kubeconfig.
 
 Run `npm run check:workflows` to validate GitHub expression/context availability
 as well as workflow syntax. The pinned actionlint container runs in PR application
@@ -26,9 +27,10 @@ validation and the local CI preflight; `DOCKER_COMMAND=docker.exe` is supported
 on WSL. This catches invalid contexts in scheduled workflows before merge, even
 when those workflows do not run on pull requests.
 
-The check fails when the saved CNI log path is outside `/var/log`, a worker's
-installed CNI log path differs, either bytes or inodes reach 70% use, fewer than
-32 MiB remain, a node is not Ready, or a worker cannot be inspected. Each
+The check fails when CNI logs lack a disk destination or a verified bounded
+rotation policy, a worker's installed CNI log path differs from its saved path,
+either bytes or inodes reach 70% use, fewer than 32 MiB remain, a node is not Ready,
+or a worker cannot be inspected. Each
 successful probe logs a JSON measurement containing the node, mount, available
 bytes and byte/inode usage, plus the CNI log destination. Review consecutive
 workflow logs to identify growth before the runtime becomes unable to start containers.
@@ -47,7 +49,7 @@ growth is not established. The new checks provide warning headroom and block
 deployments against an exhausted runtime; they do not impose a storage quota or
 repair a provider/runtime leak automatically.
 
-## CNI log placement
+## Bounded CNI log rotation
 
 On 2026-11-17, inspection during a recurrence identified the files consuming the
 197.4 MiB runtime filesystem: a 100 MiB rotated CNI log and an approximately
@@ -56,31 +58,50 @@ about 2 MiB. The CNI plugin's 100 MiB rotation size allows its logs to exhaust t
 filesystem before the next rotation. Removing a preserved, checksum-verified
 archive restored container execution and deployment without rebooting the node.
 
-The demo now uses `/var/log/cilium-cni.log` on the worker's main disk. Both
-`cilium-config.data.cni-log-file` and the Cilium plugin's `log-file` field in
-`/etc/cni/net.d/05-cilium.conflist` must use this path. The saved ConfigMap supplies
-subsequent agent starts; changing the active JSON atomically lets new CNI calls
-use it immediately without restarting the agent or changing networking settings.
-The plugin retains its built-in log rotation. The old inactive log was preserved
-as `/var/log/cilium-cni-recovered-2026-11-17.log`; it is an incident archive, not an
-active log destination.
-
-[Cilium exposes the log destination as `cni.logFile`](https://docs.cilium.io/en/stable/helm-reference/).
 [DigitalOcean manages Cilium and may revert custom settings](https://docs.digitalocean.com/products/kubernetes/details/managed/).
-This is a targeted operator override, not a provider-guaranteed persistent
-setting. The shared deployment and scheduled check detects a reset in either
-the ConfigMap or the active node configuration before log growth fills `/run`.
-Check it after provider maintenance, node replacement, or a cluster upgrade.
-Inspect provider changes before reapplying the override; do not replace the
-whole managed ConfigMap or install a loop that repeatedly overwrites it.
+The reconciler restored the demo's `cni-log-file` setting within minutes of an
+override. The final configuration therefore keeps the managed
+`/var/run/cilium/cilium-cni.log` path and installs a separate, operator-owned
+logrotate policy, approved for the demo worker on 2026-11-17.
 
-When correcting placement, back up the ConfigMap and active JSON first, verify
-the host's `/var/log` filesystem has disk headroom, change only the log-path
-fields, and preserve the active configuration's ownership and permissions.
-Validate a fresh pod's networking and DNS and confirm new log writes on the main
-disk. Only remove old runtime log files after preserving and verifying them and
-checking that no process still has them open. Never remove endpoint state or
-container runtime bundles as log cleanup.
+The files in `deploy/node-runtime-logging/` configure an 8 MiB size threshold,
+four compressed archives under `/var/log/opentriage-cilium-cni`, and a systemd
+check every five minutes. `copytruncate` keeps existing writers on the same
+inode while placing archives on the main disk. Size is checked periodically,
+so 8 MiB is a rotation threshold rather than a hard quota. Like ordinary
+copytruncate rotation, writes concurrent with copying/truncation have a small
+log-loss window; application data is unaffected.
+
+The service uses its own state directory and permits writes only to its runtime
+log directory and systemd-managed archive/state directories. The timer is
+enabled for reboot persistence. This corrects known log retention; it does not
+delete runtime bundles, endpoint state, or sockets. The old inactive log remains
+preserved as `/var/log/cilium-cni-recovered-2026-11-17.log` for incident review.
+
+Provision replacement workers with Debian's `logrotate` package and these files:
+
+| Repository file | Host destination |
+| --- | --- |
+| `deploy/node-runtime-logging/cilium-cni.logrotate` | `/etc/opentriage/cilium-cni.logrotate` |
+| `deploy/node-runtime-logging/opentriage-cilium-logrotate.service` | `/etc/systemd/system/opentriage-cilium-logrotate.service` |
+| `deploy/node-runtime-logging/opentriage-cilium-logrotate.timer` | `/etc/systemd/system/opentriage-cilium-logrotate.timer` |
+
+Install files as root, mode 0644, then run on the authorized host:
+
+```sh
+systemd-analyze verify /etc/systemd/system/opentriage-cilium-logrotate.{service,timer}
+systemctl daemon-reload
+systemctl enable --now opentriage-cilium-logrotate.timer
+systemctl start opentriage-cilium-logrotate.service
+```
+
+The shared check verifies the three installed files against their repository
+hashes, that the timer is active and enabled, and that the service has completed
+successfully. It fails if a worker is missing the policy, including after node
+replacement or provider maintenance. The check only reports drift; it never
+installs packages or overwrites managed configuration. Local Linux regression
+tests exercise real logrotate size thresholds, archive retention, and open
+writers; non-Linux development skips this host-specific test.
 
 If exec is unavailable, the node's kubelet API can still expose filesystem
 metrics at `/api/v1/nodes/<node>/proxy/metrics/cadvisor`; inspect the root

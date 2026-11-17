@@ -309,7 +309,9 @@ local TLS CA and bind a non-loopback network interface. Install OpenSSL before
 running `npm run check:ci`; the test CA is trusted only in its test child process.
 
 The root unit suite compiles and runs a small Java regression for native reply
-lifecycle races. Install JDK 21 or newer and set `JAVA_HOME`, or put `java` and
+lifecycle races. On Linux, also install `logrotate` (for example,
+`sudo apt-get install logrotate`) for the host logging regression; the preflight
+checks its availability before application tests. Install JDK 21 or newer and set `JAVA_HOME`, or put `java` and
 `javac` on `PATH`, before running `npm run check:ci`. Full Android toolchain setup
 is documented in [Android connection development](android-development.md).
 

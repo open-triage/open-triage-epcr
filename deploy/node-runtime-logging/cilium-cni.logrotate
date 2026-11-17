@@ -1,0 +1,9 @@
+/run/cilium/cilium-cni.log {
+    size 8M
+    rotate 4
+    compress
+    copytruncate
+    missingok
+    notifempty
+    olddir /var/log/opentriage-cilium-cni
+}

@@ -3,6 +3,7 @@ import { readFile } from "node:fs/promises";
 import test from "node:test";
 import { load } from "js-yaml";
 import { checkNodeRuntime, parseFilesystem } from "../scripts/check-node-runtime.mjs";
+import { runtimeLoggingFiles } from "../scripts/node-runtime-logging.mjs";
 
 const filesystem = (total, available, mount = "/run/cilium") =>
   `Filesystem Blocks Used Available Capacity Mounted on\ntmpfs ${total} ${total - available} ${available} 3% ${mount}\n`;
@@ -10,16 +11,22 @@ const filesystem = (total, available, mount = "/run/cilium") =>
 function fixture({ freeBlocks = 196760, freeInodes = 251201, totalBlocks = 202124 } = {}) {
   const configuration = { data: { "cni-log-file": "/var/log/cilium-cni.log", "write-cni-conf-when-ready": "/host/etc/cni/net.d/05-cilium.conflist" } };
   const installed = { plugins: [{ type: "cilium-cni", "log-file": "/var/log/cilium-cni.log" }] };
+  const rotation = { output: `${runtimeLoggingFiles.map(({ path, sha256 }) => `${sha256}  ${path}`).join("\n")}\nactive\nenabled\nsuccess\n12345\n` };
   const nodes = [{ metadata: { name: "worker-a" }, status: { nodeInfo: { operatingSystem: "linux" }, conditions: [{ type: "Ready", status: "True" }] } }];
   const pods = [{ metadata: { name: "cilium-fixture" }, spec: {
     nodeName: "worker-a", volumes: [{ name: "runtime", hostPath: { path: "/var/run/cilium" } }, { name: "cni", hostPath: { path: "/etc/cni/net.d" } }],
     containers: [{ name: "cilium-agent", volumeMounts: [{ name: "runtime", mountPath: "/var/run/cilium" }, { name: "cni", mountPath: "/host/etc/cni/net.d" }] }],
-  }, status: { phase: "Running", containerStatuses: [{ name: "cilium-agent", ready: true }] } }];
+  }, status: { phase: "Running", containerStatuses: [{ name: "cilium-agent", ready: true }] } }, {
+    metadata: { name: "host-inspector" }, spec: { nodeName: "worker-a", volumes: [{ name: "host", hostPath: { path: "/" } }],
+      containers: [{ name: "telemetry-config-reloader", volumeMounts: [{ name: "host", mountPath: "/host" }] }] },
+    status: { phase: "Running", containerStatuses: [{ name: "telemetry-config-reloader", ready: true }] },
+  }];
   const calls = [];
   const run = (args) => {
     calls.push(args);
     if (args[0] === "get" && args[1] === "configmap") return JSON.stringify(configuration);
     if (args[0] === "get") return JSON.stringify({ items: args[1] === "nodes" ? nodes : pods });
+    if (args.includes("chroot")) return rotation.output;
     if (args.includes("cat")) {
       assert.deepEqual(args.slice(args.indexOf("--")), ["--", "cat", "/host/etc/cni/net.d/05-cilium.conflist"]);
       return JSON.stringify(installed);
@@ -27,7 +34,7 @@ function fixture({ freeBlocks = 196760, freeInodes = 251201, totalBlocks = 20212
     assert.deepEqual(args.slice(args.indexOf("--")), ["--", "env", "LC_ALL=C", "df", args.includes("-Pk") ? "-Pk" : "-Pi", "/var/run/cilium"]);
     return args.includes("-Pk") ? filesystem(totalBlocks, freeBlocks) : filesystem(252652, freeInodes);
   };
-  return { nodes, pods, configuration, installed, calls, run, log() {} };
+  return { nodes, pods, configuration, installed, rotation, calls, run, log() {} };
 }
 
 test("runtime health measures the host mount in both bytes and inodes without changing the cluster", () => {
@@ -41,11 +48,29 @@ test("runtime health measures the host mount in both bytes and inodes without ch
 });
 
 test("unsafe CNI log destinations fail before runtime storage fills", () => {
-  for (const path of ["/var/run/cilium/cilium-cni.log", "/run/cilium/cilium-cni.log", "/tmp/cilium.log", "relative.log", "/var/log/../../run/cilium.log", "", undefined]) {
+  for (const path of ["/run/another.log", "/tmp/cilium.log", "relative.log", "/var/log/../../run/cilium.log", "", undefined]) {
     const probe = fixture();
     probe.configuration.data["cni-log-file"] = path;
     probe.installed.plugins[0]["log-file"] = path;
     assert.throws(() => checkNodeRuntime(probe), /CNI logs must use/);
+  }
+});
+
+test("provider runtime log paths require the exact bounded policy and an enabled, successfully executed timer", () => {
+  for (const path of ["/var/run/cilium/cilium-cni.log", "/run/cilium/cilium-cni.log"]) {
+    const probe = fixture();
+    probe.configuration.data["cni-log-file"] = path;
+    probe.installed.plugins[0]["log-file"] = path;
+    assert.equal(checkNodeRuntime(probe)[0].cniLogRotation, "verified");
+    const valid = probe.rotation.output;
+    for (const invalid of ["", valid.replace("active", "inactive"), valid.replace("enabled", "disabled"),
+      valid.replace("success", "exit-code"), valid.replace("12345", "0"), valid.replace(runtimeLoggingFiles[0].sha256, "0".repeat(64))]) {
+      probe.rotation.output = invalid;
+      assert.throws(() => checkNodeRuntime(probe), /CNI log rotation policy/);
+    }
+    probe.rotation.output = valid;
+    probe.pods[1].status.containerStatuses[0].ready = false;
+    assert.throws(() => checkNodeRuntime(probe), /No host inspector/);
   }
 });
 

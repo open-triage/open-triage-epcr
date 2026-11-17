@@ -1,0 +1,16 @@
+[Unit]
+Description=Bound Cilium CNI logs on the runtime filesystem
+
+[Service]
+Type=oneshot
+ExecStart=/usr/sbin/logrotate --state /var/lib/opentriage-cilium-logs/status /etc/opentriage/cilium-cni.logrotate
+StateDirectory=opentriage-cilium-logs
+StateDirectoryMode=0700
+LogsDirectory=opentriage-cilium-cni
+LogsDirectoryMode=0700
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/run/cilium
