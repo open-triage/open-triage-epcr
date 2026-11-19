@@ -9,10 +9,10 @@ import { importCanonicalDefinitionFile } from "../app/admin-context";
 
 import { AdminText, useAdminError, useAdminText } from "../app/admin-localization";
 
-import type { AuthoringVersionOption, CatalogDefinitionView, CatalogDraft, CatalogDraftCodeList, CatalogDraftCustomElement, CatalogDraftCustomGroup, CatalogDraftCustomTextElement, CatalogDraftCustomCodedElement } from "@open-triage/contracts";
+import type { AuthoringVersionOption, CatalogDefinitionView, CatalogDraft, CatalogDraftCodeList, CatalogDraftCustomElement, CatalogDraftCustomGroup, CatalogDraftCustomTextElement, CatalogDraftCustomCodedElement, DecisionSupportCatalogElement } from "@open-triage/contracts";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { LoadingStatus } from "./loading-status";
-import { cloneCatalogDraft, loadActiveCatalogDefinition, loadCatalogDraft, loadCatalogVersion, loadCatalogVersions, publishCatalogDraft, saveCatalogDraft, deleteCatalogDraft, validateCatalogDraft } from "../app/admin-context";
+import { cloneCatalogDraft, loadActiveCatalogDefinition, loadCatalogDecisionSupportElements, loadCatalogDraft, loadCatalogVersion, loadCatalogVersions, publishCatalogDraft, saveCatalogDraft, deleteCatalogDraft, validateCatalogDraft } from "../app/admin-context";
 import { AuthoringLifecycleAction, AuthoringVersionWorkspace } from "./authoring-version-workspace";
 import { catalogTranslationIssues, updateCatalogChoiceEnglish, type TranslationIssue } from "../app/translation-diagnostics";
 import { TranslationIssueSummary } from "./translation-issue-summary";
@@ -55,9 +55,10 @@ export function CatalogAuthoring({ csrfToken, capabilities, ownerId, organizatio
   const t = useAdminText();
   const storageKey = ownerId && organizationId ? `${CATALOG_EDITOR_STORAGE_PREFIX}${organizationId}:${ownerId}` : null;
   const adminError = useAdminError();
-  const { canWrite, canPublish } = catalogAuthority(capabilities);
+  const { canRead, canWrite, canPublish } = catalogAuthority(capabilities);
   const publicationAllowed = canPublish;
   const [draft, setDraft] = useState<CatalogDraft | CatalogDefinitionView | null>(null);
+  const [decisionSupportElements, setDecisionSupportElements] = useState<DecisionSupportCatalogElement[]>([]);
   const [versions, setVersions] = useState<AuthoringVersionOption[]>([]);
   const [selectedVersionId, setSelectedVersionId] = useState("");
   const [loaded, setLoaded] = useState(false);
@@ -164,6 +165,13 @@ export function CatalogAuthoring({ csrfToken, capabilities, ownerId, organizatio
       .catch((reason: unknown) => { if (current) showError(reason); });
     return () => { current = false; };
   }, [loaded, selectedVersionId, hasAuthoringDraft, draft?.id, showError]);
+  useEffect(() => {
+    if (!active || !canRead) return;
+    let current = true;
+    loadCatalogDecisionSupportElements().then((elements) => { if (current) setDecisionSupportElements(elements); })
+      .catch((reason: unknown) => { if (current) showError(reason); });
+    return () => { current = false; };
+  }, [active, canRead, organizationId, showError]);
   const issues = useMemo(() => draft ? catalogTranslationIssues(draft.definition, editingLanguage) : [], [draft, editingLanguage]);
   const hiddenElements = useMemo(() => new Set(draft?.definition.hiddenElementIds), [draft?.definition.hiddenElementIds]);
   const search = query.trim().toLowerCase();
@@ -171,9 +179,11 @@ export function CatalogAuthoring({ csrfToken, capabilities, ownerId, organizatio
     !hiddenElements.has(element.elementId) &&
     (!showMissing || !(editingLanguage === "en" ? element.label : element.localization?.sv?.label)?.trim()) &&
     `${element.elementId} ${element.label} ${element.localization?.sv?.label ?? ""}`.toLowerCase().includes(search)) ?? [], [draft, search, hiddenElements, editingLanguage, showMissing, elementFilter]);
-  const visibleCustom = useMemo(() => elementFilter === "fixed" ? [] : draft?.definition.customElements?.filter((item) =>
-    (!showMissing || !(editingLanguage === "en" ? item.title : item.localization?.sv?.label)?.trim()) &&
-    `${item.namespace}.${item.slug} ${item.title} ${item.localization?.sv?.label ?? ""}`.toLowerCase().includes(search)) ?? [], [draft, search, editingLanguage, showMissing, elementFilter]);
+  const visibleCustom = useMemo(() => elementFilter === "fixed" ? [] :
+    [...(draft?.definition.customElements ?? []), ...decisionSupportElements].filter((item) =>
+      (!showMissing || !(editingLanguage === "en" ? item.title : item.localization?.sv?.label)?.trim()) &&
+      `${item.namespace}.${item.slug} ${item.title} ${item.localization?.sv?.label ?? ""}`.toLowerCase().includes(search)),
+  [draft, decisionSupportElements, search, editingLanguage, showMissing, elementFilter]);
   const visibleGroups = useMemo(() => {
     const ids = new Set(draft?.definition.elements.flatMap((element) => hiddenElements.has(element.elementId)
       ? [] : element.storageSemantics.groupPath));
@@ -214,6 +224,8 @@ export function CatalogAuthoring({ csrfToken, capabilities, ownerId, organizatio
     .flatMap((list) => list.values.map((value) => [value.code, value.localization?.sv?.label] as const)));
   const editingCustomElement = elementEditorKey?.startsWith("custom:")
     ? draft?.definition.customElements?.find((element) => element.id === elementEditorKey.slice(7)) : undefined;
+  const inspectedDecisionSupport = elementEditorKey?.startsWith("decision-support:")
+    ? decisionSupportElements.find((element) => element.id === elementEditorKey.slice("decision-support:".length)) : undefined;
   const copiedCustomElement = draft?.definition.customElements?.find((element) => element.id === copySourceId);
   const displayedCodedElement = editingCustomElement?.datatype === "coded" ? editingCustomElement
     : copiedCustomElement?.datatype === "coded" ? copiedCustomElement : undefined;
@@ -535,8 +547,10 @@ export function CatalogAuthoring({ csrfToken, capabilities, ownerId, organizatio
           {visibleCustom.slice(Math.max(0, currentPage * 25 - visible.length), Math.max(0, (currentPage + 1) * 25 - visible.length)).map((item) => <tr key={item.id}>
             <th scope="row">{customElementIdentifier(organizationId, item.slug)}{item.retired && <small>{t("admin.customRetired")}</small>}</th>
             <td><strong>{editingLanguage === "sv" ? item.localization?.sv?.label || "—" : item.title}</strong><small>{editingLanguage === "sv" ? item.localization?.sv?.description || "—" : item.definition}</small></td>
-            <td>{item.datatype} · {item.recurrence} · {correlationLabel(item.correlatesTo)}</td>
-            <td><button type="button" onClick={() => loadCustomElement(item)}>{canEdit && !item.retired ? (language === "sv" ? "Redigera" : "Edit") : (language === "sv" ? "Visa" : "View")}</button></td>
+            <td>{"integer" in item && item.integer ? t("admin.decisionSupportInteger") : item.datatype} · {item.recurrence} · {correlationLabel(item.correlatesTo)}</td>
+            <td>{"decisionSupportField" in item
+              ? <button type="button" onClick={() => setElementEditorKey(`decision-support:${item.id}`)}>{t("admin.viewDetails")}</button>
+              : <button type="button" onClick={() => loadCustomElement(item)}>{canEdit && !item.retired ? (language === "sv" ? "Redigera" : "Edit") : (language === "sv" ? "Visa" : "View")}</button>}</td>
           </tr>)}
         </tbody>
       </table>
@@ -547,6 +561,25 @@ export function CatalogAuthoring({ csrfToken, capabilities, ownerId, organizatio
       <button type="button" disabled={(currentPage + 1) * 25 >= elementCount}
         onClick={() => setElementPage(currentPage + 1)}><AdminText messageKey="admin.nextElements" /></button>
     </nav>}
+      {inspectedDecisionSupport && <section className="catalog-item-editor" aria-labelledby="decision-support-element-title">
+        <div className="catalog-item-heading">
+          <h4 id="decision-support-element-title">{customElementIdentifier(organizationId, inspectedDecisionSupport.slug)} — {
+            editingLanguage === "sv" ? inspectedDecisionSupport.localization?.sv?.label : inspectedDecisionSupport.title}</h4>
+          <button type="button" onClick={() => setElementEditorKey(null)}>{t("admin.close")}</button>
+        </div>
+        <p>{t("admin.decisionSupportReadOnly")} · {correlationLabel(inspectedDecisionSupport.correlatesTo)}</p>
+        {inspectedDecisionSupport.datatype === "coded" && <>
+          <p>{t("admin.codeSystem")} {inspectedDecisionSupport.codeSystem}</p>
+          <div className="catalog-elements" tabIndex={0} aria-label={t("admin.decisionSupportCodes")}>
+            <table>
+              <thead><tr><th>{t("admin.code")}</th><th>{t("admin.label")}</th></tr></thead>
+              <tbody>{inspectedDecisionSupport.choices.map((choice) => <tr key={choice.code}>
+                <th scope="row">{choice.code}</th><td>{editingLanguage === "sv" ? choice.localization?.sv?.label ?? choice.label : choice.label}</td>
+              </tr>)}</tbody>
+            </table>
+          </div>
+        </>}
+      </section>}
       {editingFixedElement && <section className="catalog-item-editor" aria-label={`${editingFixedElement.elementId} element editor`}>
         <div className="catalog-item-heading"><h4>{editingFixedElement.elementId} — {editingLanguage === "sv" ? editingFixedElement.localization?.sv?.label || "—" : editingFixedElement.label}</h4>
           <button type="button" onClick={() => setElementEditorKey(null)}>Close</button></div>

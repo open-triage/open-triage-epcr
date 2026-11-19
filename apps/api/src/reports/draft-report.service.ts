@@ -19,6 +19,7 @@ import { ClinicianSessionService } from "../sessions/clinician-session.service.j
 import { SchedulesService } from "../schedules/schedules.service.js";
 import { assertProductionJobAccess, productionJobAccess } from "../calls/production-job-access.js";
 import { clinicalDocumentConfiguration } from "../forms/clinical-form-configuration.js";
+import { pinShippedDecisionSupport } from "../forms/decision-support.js";
 import type {
   CreateDraftReportCommand,
   DraftGroupMutation,
@@ -59,6 +60,7 @@ type ReportRow = {
   form_version_id: string;
   catalog_release_id: string;
   validation_version_id?: string | null;
+  decision_support_definition_id?: string | null;
   form_definition_sha256?: string | null;
   catalog_artifact_sha256?: string | null;
   validation_compiled_sha256?: string | null;
@@ -220,11 +222,14 @@ export class DraftReportService {
           validation_version_id: string; form_definition_sha256: string; catalog_artifact_sha256: string;
           validation_compiled_sha256: string;
           synthetic_generated_by: string | null; synthetic_source_assignment_id: string | null;
-        }>>(`select form_version_id,catalog_release_id,agency_demographic_version_id,validation_version_id,
-          form_definition_sha256,catalog_artifact_sha256,validation_compiled_sha256,
-          synthetic_generated_by,synthetic_source_assignment_id from clinical.report
-          where incident_id=$1 and organization_id=$2 and documenting_user_id=$3
-          and (expires_at is null or expires_at>clock_timestamp()) order by created_at,id limit 1 for share`,
+          decision_support_system?: string | null;
+        }>>(`select r.form_version_id,r.catalog_release_id,r.agency_demographic_version_id,r.validation_version_id,
+          r.form_definition_sha256,r.catalog_artifact_sha256,r.validation_compiled_sha256,
+          r.synthetic_generated_by,r.synthetic_source_assignment_id,settings.decision_support_system
+          from clinical.report r
+          left join app_identity.agency_settings settings on settings.organization_id=r.organization_id
+          where r.incident_id=$1 and r.organization_id=$2 and r.documenting_user_id=$3
+          and (r.expires_at is null or r.expires_at>clock_timestamp()) order by r.created_at,r.id limit 1 for share of r`,
           [command.incidentId, command.organizationId, session.user.id]) : [];
         if (incident && !parent) throw new NotFoundException("The draft is not available to this clinician");
         // An existing incident's persisted classification and original configuration
@@ -262,16 +267,18 @@ export class DraftReportService {
           form_definition_sha256: string;
           catalog_artifact_sha256: string;
           validation_compiled_sha256: string;
+          decision_support_system?: string | null;
         }>>(`
           select active.form_version_id, active.catalog_release_id, active.validation_version_id,
                  active.form_definition_sha256,active.catalog_artifact_sha256,
-                 active.validation_compiled_sha256,
+                 active.validation_compiled_sha256,settings.decision_support_system,
                  (select adv.id from app_identity.agency_demographic_version adv
                   where adv.organization_id = f.organization_id
                     and adv.catalog_release_id = active.catalog_release_id
                     and adv.effective_from <= now()
                   order by adv.effective_from desc, adv.version desc limit 1) as agency_demographic_version_id
           from app_identity.active_configuration_bundle active
+          left join app_identity.agency_settings settings on settings.organization_id=active.organization_id
           join forms.form_version fv on fv.id=active.form_version_id and fv.status='published'
           join forms.form f on f.id=fv.form_id and f.organization_id=active.organization_id
           where active.organization_id = $2 and ($1::uuid is null or f.id = $1)
@@ -280,6 +287,9 @@ export class DraftReportService {
         if (!active[0].agency_demographic_version_id) {
           throw new UnprocessableEntityException("No effective agency demographic version matches the active form catalog");
         }
+
+        const decisionSupportPin = await pinShippedDecisionSupport(manager, command.organizationId,
+          active[0].catalog_release_id, active[0].decision_support_system);
 
         if (!parent) await assertUpgrade();
         await manager.query(`
@@ -313,8 +323,8 @@ export class DraftReportService {
             (id, organization_id, incident_id, patient_id, agency_demographic_version_id,
              form_version_id, catalog_release_id, validation_version_id, documenting_user_id,
              form_definition_sha256,catalog_artifact_sha256,validation_compiled_sha256,
-             synthetic, synthetic_generated_by, synthetic_source_assignment_id)
-          values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
+             synthetic, synthetic_generated_by, synthetic_source_assignment_id, decision_support_definition_id)
+          values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
           on conflict (id) do nothing returning id
         `, [command.reportId, command.organizationId, command.incidentId, command.patientId,
           active[0].agency_demographic_version_id, active[0].form_version_id,
@@ -322,7 +332,7 @@ export class DraftReportService {
           active[0].form_definition_sha256,active[0].catalog_artifact_sha256,
           active[0].validation_compiled_sha256, synthetic,
           synthetic ? parent?.synthetic_generated_by ?? session.user.id : null,
-          synthetic ? parent?.synthetic_source_assignment_id ?? null : null]));
+          synthetic ? parent?.synthetic_source_assignment_id ?? null : null, decisionSupportPin]));
         if (insertedReports.length) {
           await seedDispatchEncounter(manager, command.reportId, active[0].catalog_release_id,
             command.documentingUserId, null, await nextPcrNumber(manager));
@@ -943,7 +953,7 @@ export class DraftReportService {
       const conflicts = await dispatchConflicts(manager, reportId);
       const clinicalForm = await clinicalDocumentConfiguration(
         manager, session.organization.id, String(details.formVersionId), String(details.catalogReleaseId),
-        details.validationVersionId, details.validationCompiledSha256
+        details.validationVersionId, details.validationCompiledSha256, details.decisionSupportDefinitionId
       );
 
 
@@ -1656,12 +1666,12 @@ export class DraftReportService {
     reportId: string,
     organizationId?: string,
     documentingUserId?: string
-  ): Promise<DraftReportResult> {
+  ): Promise<DraftReportResult & { decisionSupportDefinitionId?: string }> {
     const rows = await manager.query<ReportRow[]>(`select id, status, revision, organization_id, incident_id,
       patient_id, agency_demographic_version_id, form_version_id, catalog_release_id, validation_version_id,
       form_definition_sha256, catalog_artifact_sha256, validation_compiled_sha256,
       documenting_user_id, media_settings_revision, report_media_allowance_bytes,
-      image_media_limit_bytes,
+      image_media_limit_bytes, decision_support_definition_id,
       expires_at
       from clinical.report where id = $1
         and ($2::uuid is null or organization_id = $2)
@@ -1673,7 +1683,8 @@ export class DraftReportService {
       throw new NotFoundException(`Report ${reportId} was not found`);
     }
     if (row.status !== "draft") throw new ConflictException("Report is no longer a draft");
-    return this.draftResult(row, Number(row.revision));
+    return { ...this.draftResult(row, Number(row.revision)),
+      ...(row.decision_support_definition_id ? { decisionSupportDefinitionId: row.decision_support_definition_id } : {}) };
   }
 
   private draftResult(row: ReportRow, revision: number): DraftReportResult {

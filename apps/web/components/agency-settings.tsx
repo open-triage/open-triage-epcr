@@ -7,11 +7,12 @@ import { AdminText } from "../app/admin-localization";
 
 import type { OperationalUnitSummary, AgencyAppearance, AgencyMediaSettings, UpdateAgencyMediaSettingsCommand } from "@open-triage/contracts";
 import { DEFAULT_SYNTHETIC_RETENTION_HOURS, DEFAULT_AGENCY_AUTHENTICATION_LIMITS, DEFAULT_AGENCY_APPEARANCE,
-  DEFAULT_IMAGE_MEDIA_LIMIT_BYTES, DEFAULT_REPORT_MEDIA_ALLOWANCE_BYTES,
+  DEFAULT_IMAGE_MEDIA_LIMIT_BYTES, DEFAULT_REPORT_MEDIA_ALLOWANCE_BYTES, WEST_A_DECISION_SUPPORT_KEY,
   } from "@open-triage/contracts";
 import React, { type ReactNode, FormEvent, useCallback, useEffect, useRef, useState } from "react";
 import { loadOperationalUnits, loadAgencyMediaSettings, updateAgencyMediaSettings } from "../app/admin-context";
 import { TimeZoneSelect } from "./time-zone-select";
+import { PlatformRequestError } from "../app/platform-errors";
 import { applyAgencyColors } from "../app/installation-settings";
 import { formatClinicalDate, formatClinicalNumber, type RegionalFormat } from "../app/regional-format";
 import { availableUiLanguages, languageDisplayName, resolveMessage, type AgencyLanguage } from "../app/localization";
@@ -25,6 +26,7 @@ export function showsStorageGrowthWarning(bytes: number, defaultBytes = 50 * MEB
 function editable(settings: AgencyMediaSettings): UpdateAgencyMediaSettingsCommand {
   const demographics = settings.demographics;
   return { expectedRevision: settings.revision, demoUnitId: settings.demoUnitId ?? null,
+    decisionSupportSystem: settings.decisionSupportSystem ?? null,
     ...(settings.authenticationPolicy?{authenticationPolicy:{expectedRevision:settings.authenticationPolicy.revision,
       maximumSessionHours:settings.authenticationPolicy.maximumSessionHours,temporaryPasswordHours:settings.authenticationPolicy.temporaryPasswordHours,
       accountAttemptsPer15Minutes:settings.authenticationPolicy.accountAttemptsPer15Minutes,networkAttemptsPer5Minutes:settings.authenticationPolicy.networkAttemptsPer5Minutes}}:{}),language: settings.language, regionalFormat: settings.regionalFormat, timeZone: settings.timeZone,
@@ -173,7 +175,9 @@ export function AgencySettingsPanel({ csrfToken, canWrite, language = "en", crea
       setRetentionHours(updated.syntheticRetentionHours === null ? "" : String(updated.syntheticRetentionHours ?? DEFAULT_SYNTHETIC_RETENTION_HOURS));
       setNotice(t("settings.saved", { version: updated.demographics.version }));
     } catch (reason) {
-      setError(reason instanceof Error && /revision is stale/i.test(reason.message) ? t("settings.stale") :
+      setError(reason instanceof PlatformRequestError && reason.code === "clinical.decisionSupportInvalid"
+        ? t("platform.error.clinical.decisionSupportInvalid")
+        : reason instanceof Error && /revision is stale/i.test(reason.message) ? t("settings.stale") :
         language !== "en" ? t("settings.saveFailed") : reason instanceof Error ? reason.message : t("settings.saveFailed"));
     } finally { setBusy(false); }
   }
@@ -215,6 +219,18 @@ export function AgencySettingsPanel({ csrfToken, canWrite, language = "en", crea
           <span>{t("settings.timeZoneHelp")}</span></label>
         <TimeZoneSelect id={fieldId("agency-time-zone")} value={draft.timeZone ?? null} language={language}
           onChange={(timeZone) => setDraft((current) => current ? { ...current, timeZone } : current)} />
+      </fieldset>
+
+      <fieldset disabled={!canWrite || busy}>
+        <legend>{t("settings.decisionSupport")}</legend>
+        <label htmlFor={fieldId("agency-decision-support")}>{t("settings.decisionSupportSystem")}</label>
+        <select id={fieldId("agency-decision-support")} value={draft.decisionSupportSystem ?? ""} onChange={(event) => {
+          const decisionSupportSystem = event.target.value === WEST_A_DECISION_SUPPORT_KEY ? WEST_A_DECISION_SUPPORT_KEY : null;
+          setDraft((current) => current ? { ...current, decisionSupportSystem } : current);
+        }}>
+          <option value="">{t("settings.decisionSupportNone")}</option>
+          <option value={WEST_A_DECISION_SUPPORT_KEY}>{t("settings.decisionSupportWest")}</option>
+        </select>
       </fieldset>
 
       <fieldset disabled={!canWrite || busy}>

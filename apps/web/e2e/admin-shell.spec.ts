@@ -181,6 +181,14 @@ test("Catalog reader, writer, and publisher controls follow their independent au
     id: "catalog-id", displayName: "NEMSIS 3.5.1", version: "3.5.1", status: "active", definition: catalogDraft.definition
   }) }));
   await page.route("**/api/admin/catalog-draft", (route) => route.fulfill({ contentType: "application/json", body: JSON.stringify(catalogDraft) }));
+  await page.route("**/api/admin/catalog-decision-support-elements", (route) => route.fulfill({ json: [{
+    id: "west-criteria", namespace: "west.opentriage.org", slug: "Orgorganizationid_Criteria", title: "WEST assessed criteria",
+    definition: "Clinical criteria documented by category.", datatype: "coded", recurrence: "multiple",
+    correlatesTo: "eVitals.VitalGroup", usage: "Optional", identifying: false, decisionSupportField: "criteria",
+    codeSystem: "https://opentriage.org/codes/west-a-2025/criteria", permittedNotValues: [], permittedPertinentNegatives: [],
+    choices: [{ code: "allergy.none", label: "No criteria met" }],
+  }] }));
+
 
   // Cached session claims deliberately retain stale publication authority; the
   // freshly resolved Admin context is the source of truth for visible actions.
@@ -189,6 +197,14 @@ test("Catalog reader, writer, and publisher controls follow their independent au
   await page.getByRole("button", { name: "Admin" }).click();
   await page.getByRole("button", { name: "Element catalog", exact: true }).click();
   await expect(page.getByRole("button", { name: "New element", exact: true })).toBeDisabled();
+  await page.getByLabel("Find by identifier or").fill("WEST");
+  const west = page.getByRole("row", { name: /WEST assessed criteria/ });
+  await expect(west.getByRole("cell", { name: /Vital Group/ })).toBeVisible();
+  await west.getByRole("button", { name: "View details" }).click();
+  await expect(page.getByRole("rowheader", { name: "allergy.none" })).toBeVisible();
+  await expect(page.getByRole("cell", { name: "No criteria met" })).toBeVisible();
+  await page.getByRole("button", { name: "Close", exact: true }).click();
+
   await expect(page.getByRole("button", { name: "Save draft" })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Publish immutable catalog" })).toHaveCount(0);
 

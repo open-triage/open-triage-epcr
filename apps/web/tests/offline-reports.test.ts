@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import type { ClinicianSession, EncounterDocument } from "@open-triage/contracts";
+import type { ClinicalDecisionSupportConfiguration, ClinicianSession, EncounterDocument } from "@open-triage/contracts";
+import westDefinition from "../../../defines/decision_support/west-a-2025.json";
 import syntheticEncounter from "../app/data/synthetic-encounter-document.json";
 import {
   acceptDraftChange,
@@ -493,4 +494,20 @@ test("late reopen and directory responses cannot replace a recovered edit after 
     assert.deepEqual(cached.report.document, edited);
     assert.equal(queuedDraftChanges(storage, opened.report.id).length, 0);
   }
+});
+
+test("prepared WEST encounters keep the pinned definition when reopened offline", () => {
+  const storage = memoryStorage();
+  const definition = westDefinition as ClinicalDecisionSupportConfiguration["definition"];
+  const decisionSupport = { definition, fields: {} } as ClinicalDecisionSupportConfiguration;
+  const clinicalForm = { definition: { schemaVersion: 1 as const, sections: [] }, catalogFields: {}, decisionSupport };
+  const pinned = { ...opened, report: { ...opened.report, clinicalForm } };
+  cacheOpenedReport(storage, session, pinned, "WEST-1");
+  const offline = cachedReopenResponse(storage, session.user.id, opened.report.id)!.report;
+  assert.deepEqual(offline.clinicalForm?.decisionSupport, decisionSupport);
+  const refreshed = { ...pinned, report: { ...pinned.report, clinicalForm: { ...clinicalForm,
+    decisionSupport: { ...decisionSupport, definition: { ...definition, version: "new-version" } } } } };
+  assert.throws(() => cacheOpenedReport(storage, session, refreshed, "WEST-1"), /pinned decision support/);
+  assert.equal(cachedReopenResponse(storage, session.user.id, opened.report.id)!.report.clinicalForm
+    ?.decisionSupport?.definition.version, definition.version);
 });

@@ -242,6 +242,11 @@ export class AdminController {
     return this.catalogs.inspectActive(sessionToken(request, authorization));
   }
 
+  @Get("catalog-decision-support-elements")
+  catalogDecisionSupportElements(@Req() request: RequestLike, @Headers("authorization") authorization?: string) {
+    return this.catalogs.decisionSupportElements(sessionToken(request, authorization));
+  }
+
   @Get("catalog-versions")
   catalogVersions(@Req() request: RequestLike, @Headers("authorization") authorization?: string) {
     return this.catalogs.versions(sessionToken(request, authorization));

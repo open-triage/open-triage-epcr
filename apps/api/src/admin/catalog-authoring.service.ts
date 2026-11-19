@@ -11,6 +11,7 @@ import { mutationRows } from "../database/mutation-result.js";
 import { customTextDefinitionFindings } from "./custom-text-definition.js";
 import { customGroupDefinitionFindings } from "./custom-group-definition.js";
 import { releaseCustomDefinitions } from "./custom-definition-version.js";
+import { DECISION_SUPPORT_NAMESPACE, registeredDecisionSupportElements } from "../forms/decision-support.js";
 import type { BaseCatalogBundle } from "../../../../packages/database/scripts/lib/base-catalog.mjs";
 
 type DraftRow = {
@@ -98,6 +99,11 @@ export class CatalogAuthoringService {
     if (!release) return null;
     return { id: release.id, displayName: release.display_name, version: (await this.versions(sessionToken)).find(({ id }) => id === release.id)?.version?.toString() ?? release.version, status: "active",
       definition: await this.cloneDefinition(this.dataSource.manager, release.id) };
+  }
+
+  async decisionSupportElements(sessionToken: string) {
+    const session = await this.authorize(sessionToken, "catalog:read");
+    return registeredDecisionSupportElements(this.dataSource.manager, session.organization.id);
   }
 
   async versions(sessionToken: string): Promise<AuthoringVersionOption[]> {
@@ -824,6 +830,10 @@ export class CatalogAuthoringService {
       const itemFindings = customTextDefinitionFindings(item);
       findings.push(...itemFindings.map((message) => `customElements[${index}]: ${message}`));
       if (itemFindings.length) continue;
+      if (item.namespace === DECISION_SUPPORT_NAMESPACE) {
+        findings.push("The shipped decision support namespace is reserved");
+        continue;
+      }
       if (item.groupDefinitionId) {
         const group = groups.find((candidate) => candidate.id === item.groupDefinitionId);
         if (!group) findings.push(`Custom element ${item.namespace}.${item.slug} references an unknown custom group`);

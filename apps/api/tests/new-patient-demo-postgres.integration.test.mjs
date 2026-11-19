@@ -5,7 +5,9 @@ import { readFile } from "node:fs/promises";
 import test from "node:test";
 import pg from "pg";
 import { ConflictException, NotFoundException, UnauthorizedException } from "@nestjs/common";
-import { SYNTHETIC_DEMO_FIXTURE } from "@open-triage/contracts";
+import { SYNTHETIC_DEMO_FIXTURE, WEST_A_DECISION_SUPPORT_KEY } from "@open-triage/contracts";
+import { AgencySettingsService } from "../dist/admin/agency-settings.service.js";
+import { CatalogAuthoringService } from "../dist/admin/catalog-authoring.service.js";
 import { DraftReportService } from "../dist/reports/draft-report.service.js";
 import { ValidationAuthoringService } from "../dist/admin/validation-authoring.service.js";
 import { FormPublicationService } from "../dist/forms/form-publication.service.js";
@@ -29,7 +31,7 @@ integration("new demo patients support the generated-report lifecycle without a 
     const userId = SYNTHETIC_DEMO_FIXTURE.userId;
     assert.equal((await client.query("select app_identity.user_has_capability($1,$2,'clinical:demo') allowed",
       [userId, organizationId])).rows[0].allowed, true, "seed the ordinary demo account first");
-    await client.query("update app_identity.agency_settings set synthetic_retention_hours=24 where organization_id=$1",
+    await client.query("update app_identity.agency_settings set synthetic_retention_hours=24,decision_support_system=null where organization_id=$1",
       [organizationId]);
     const ordinaryUserId = randomUUID();
     await client.query(`insert into app_identity.app_user(id,organization_id,display_name)
@@ -69,6 +71,7 @@ integration("new demo patients support the generated-report lifecycle without a 
       assertCsrf: async (_token, csrf) => { if (csrf !== "proof") throw new UnauthorizedException(); },
     };
     const service = new DraftReportService(db, sessions);
+    const configAdmin = randomUUID();
     {
       // Publish a fresh, minimal Form and Validation bundle in the rollback
       // transaction so coverage does not depend on local or legacy configuration.
@@ -76,7 +79,7 @@ integration("new demo patients support the generated-report lifecycle without a 
         from forms.agency_stationary_default d join forms.form_version fv on fv.id=d.form_version_id
         where d.organization_id=$1`, [organizationId]))[0];
       assert.ok(baseline, "seed the published demonstration form first");
-      actorId = randomUUID();
+      actorId = configAdmin;
       await manager.query(`insert into app_identity.app_user(id,organization_id,display_name)
         values($1,$2,'Rollback configuration author')`, [actorId, organizationId]);
       await manager.query(`insert into app_identity.user_role_assignment(organization_id,user_id,role_id,assigned_by,note)
@@ -137,6 +140,72 @@ integration("new demo patients support the generated-report lifecycle without a 
     assert.equal(opened.report.demoMutable, true);
     assert.equal(opened.report.expiresAt, stored.expires_at.toISOString());
     assert.equal((await service.listOpen("demo")).openCalls.find(row => row.reportId === demo.reportId).demoMutable, true);
+
+    assert.equal(opened.report.clinicalForm.decisionSupport, undefined);
+    const settingsService = new AgencySettingsService(db, sessions);
+    const catalogs = new CatalogAuthoringService(db, sessions);
+    const setDecisionSupport = async (decisionSupportSystem) => {
+      const settings = await settingsService.get("fixture-owner");
+      const { revision, language, appearance, demographics, reportMediaAllowanceBytes, imageMediaLimitBytes } = settings;
+      return settingsService.update("fixture-owner", { expectedRevision: revision, language, appearance, demographics,
+        reportMediaAllowanceBytes, imageMediaLimitBytes, decisionSupportSystem });
+    };
+    actorId = configAdmin;
+    assert.equal((await settingsService.get("fixture-owner")).decisionSupportSystem, null);
+    assert.equal((await setDecisionSupport(WEST_A_DECISION_SUPPORT_KEY)).decisionSupportSystem, WEST_A_DECISION_SUPPORT_KEY);
+    const registered = await catalogs.decisionSupportElements("fixture-owner");
+    assert.equal(registered.length, 6);
+    assert.ok(registered.every(({ correlatesTo }) => correlatesTo === "eVitals.VitalGroup"));
+    assert.ok(registered.find(({ decisionSupportField }) => decisionSupportField === "criteria").choices
+      .some(({ code }) => code === "allergy.none"));
+    assert.deepEqual(await manager.query(`select base_datatype from forms.custom_element_definition where id=$1`,
+      [registered.find(({ decisionSupportField }) => decisionSupportField === "physiologyScore").id]), [{ base_datatype: "integer" }]);
+
+    actorId = ordinaryUserId;
+    await assert.rejects(settingsService.update("ordinary", { decisionSupportSystem: null }), UnauthorizedException);
+    actorId = userId;
+    const westReport = command();
+    await service.create("demo", westReport);
+    const westOpened = await service.reopen("demo", westReport.reportId);
+    const west = westOpened.report.clinicalForm.decisionSupport;
+    assert.equal(west.definition.key, WEST_A_DECISION_SUPPORT_KEY);
+    assert.equal(west.definition.version, "1.0.0-draft.4");
+    assert.deepEqual(Object.keys(west.definition.assessment.elements.newsScale.values), ["standard", "obstetric", "copd"]);
+    assert.equal(west.fields.overrideColour.id, registered.find(({ decisionSupportField }) =>
+      decisionSupportField === "overrideColour").id);
+    assert.equal((await service.reopen("demo", demo.reportId)).report.clinicalForm.decisionSupport, undefined);
+    await assert.rejects(db.transaction(() => manager.query(
+      "update clinical.report set decision_support_definition_id=null where id=$1", [westReport.reportId])),
+    /decision support pin is immutable/);
+
+    // Simulate an encounter pinned before deployment of the current shipped version.
+    const previousDefinition = { ...west.definition, version: `1.0.0-test.${randomUUID()}`, name: "WEST-A previous version" };
+    const [{ id: priorPin }] = await manager.query(`with inserted as (
+      insert into catalog.decision_support_definition(system_key, version, definition) values ($1,$2,$3::json) returning id
+      ) select id from inserted`, [WEST_A_DECISION_SUPPORT_KEY, previousDefinition.version, JSON.stringify(previousDefinition)]);
+    const previousReport = randomUUID();
+    await manager.query(`insert into clinical.report(id,organization_id,incident_id,patient_id,agency_demographic_version_id,
+      form_version_id,catalog_release_id,validation_version_id,documenting_user_id,form_definition_sha256,catalog_artifact_sha256,
+      validation_compiled_sha256,synthetic,synthetic_generated_by,decision_support_definition_id)
+      select $1,organization_id,incident_id,patient_id,agency_demographic_version_id,form_version_id,catalog_release_id,
+        validation_version_id,documenting_user_id,form_definition_sha256,catalog_artifact_sha256,validation_compiled_sha256,
+        synthetic,synthetic_generated_by,$3 from clinical.report where id=$2`, [previousReport, westReport.reportId, priorPin]);
+    const previous = (await service.reopen("demo", previousReport)).report.clinicalForm.decisionSupport;
+    assert.equal(previous.definition.version, previousDefinition.version);
+    assert.equal(previous.definition.name, previousDefinition.name);
+
+    actorId = configAdmin;
+    assert.equal((await setDecisionSupport(null)).decisionSupportSystem, null);
+    actorId = userId;
+    const disabledReport = command();
+    await service.create("demo", disabledReport);
+    assert.equal((await service.reopen("demo", disabledReport.reportId)).report.clinicalForm.decisionSupport, undefined);
+    assert.deepEqual((await service.reopen("demo", westReport.reportId)).report.clinicalForm.decisionSupport, west);
+    actorId = configAdmin;
+    await setDecisionSupport(WEST_A_DECISION_SUPPORT_KEY);
+    assert.deepEqual(await catalogs.decisionSupportElements("fixture-owner"), registered);
+    await setDecisionSupport(null);
+    actorId = userId;
 
     const syntheticFollow={...demo,commandId:randomUUID(),reportId:randomUUID(),patientId:randomUUID()};
     await service.create("demo",syntheticFollow);

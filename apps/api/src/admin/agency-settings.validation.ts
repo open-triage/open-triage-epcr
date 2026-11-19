@@ -4,6 +4,7 @@ import {
   DEFAULT_AGENCY_APPEARANCE,
   MAX_AGENCY_AUTHENTICATION_ATTEMPTS,
   isSupportedUiLanguage,
+  WEST_A_DECISION_SUPPORT_KEY,
   MAX_REPORT_MEDIA_ALLOWANCE_BYTES,
   MIN_REPORT_MEDIA_ALLOWANCE_BYTES,
   type AgencyAppearance,
@@ -140,7 +141,7 @@ export function validateUpdateAgencyMediaSettings(input: unknown): UpdateAgencyM
     throw new UnprocessableEntityException("Agency Settings must be an object");
   }
   const body = input as Record<string, unknown>;
-  const allowedKeys = new Set(["expectedRevision", "demoUnitId", "language", "regionalFormat", "timeZone", "syntheticRetentionHours", "authenticationLimits", "authenticationPolicy", "reportMediaAllowanceBytes", "imageMediaLimitBytes", "appearance", "demographics"]);
+  const allowedKeys = new Set(["expectedRevision", "demoUnitId", "decisionSupportSystem", "language", "regionalFormat", "timeZone", "syntheticRetentionHours", "authenticationLimits", "authenticationPolicy", "reportMediaAllowanceBytes", "imageMediaLimitBytes", "appearance", "demographics"]);
   if (Object.keys(body).some((key) => !allowedKeys.has(key))) {
     throw new UnprocessableEntityException("Agency Settings contains an unsupported property");
   }
@@ -197,7 +198,12 @@ export function validateUpdateAgencyMediaSettings(input: unknown): UpdateAgencyM
     try { new Intl.DateTimeFormat("en-US", { timeZone: body.timeZone }); }
     catch { throw new UnprocessableEntityException("timeZone must be a named IANA time zone or null"); }
   }
+  if (body.decisionSupportSystem !== undefined && body.decisionSupportSystem !== null &&
+      body.decisionSupportSystem !== WEST_A_DECISION_SUPPORT_KEY) {
+    throw new UnprocessableEntityException({ code: "clinical.decisionSupportInvalid" });
+  }
   return { expectedRevision: Number(body.expectedRevision), language: body.language,
+    ...(body.decisionSupportSystem === undefined ? {} : { decisionSupportSystem: body.decisionSupportSystem }),
     ...(body.demoUnitId === undefined ? {} : { demoUnitId: body.demoUnitId as string | null }),
     ...(body.authenticationPolicy===undefined?{}:{authenticationPolicy:validateLocalPolicy(body.authenticationPolicy)}),
     ...(authenticationLimits === undefined ? {} : { authenticationLimits }),

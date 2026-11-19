@@ -2,6 +2,7 @@ import { compiledValidationBundleSha256, isNemsisDemographicElementId, type Dest
 import type { EntityManager } from "typeorm";
 import { effectiveCatalogFields } from "./field-choice-policy.js";
 import { releaseCustomDefinitions } from "../admin/custom-definition-version.js";
+import { loadPinnedDecisionSupport } from "./decision-support.js";
 
 type FieldRow = {
   generation?: ClinicalFormConfiguration["catalogFields"][string]["generation"];
@@ -48,9 +49,15 @@ export async function clinicalDocumentConfiguration(
   catalogReleaseId: string,
   validationVersionId?: string | null,
   validationCompiledSha256?: string | null,
+  decisionSupportDefinitionId?: string | null,
 ): Promise<ClinicalFormConfiguration> {
   const configuration = await clinicalFormConfiguration(manager, formVersionId, catalogReleaseId,
     validationVersionId, validationCompiledSha256);
+  if (decisionSupportDefinitionId) {
+    configuration.decisionSupport = await loadPinnedDecisionSupport(manager, organizationId, decisionSupportDefinitionId);
+    configuration.customFields = { ...configuration.customFields, ...Object.fromEntries(
+      Object.values(configuration.decisionSupport.fields).map((field) => [field.id, field])) };
+  }
   const destination = configuration.catalogFields["eDisposition.01"];
   const [cos] = destination ? await manager.query<Array<{ active: boolean }>>(
     `select active_revision is not null as active from app_identity.hospital_cos_state

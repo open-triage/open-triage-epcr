@@ -113,6 +113,14 @@ export function cacheOpenedReport(
 ): CachedOpenReport {
   const callNumber = typeof call === "string" ? call : call.callNumber;
   const existing = read(storage).find((candidate) => candidate.report.id === opened.report.id);
+  const cachedForm = existing?.report.clinicalForm;
+  const incomingForm = opened.report.clinicalForm;
+  const cachedSupport = cachedForm?.decisionSupport?.definition;
+  const incomingSupport = incomingForm?.decisionSupport?.definition;
+  if (cachedForm && incomingForm && (cachedSupport?.key !== incomingSupport?.key ||
+    cachedSupport?.version !== incomingSupport?.version)) {
+    throw new Error("The report's pinned decision support configuration changed unexpectedly");
+  }
   if (existing && (existing.report.formVersionId !== opened.report.formVersionId ||
       existing.report.catalogReleaseId !== opened.report.catalogReleaseId ||
       (existing.report.validationVersionId && opened.report.validationVersionId &&
