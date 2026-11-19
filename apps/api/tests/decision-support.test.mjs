@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import definition from "../../../defines/decision_support/west-a-2025.json" with { type: "json" };
+import { calculateDecisionSupportFindings, decisionSupportFindingResult, decisionSupportPhysiology, decisionSupportScale } from "@open-triage/contracts";
 import { validateDecisionSupportDefinition } from "../dist/forms/decision-support-definition.js";
 import { decisionSupportCatalogFields } from "../dist/forms/decision-support.js";
 
@@ -91,4 +92,64 @@ test("evaluates shared adult WEST findings against measurement-local window boun
   assert.equal(result(["bleeding.07"], true).valid, false);
   assert.equal(result(["trauma-alert.01.03"]).valid, false);
   assert.equal(result(["gynaecology.04.01"]).valid, false);
+});
+
+
+const normal = { "eVitals.14": 15, "eVitals.12": 97, "eVitals.06": 120, "eVitals.07": "80",
+  "eVitals.10": 70, "eVitals.24": 37.9 };
+const observations = { oxygen: "air", consciousness: "A" };
+const evaluate = (scale, measurements = normal, observed = observations, rules = definition) =>
+  decisionSupportPhysiology(rules, scale, measurements, observed);
+
+test("WEST uses the configured default and preserves zero only for complete measurements", () => {
+  assert.equal(decisionSupportScale(definition), "standard");
+  assert.equal(decisionSupportScale(definition, "copd"), "copd");
+  assert.equal(evaluate("standard").total, 0);
+  assert.equal(evaluate("standard", { ...normal, "eVitals.24": "37,9" }).total, 0);
+  assert.equal(evaluate("standard", { ...normal, "eVitals.24": "37.91" }).total, null);
+  assert.equal(evaluate("standard", normal, { oxygen: "air" }).total, null);
+  assert.equal(evaluate("standard", normal, { ...observations, consciousness: "C" }).points.consciousness, 3);
+  assert.equal(evaluate("standard", normal, { ...observations, pulse: "39" }).points.heartRate, 0);
+  assert.equal(evaluate("standard", { ...normal, "eVitals.10": "" }, { ...observations, pulse: "39" }).points.heartRate, 3);
+});
+
+test("NEWS2 Scale 2 selects the oxygen branch and follows its pinned thresholds", () => {
+  for (const saturation of [93, 94, 95, 96, 97, 100]) {
+    assert.equal(evaluate("copd", { ...normal, "eVitals.12": saturation }).points.spo2, 0);
+  }
+  assert.equal(evaluate("copd", { ...normal, "eVitals.12": 92 }).points.spo2, 0);
+  assert.deepEqual(evaluate("copd", normal, { ...observations, oxygen: "supplemental" }), {
+    total: 5, colour: "orange", points: { respiratoryRate: 0, spo2: 3, oxygen: 2, systolic: 0,
+      heartRate: 0, consciousness: 0, temperature: 0 },
+  });
+  assert.equal(evaluate("copd", normal, { consciousness: "A" }).points.spo2, undefined);
+});
+
+test("ONEWS2 resolves the four overlapping boundaries using the pinned tables", () => {
+  for (const [input, key, start, expected] of [
+    ["respiratoryRate", "eVitals.14", 9, [3, 0, 0]],
+    ["systolic", "eVitals.06", 79, [3, 2, 2]],
+    ["diastolic", "eVitals.07", 89, [0, 1, 1]],
+    ["heartRate", "eVitals.10", 59, [3, 0, 0]],
+  ]) assert.deepEqual(expected.map((_, index) => evaluate("obstetric", {
+    ...normal, [key]: start + index,
+  }).points[input]), expected);
+  assert.equal(evaluate("obstetric", { ...normal, "eVitals.07": "P" }).total, null);
+});
+
+test("WEST combines finding and score severity, preserving the basis and partial-result rules", () => {
+  const result = (measurements, findings = [], noWarningCriteria = false) =>
+    calculateDecisionSupportFindings(definition, decisionSupportFindingResult(definition, {
+      criteria: findings, noWarningCriteria,
+    }, "12:00"), evaluate("standard", measurements));
+  assert.equal(result(normal).status, "unassessed");
+  assert.equal(result(normal, [], true).colour, "green");
+  assert.equal(result({}, [], true).status, "unassessed");
+  assert.deepEqual([result({ "eVitals.14": 8 }).colour, result({ "eVitals.14": 8 }).status], ["yellow", "provisional"]);
+  assert.equal(result({ "eVitals.14": 8 }, ["bleeding.07"]).criterionCode, "bleeding.07");
+  assert.deepEqual([result({ "eVitals.14": 8, "eVitals.06": 50, "eVitals.10": 39 }).colour,
+    result({ "eVitals.14": 8, "eVitals.06": 50, "eVitals.10": 39 }).status], ["red", "definitive"]);
+  const rules = structuredClone(definition);
+  rules.scoreTables.respirations.bands.find((band) => band.minInclusive === 12).points = 3;
+  assert.equal(evaluate("standard", normal, observations, validateDecisionSupportDefinition(rules)).colour, "yellow");
 });

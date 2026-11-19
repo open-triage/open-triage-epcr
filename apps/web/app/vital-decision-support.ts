@@ -3,6 +3,9 @@ import {
   decisionSupportElementKey,
   decisionSupportFindingResult,
   decisionSupportMeasurementLocalTime,
+  decisionSupportObservationAttribute,
+  decisionSupportPhysiology,
+  decisionSupportScale,
   EMPTY_DECISION_SUPPORT_FINDINGS,
   isTriageColour,
   UNASSESSED_DECISION_SUPPORT,
@@ -21,9 +24,12 @@ export const UNASSESSED_VITAL: DraftDecisionSupportAssessment = {
 };
 
 export function vitalAssessmentWithFindings(assessment: DraftDecisionSupportAssessment,
-  definition: DecisionSupportDefinition, localTime: string): DraftDecisionSupportAssessment {
+  definition: DecisionSupportDefinition, localTime: string,
+  measurements: Readonly<Record<string, string>>): DraftDecisionSupportAssessment {
   const result = decisionSupportFindingResult(definition, assessment.findings ?? EMPTY_DECISION_SUPPORT_FINDINGS, localTime);
-  return { ...assessment, calculation: calculateDecisionSupportFindings(definition, result) };
+  const scale = decisionSupportScale(definition, assessment.scale);
+  const physiology = decisionSupportPhysiology(definition, scale, measurements, assessment.observations);
+  return { ...assessment, scale, calculation: calculateDecisionSupportFindings(definition, result, physiology) };
 }
 
 function measurement(instance: EncounterGroupInstance | undefined) {
@@ -62,10 +68,18 @@ export function vitalDecisionSupport(
   const value = values("overrideColour")[0];
   const { enteredBy, enteredAt, calculatedColourWhenSelected, inheritedFromMeasurement } = value?.attributes ?? {};
   const negative = values("noWarningCriteria")[0];
+  const scale = values("newsScale")[0];
+  const observationPrefix = decisionSupportObservationAttribute("");
+  const observations = Object.fromEntries(Object.entries(measurement(instance)?.attributes ?? {}).flatMap(([key, value]) =>
+    key.startsWith(observationPrefix) && typeof value === "string" ? [[key.slice(observationPrefix.length), value]] : []));
   return {
-    calculation: calculation.status === "unassessed" ? UNASSESSED_DECISION_SUPPORT
+    calculation: calculation.status === "unassessed"
+      ? { ...UNASSESSED_DECISION_SUPPORT, ...(calculation.physiology ? { physiology: calculation.physiology } : {}) }
       : { status: calculation.status, colour: calculation.colour,
-        ...(calculation.criterionCode ? { criterionCode: calculation.criterionCode } : {}) },
+        ...(calculation.criterionCode ? { criterionCode: calculation.criterionCode } : {}),
+        ...(calculation.physiology ? { physiology: calculation.physiology } : {}) },
+    ...(scale?.kind === "coded" ? { scale: scale.code } : {}),
+    observations,
     findings: {
       criteria: values("criteria").flatMap((criterion) => criterion.kind === "coded" ? [criterion.code] : []),
       noWarningCriteria: negative?.kind === "scalar" && negative.value === true,
@@ -87,8 +101,20 @@ export function withVitalDecisionSupport(
   assessment: DraftDecisionSupportAssessment,
 ): EncounterGroupInstance {
   const { definition, fields } = configuration;
-  const managed = [fields.overrideColour, fields.categories, fields.criteria, fields.noWarningCriteria].map(decisionSupportElementKey);
-  const elements = instance.elements.filter(({ id }) => !managed.includes(id));
+  const managed = [fields.overrideColour, fields.categories, fields.criteria, fields.noWarningCriteria, fields.newsScale, fields.physiologyScore].map(decisionSupportElementKey);
+  const observationPrefix = decisionSupportObservationAttribute("");
+  const observationAttributes = Object.fromEntries(Object.entries(assessment.observations ?? {})
+    .filter(([, value]) => value !== "").map(([key, value]) => [decisionSupportObservationAttribute(key), value]));
+  const elements = instance.elements.filter(({ id }) => !managed.includes(id)).map((element) => element.id !== "eVitals.01" ? element : ({
+    ...element,
+    values: element.values.map((value, index) => index > 0 ? value : {
+      ...value,
+      attributes: {
+        ...Object.fromEntries(Object.entries(value.attributes ?? {}).filter(([key]) => !key.startsWith(observationPrefix))),
+        ...observationAttributes,
+      },
+    }),
+  }));
   function writeCodes(field: keyof typeof fields, codes: readonly string[], attributes?: EncounterElement["values"][number]["attributes"]) {
     if (!codes.length) return;
     const configured = fields[field];
@@ -96,12 +122,20 @@ export function withVitalDecisionSupport(
     const key = decisionSupportElementKey(configured);
     const prior = instance.elements.find(({ id }) => id === key)?.values ?? [];
     elements.push({ id: key, values: codes.map((code) => ({
-      occurrenceId: (field === "overrideColour" ? prior[0] : prior.find((value) => value.kind === "coded" && value.code === code))?.occurrenceId
+      occurrenceId: ((field === "overrideColour" || field === "newsScale") ? prior[0] : prior.find((value) => value.kind === "coded" && value.code === code))?.occurrenceId
         ?? (field === "overrideColour" ? `${instance.instanceId}:decision-support-override` : `${instance.instanceId}:decision-support:${field}:${code}`),
       kind: "coded", code, system: configured.codeSystem,
       display: configured.choices.find((choice) => choice.code === code)?.label,
       ...(attributes ? { attributes } : {}),
     })) });
+  }
+  if (assessment.scale) writeCodes("newsScale", [assessment.scale]);
+  const score = assessment.calculation.physiology?.total;
+  if (score != null) {
+    const key = decisionSupportElementKey(fields.physiologyScore);
+    const prior = instance.elements.find(({ id }) => id === key)?.values[0];
+    elements.push({ id: key, values: [{ kind: "scalar", value: score,
+      occurrenceId: prior?.occurrenceId ?? `${instance.instanceId}:decision-support:physiology-score` }] });
   }
   if (assessment.override) {
     const { colour, ...attributes } = assessment.override;

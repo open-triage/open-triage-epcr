@@ -34,6 +34,11 @@ export function VitalDecisionSupport({
           {override && <small>{t("mobile.westCalculated", { result: calculationLabel })}</small>}
           {changed && <small>{t("mobile.westCalculationChanged")}</small>}
           {driver && <small>{decisionSupportCriterionLabel(driver.criterion, driver.labelSuffix, locale)}</small>}
+          {!driver && calculation.status !== "unassessed" && calculation.physiology &&
+            <small>{t("mobile.westPhysiologyBasis", { components: Object.entries(calculation.physiology.points)
+              .filter(([, points]) => points > 0)
+              .map(([key, points]) => t("mobile.westPhysiologyComponent", { name: t(`mobile.westObservation.${key}`), points: String(points) }))
+              .join(", ") || t("mobile.westPhysiologyNormal") })}</small>}
         </div>
       </div>
       <label>

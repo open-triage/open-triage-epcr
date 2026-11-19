@@ -65,6 +65,13 @@ function instanceForElement(document: EncounterDocument, root: EncounterGroupIns
   });
 }
 
+export function vitalMeasurementValues(document: EncounterDocument, root: EncounterGroupInstance, elementIds: readonly string[]): Record<string, string> {
+  return Object.fromEntries(elementIds.map((id) => {
+    const source = instanceForElement(document, root, id);
+    return [id, source ? scalar(source, id) : ""];
+  }));
+}
+
 function coded(instance: EncounterGroupInstance, id: string): { code: string; display: string; system?: string; attributes?: Readonly<Record<string, string | number | boolean | null>> } | null {
   const value = element(instance, id)?.values[0];
   return value?.kind === "coded" ? { code: value.code, display: value.display ?? value.code, system: value.system, attributes: value.attributes } : null;
@@ -133,27 +140,27 @@ function vitalDetail(values: VitalValues, definition: EncounterDefinition): stri
   }).filter(Boolean).join(" · ");
 }
 
-function eventInstances(document: EncounterDocument, event: EncounterEvent, definition: EncounterDefinition, observedAt: string): ReadonlyArray<{ groupId: string; instance: EncounterGroupInstance }> {
+function eventInstances(document: EncounterDocument, event: EncounterEvent, definition: EncounterDefinition, observedAt: string, additionalMeasurements: Readonly<Record<string, string>> = {}): ReadonlyArray<{ groupId: string; instance: EncounterGroupInstance }> {
   const sectionInstanceId = eventSectionInstanceId(document, event);
   if (event.vitals) {
     const rootElements: Array<{ id: string; values: EncounterValue[] }> = [{
       id: "eVitals.01", values: [{ kind: "scalar", occurrenceId: `${event.id}:time`, value: observedAt }],
     }];
     const nestedElements = new Map<string, Array<{ id: string; values: EncounterValue[] }>>();
-    definition.events.vitals.fields.forEach((field) => {
-      const raw = event.vitals![field.id];
-      const absence = event.vitals!.nullValues?.[field.id];
-      const targetGroupId = getNemsisDataElement(field.reference)?.groupPath.at(-1) ?? "eVitals.VitalGroup";
+    const addMeasurement = (reference: string, raw: string, absence?: string, pertinent = false) => {
+      const targetGroupId = getNemsisDataElement(reference)?.groupPath.at(-1) ?? "eVitals.VitalGroup";
       const elements = targetGroupId === "eVitals.VitalGroup" ? rootElements : nestedElements.get(targetGroupId) ?? [];
-      if (raw) elements.push({ id: field.reference, values: [{ kind: "scalar", occurrenceId: `${event.id}:${field.reference}`, value: scalarValue(field.reference, raw) }] });
-      else if (absence) {
-        const pertinent = field.absenceStates.find((item) => item.code === absence)?.kind === "PN";
-        elements.push({ id: field.reference, values: [pertinent
-          ? { kind: "pertinent-negative", occurrenceId: `${event.id}:${field.reference}`, code: absence }
-          : { kind: "null", occurrenceId: `${event.id}:${field.reference}`, notValue: { code: absence } }] });
-      }
+      if (raw) elements.push({ id: reference, values: [{ kind: "scalar", occurrenceId: `${event.id}:${reference}`, value: scalarValue(reference, raw) }] });
+      else if (absence) elements.push({ id: reference, values: [pertinent
+        ? { kind: "pertinent-negative", occurrenceId: `${event.id}:${reference}`, code: absence }
+        : { kind: "null", occurrenceId: `${event.id}:${reference}`, notValue: { code: absence } }] });
       if (targetGroupId !== "eVitals.VitalGroup") nestedElements.set(targetGroupId, elements);
-    });
+    };
+    for (const field of definition.events.vitals.fields) {
+      const absence = event.vitals.nullValues?.[field.id];
+      addMeasurement(field.reference, event.vitals[field.id], absence, field.absenceStates.find((item) => item.code === absence)?.kind === "PN");
+    }
+    for (const [reference, raw] of Object.entries(additionalMeasurements)) addMeasurement(reference, raw);
     return [
       { groupId: "eVitals.VitalGroup", instance: owned(event.id, observedAt, rootElements, sectionInstanceId) },
       ...[...nestedElements].map(([groupId, elements]) => ({
@@ -208,14 +215,25 @@ function sameValue(a: EncounterValue, b: EncounterValue): boolean {
 }
 
 /** Merge the dialog's projection into its source occurrences, never replace the stored subtree. */
-export function saveCanonicalEvent(document: EncounterDocument, event: EncounterEvent, definition: EncounterDefinition, zone: string | null = null): EncounterDocument {
+export function saveCanonicalEvent(document: EncounterDocument, event: EncounterEvent, definition: EncounterDefinition, zone: string | null = null,
+  additionalMeasurements: Readonly<Record<string, string>> = {}): EncounterDocument {
   if (event.kind === "note") return document;
   document = ensureEventSection(document, event);
   const updatedAt = timestamp(document, event, zone);
   const sources: EventSources = new Map();
   const previousEvent = readEncounterEvents(document, definition, zone, sources).find(({ id }) => id === event.id);
-  const before = previousEvent ? eventInstances(document, previousEvent, definition, timestamp(document, previousEvent, zone)) : [];
-  const after = eventInstances(document, event, definition, updatedAt);
+  const priorSources = sources.get(event.id);
+  const priorVital = priorSources?.get("eVitals.VitalGroup");
+  const previousMeasurements = priorVital ? vitalMeasurementValues(document, priorVital, Object.keys(additionalMeasurements)) : {};
+  if (priorVital && priorSources) {
+    for (const elementId of Object.keys(additionalMeasurements)) {
+      const groupId = getNemsisDataElement(elementId)?.groupPath.at(-1);
+      const source = instanceForElement(document, priorVital, elementId);
+      if (groupId && source) priorSources.set(groupId, source);
+    }
+  }
+  const before = previousEvent ? eventInstances(document, previousEvent, definition, timestamp(document, previousEvent, zone), previousMeasurements) : [];
+  const after = eventInstances(document, event, definition, updatedAt, additionalMeasurements);
   let groups = document.groups;
   const occurrenceIds = new Set(document.groups.flatMap(({ instances }) => instances.flatMap(({ elements }) =>
     elements.flatMap(({ values }) => values.map(({ occurrenceId }) => occurrenceId)))));

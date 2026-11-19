@@ -81,6 +81,7 @@ export interface DecisionSupportDefinition {
     result: {
       overrideAllowed: TriageColour[];
       redIsDefinitiveWithIncompleteInputs: boolean;
+      greenRequires: string[];
       unsupportedDraft: { indicatorColour: string; label: LocalizedLabel };
       provisionalLabel: LocalizedLabel;
       finalization: { requiredElement: string; onMissing: string; message: LocalizedLabel };
@@ -128,9 +129,16 @@ export function isSelectableDecisionSupportCriterion(criterion: DecisionSupportC
   return criterion.population !== "paediatric" && !criterion.navigateToCategory;
 }
 
-export type DecisionSupportCalculation =
+export interface DecisionSupportPhysiology {
+  readonly points: Readonly<Record<string, number>>;
+  readonly total: number | null;
+  readonly colour: TriageColour | null;
+}
+
+export type DecisionSupportCalculation = (
   | { readonly status: "unassessed"; readonly colour: null }
-  | { readonly status: "provisional" | "definitive"; readonly colour: TriageColour; readonly criterionCode?: string };
+  | { readonly status: "provisional" | "definitive"; readonly colour: TriageColour; readonly criterionCode?: string }
+) & { readonly physiology?: DecisionSupportPhysiology };
 
 export type FinalizedDecisionSupportCalculation = DecisionSupportCalculation & {
   readonly systemKey: DecisionSupportSystemKey;
@@ -149,6 +157,8 @@ export interface DraftDecisionSupportAssessment {
   readonly calculation: DecisionSupportCalculation;
   readonly override: DecisionSupportOverride | null;
   readonly findings?: DecisionSupportFindings;
+  readonly scale?: string;
+  readonly observations?: Readonly<Record<string, string>>;
 }
 
 export const UNASSESSED_DECISION_SUPPORT: DecisionSupportCalculation = { status: "unassessed", colour: null };
@@ -230,10 +240,97 @@ export function decisionSupportFindingResult(definition: DecisionSupportDefiniti
 
 /** Incomplete physiology can support yellow or orange provisionally, and red definitively. */
 export function calculateDecisionSupportFindings(definition: DecisionSupportDefinition,
-  result: ReturnType<typeof decisionSupportFindingResult>): DecisionSupportCalculation {
+  result: ReturnType<typeof decisionSupportFindingResult>, physiology?: DecisionSupportPhysiology): DecisionSupportCalculation {
+  const evidence = physiology ? { physiology } : {};
+  if (!result.valid) return { ...UNASSESSED_DECISION_SUPPORT, ...evidence };
+
+  const priority = definition.assessment.colourPriority;
   const criterion = result.highest?.criterion;
-  if (!result.valid || !criterion || criterion.triage_color === "green") return UNASSESSED_DECISION_SUPPORT;
-  const definitive = criterion.triage_color === "red" && definition.assessment.result.redIsDefinitiveWithIncompleteInputs;
-  return { status: definitive ? "definitive" : "provisional", colour: criterion.triage_color,
-    criterionCode: criterion.id };
+  const clinicalColour = criterion?.triage_color;
+  const physiologicColour = physiology?.colour;
+  const findingDrives = clinicalColour !== undefined &&
+    (physiologicColour == null || priority.indexOf(clinicalColour) >= priority.indexOf(physiologicColour));
+  const colour = findingDrives ? clinicalColour : physiologicColour;
+  const complete = physiology?.total != null;
+  const { greenRequires, redIsDefinitiveWithIncompleteInputs } = definition.assessment.result;
+  if (!colour || (colour === "green" && (
+    (greenRequires.includes("completePhysiology") && !complete) ||
+    (greenRequires.includes("explicitNoWarningCriteria") && !result.explicitNoWarningCriteria)
+  ))) return { ...UNASSESSED_DECISION_SUPPORT, ...evidence };
+
+  const definitive = complete || (colour === "red" && redIsDefinitiveWithIncompleteInputs);
+  return { status: definitive ? "definitive" : "provisional", colour, ...evidence,
+    ...(findingDrives && criterion ? { criterionCode: criterion.id } : {}) };
+}
+
+export function decisionSupportScale(definition: DecisionSupportDefinition, scale?: string): string {
+  const configured = definition.assessment.elements.newsScale;
+  return scale && Object.hasOwn(configured.values, scale) ? scale : configured.defaultValue;
+}
+
+export function decisionSupportObservationAttribute(input: string): string {
+  return `decisionSupportObservation:${input}`;
+}
+
+export function decisionSupportExplicitInputs(definition: DecisionSupportDefinition, scale: string) {
+  return Object.keys(definition.assessment.elements.newsScale.values[scale]?.tablesByInput ?? {})
+    .flatMap((key) => {
+      const input = definition.inputs[key];
+      if (input && "values" in input) return [{ key, values: input.values }];
+      return [];
+    });
+}
+
+function numericObservation(value: string | number | undefined, input: DecisionSupportNumericInput): number | undefined {
+  if (typeof value === "string" && !/^[+-]?\d+(?:[.,]\d+)?$/.test(value.trim())) return undefined;
+  const number = typeof value === "string" ? Number(value.trim().replace(",", ".")) : value;
+  if (number === undefined || !Number.isFinite(number) || number < input.minValue || number > input.maxValue) return undefined;
+  const scaled = number * 10 ** input.precision;
+  return Math.abs(scaled - Math.round(scaled)) <= Number.EPSILON * Math.max(1, Math.abs(scaled)) * 2 ? number : undefined;
+}
+
+export function decisionSupportPhysiology(
+  definition: DecisionSupportDefinition,
+  scale: string,
+  measurements: Readonly<Record<string, string | number>>,
+  observations: Readonly<Record<string, string>> = {},
+): DecisionSupportPhysiology {
+  const configured = definition.assessment.elements.newsScale.values[scale];
+  if (!configured) return { points: {}, total: null, colour: null };
+  const tables = Object.entries(configured.tablesByInput);
+  const points: Record<string, number> = {};
+  for (const [key, tableKey] of tables) {
+    const input = definition.inputs[key];
+    const table = definition.scoreTables[tableKey];
+    if (!input || !table) continue;
+    if ("pointsByValue" in table) {
+      const choice = observations[key];
+      const score = choice !== undefined && "values" in input && input.values.includes(choice) ? table.pointsByValue[choice] : undefined;
+      if (score !== undefined) points[key] = score;
+      continue;
+    }
+    if (!("element" in input)) continue;
+    const measured = measurements[input.element];
+    const raw = input.preferMeasuredHeartRateOverPulse && (measured === undefined || measured === "")
+      ? observations.pulse : measured;
+    const value = numericObservation(raw, input);
+    const branch = "branchOn" in table ? observations[table.branchOn] : undefined;
+    const bands = "bands" in table ? table.bands : branch ? table.branches[branch]?.bands : undefined;
+    const match = value === undefined ? undefined : bands?.find(({ minInclusive, maxInclusive }) =>
+      (minInclusive === null || value >= minInclusive) && (maxInclusive === null || value <= maxInclusive));
+    if (match) points[key] = match.points;
+  }
+
+  const observed = Object.values(points);
+  const subtotal = observed.reduce((sum, score) => sum + score, 0);
+  const rules = definition.colourRules[configured.colourRules];
+  const colour = Array.isArray(rules) ? rules.find((rule) =>
+    (rule.minTotal !== undefined || rule.anyComponentAtLeast !== undefined) &&
+    (rule.minTotal === undefined || subtotal >= rule.minTotal) &&
+    (rule.anyComponentAtLeast === undefined || observed.some((score) => score >= rule.anyComponentAtLeast!)))?.colour : undefined;
+  return {
+    points,
+    total: observed.length === tables.length ? subtotal : null,
+    colour: observed.length ? colour ?? null : null,
+  };
 }

@@ -429,6 +429,9 @@ const westDecisionSupport = {
     categories: westFixtureCoded("Categories"),
     criteria: westFixtureCoded("Criteria"),
     noWarningCriteria: { ...westFixtureCoded("NoWarningCriteria"), datatype: "boolean" },
+    newsScale: { ...westFixtureCoded("NewsScale"), choices: Object.entries(westDefinition.assessment.elements.newsScale.values)
+      .map(([code, scale]) => ({ code, label: scale.label.en })) },
+    physiologyScore: { ...westFixtureCoded("PhysiologyScore"), datatype: "number", integer: true },
   },
 } as unknown as ClinicalDecisionSupportConfiguration;
 
@@ -604,6 +607,83 @@ test("Mobile WEST documents multiple findings and keeps the calculated level vis
   await expect(status).toContainText("Red");
   await documented.getByRole("button", { name: /Remove Gravid med kraftig/ }).click();
   await expect(status).toContainText("Orange · Provisional");
+});
+
+test("Mobile WEST scores the selected NEWS scale and syncs only a complete integer total", async ({ page, context }) => {
+  test.skip(!serverBacked, "requires OPEN_TRIAGE_E2E_SERVER_MODE=true");
+  await page.setViewportSize({ width: 320, height: 740 });
+  await installRoutes(page, true, undefined, {
+    definition: { schemaVersion: 1, sections: [] }, catalogFields: {}, decisionSupport: westDecisionSupport,
+    customFields: Object.fromEntries(Object.entries(westDecisionSupport.fields)),
+  });
+  await page.goto("/");
+  await page.getByRole("button", { name: "Open call", exact: true }).click();
+  await expect(page.locator(".sync-status")).toHaveText("Saved");
+  await expect.poll(async () => (await encryptedRecords(page)).length).toBe(1);
+  const commands: Array<{ expectedRevision: number; groups: Array<Record<string, unknown>>;
+    occurrences: Array<Record<string, unknown>> }> = [];
+  await page.route(`**/api/reports/${reportId}/draft-changes`, async (route) => {
+    const command = route.request().postDataJSON() as typeof commands[number];
+    commands.push(command);
+    await route.fulfill({ json: { id: reportId, status: "draft", revision: command.expectedRevision + 1 } });
+  });
+  await context.setOffline(true);
+  await page.evaluate(() => window.dispatchEvent(new Event("offline")));
+  await page.getByRole("button", { name: "Add vital signs" }).click();
+  const dialog = page.getByRole("dialog", { name: "Vital signs" });
+  const scale = dialog.getByRole("combobox", { name: "NEWS scale" });
+  const output = dialog.locator("output");
+  const result = dialog.locator(".vital-decision-support-result");
+  await expect(scale).toHaveValue("standard");
+  await expect(output).toHaveCount(0);
+  await dialog.getByRole("textbox", { name: /Respiratory rate/i }).fill("8");
+  await expect(result).toContainText("Yellow · Provisional");
+  await dialog.getByRole("textbox", { name: /Respiratory rate/i }).fill("15");
+  await dialog.getByRole("textbox", { name: /Systolic BP/ }).fill("120");
+  await dialog.getByRole("textbox", { name: /Oxygen saturation|SpO[₂2]/i }).fill("97");
+  await dialog.getByRole("spinbutton", { name: "Pulse rate" }).fill("70");
+  await dialog.getByRole("spinbutton", { name: /Temperature/i }).fill("37.9");
+  await dialog.getByRole("combobox", { name: "Oxygen", exact: true }).selectOption("air");
+  await dialog.getByRole("combobox", { name: "Consciousness", exact: true }).selectOption("A");
+  await expect(output).toHaveText("0");
+  await expect(output).toHaveAccessibleName("NEWS2 score");
+  await expect(result).toHaveText("Unassessed");
+  await scale.selectOption("obstetric");
+  await expect(output).toHaveCount(0);
+  await dialog.getByRole("textbox", { name: /Diastolic BP/ }).fill("90");
+  await expect(output).toHaveAccessibleName("ONEWS2 score");
+  await expect(output).toHaveText("1");
+  await scale.selectOption("copd");
+  await expect(output).toHaveAccessibleName("NEWS2 score");
+  await expect(output).toHaveText("0");
+  await dialog.getByRole("combobox", { name: "Oxygen", exact: true }).selectOption("supplemental");
+  await expect(output).toHaveText("5");
+  await expect(result).toContainText("Orange");
+  await expect(result).toContainText("Oxygen saturation");
+  await dialog.getByRole("spinbutton", { name: /Temperature/i }).fill("");
+  await expect(output).toHaveCount(0);
+  await expect(result).toContainText("Orange · Provisional");
+  await dialog.getByRole("spinbutton", { name: /Temperature/i }).fill("37.0");
+  await dialog.getByRole("button", { name: "Add vital set" }).click();
+  await expect(page.locator(".sync-status")).toHaveText("Pending sync");
+  await page.locator(".timeline-event-button").filter({ hasText: "Vital signs" }).first().click();
+  await expect(scale).toHaveValue("copd");
+  await expect(output).toHaveText("5");
+  await page.keyboard.press("Escape");
+  await context.setOffline(false);
+  await page.evaluate(() => window.dispatchEvent(new Event("online")));
+  await expect(page.locator(".sync-status")).toHaveText("Saved");
+  expect(commands).toHaveLength(1);
+  const group = commands[0]!.groups.find(({ groupId }) => groupId === "eVitals.VitalGroup");
+  expect(group?.decisionSupportCalculation).toMatchObject({ status: "definitive", colour: "orange",
+    physiology: { total: 5, colour: "orange", points: { oxygen: 2, spo2: 3 } } });
+  expect(commands[0]!.occurrences).toEqual(expect.arrayContaining([
+    expect.objectContaining({ groupInstanceId: group?.id, elementId: "west.opentriage.org.FixtureNewsScale",
+      value: expect.objectContaining({ kind: "coded", code: "copd" }) }),
+    expect.objectContaining({ groupInstanceId: group?.id, elementId: "west.opentriage.org.FixturePhysiologyScore",
+      value: expect.objectContaining({ kind: "integer", value: 5 }) }),
+    expect.objectContaining({ elementId: "eVitals.24", value: expect.objectContaining({ kind: "numeric", value: 37 }) }),
+  ]));
 });
 
 test("Stationary Vitals uses the same WEST finalization rule while retaining its field editor", async ({ page }) => {

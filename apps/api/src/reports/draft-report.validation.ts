@@ -222,12 +222,18 @@ export function validateSaveDraftReportCommand(value: unknown): SaveDraftReportC
     if (group.tombstone !== undefined && typeof group.tombstone !== "boolean") findings.push(`${path}.tombstone must be a boolean`);
     if (group.decisionSupportCalculation !== undefined) {
       const calculation = group.decisionSupportCalculation;
+      const physiology = isRecord(calculation) ? calculation.physiology : undefined;
       if (!isRecord(calculation) || calculation.systemKey !== WEST_A_DECISION_SUPPORT_KEY ||
           typeof calculation.version !== "string" || !calculation.version ||
           (calculation.status === "unassessed" ? calculation.colour !== null || calculation.criterionCode !== undefined
             : !["definitive", "provisional"].includes(String(calculation.status)) || !isTriageColour(calculation.colour)) ||
           (calculation.criterionCode !== undefined && (typeof calculation.criterionCode !== "string" || !calculation.criterionCode)) ||
-          Object.keys(calculation).some((key) => !["status", "colour", "version", "systemKey", "criterionCode"].includes(key))) {
+          (physiology !== undefined && (!isRecord(physiology) || !isRecord(physiology.points) ||
+            Object.values(physiology.points).some((points) => !Number.isSafeInteger(points) || Number(points) < 0) ||
+            (physiology.total !== null && (!Number.isSafeInteger(physiology.total) || Number(physiology.total) < 0)) ||
+            (physiology.colour !== null && !isTriageColour(physiology.colour)) ||
+            Object.keys(physiology).some((key) => !["points", "total", "colour"].includes(key)))) ||
+          Object.keys(calculation).some((key) => !["status", "colour", "version", "systemKey", "criterionCode", "physiology"].includes(key))) {
         findings.push(`${path}.decisionSupportCalculation must be a pinned decision support result`);
       }
     }

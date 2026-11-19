@@ -158,6 +158,8 @@ export function validateDecisionSupportDefinition(value: unknown): DecisionSuppo
 
   const result = object(assessment.result, "Assessment result");
   requireRule(typeof result.redIsDefinitiveWithIncompleteInputs === "boolean", "Invalid incomplete assessment rule");
+  const green = stringKeys(result.greenRequires, "Green assessment requirements");
+  requireRule(green.every((rule) => rule === "completePhysiology" || rule === "explicitNoWarningCriteria"), "Unknown green assessment requirement");
   const overrides = stringKeys(result.overrideAllowed, "Override options");
   requireRule(overrides.length === colours.size && overrides.every((colour) => colours.has(colour as TriageColour)),
     "Invalid override options");

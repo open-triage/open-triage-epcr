@@ -22,6 +22,7 @@ import {EpsSigningCheckbox,EpsDeliveryStatus,useEpsSigningActivation,useSigningE
 import { MedicationDialog } from "../components/medication-dialog";
 import { resolveCatalogElementText } from "./catalog-localization";
 import { VitalDecisionSupport } from "../components/vital-decision-support";
+import { VitalDecisionSupportScale, VitalDecisionSupportObservations } from "../components/vital-decision-support-scoring";
 import { VitalDecisionSupportFindings } from "../components/vital-decision-support-findings";
 import { effectiveDecisionSupportColour, EMPTY_DECISION_SUPPORT_FINDINGS } from "@open-triage/contracts";
 import { ProcedureDialog } from "../components/procedure-dialog";
@@ -43,7 +44,7 @@ import {
   MISSING_VITALS_FINDING_ID,
   reviewEncounter,
   standardEncounterReducer,
-  vitalDraftDecisionSupport,
+  vitalDraftDecisionSupport, additionalVitalInputs,
   type EncounterEvent,
   type ReviewFinding,
   type ShellView,
@@ -1325,7 +1326,20 @@ function EncounterWorkspace({ session, report, presentationMode, language, onSav
               definition={decisionSupport.definition} findings={westDraft.findings ?? EMPTY_DECISION_SUPPORT_FINDINGS}
               localTime={shell.vitalDraft.recordedLocalTime ?? shell.vitalDraft.time} language={language}
               onChange={(findings) => dispatch({ type: "vitals-findings-changed", findings })} />}
+            {decisionSupport && <>
+              <VitalDecisionSupportScale definition={decisionSupport.definition} assessment={westDraft} language={language}
+                onScale={(value) => dispatch({ type: "vitals-scale-changed", value })} />
+              <VitalDecisionSupportObservations definition={decisionSupport.definition} assessment={westDraft} language={language}
+                onObservation={(key, value) => dispatch({ type: "vitals-observation-changed", key, value })} />
+            </>}
             <div className="vital-grid">
+              {decisionSupport && additionalVitalInputs(decisionSupport, bundledEncounterDefinition).map((input) =>
+                <label className="vital-field" key={input.element}>
+                  <span className="vital-field-label">{catalogText(input.element, "label") ?? t(`mobile.westObservation.${input.key}`)} <small>{input.unit}</small></span>
+                  <input type="number" inputMode={input.precision === 0 ? "numeric" : "decimal"} step={10 ** -input.precision}
+                    min={input.minValue} max={input.maxValue} value={shell.vitalDraft!.additionalMeasurements?.[input.element] ?? ""}
+                    onChange={(event) => dispatch({ type: "vitals-measurement-changed", elementId: input.element, value: event.target.value })} />
+                </label>)}
               {vitalDefinition.fields.map((configuredField) => {
                 const field = configuredField.id;
                 const help = catalogText(configuredField.reference, "description");
