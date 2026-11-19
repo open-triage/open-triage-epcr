@@ -15,6 +15,7 @@ import { encounterEvents, removeCanonicalEvent, saveCanonicalEvent } from "./can
 import { clearStationaryDemoData } from "./stationary-demo-data";
 import { DEMO_FALLBACK_DATE } from "./demo-provenance";
 import { getNemsisDataElement } from "./nemsis-data-model";
+import type { FinalizedVitalDecisionSupport } from "./finalized-vital-decision-support";
 
 export type ShellView = "timeline" | "checklist" | "review";
 
@@ -32,6 +33,7 @@ export type EncounterEvent = {
   readonly procedure?: ProcedureRecord;
   readonly medication?: MedicationAdministration;
   readonly vitals?: VitalValues;
+  readonly decisionSupport?: FinalizedVitalDecisionSupport;
 };
 
 export type VitalField = ConfiguredVitalField;

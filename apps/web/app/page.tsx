@@ -88,6 +88,8 @@ import { completeReportTimeline, noteReadinessBlockers, REPORT_TEXT_NOTE_MAX_CHA
   type NoteReadinessBlocker } from "./report-text-notes";
 import { ListRowAction } from "../components/list-row-action";
 import { EncounterTimeline } from "../components/encounter-timeline";
+import { latestFinalizedVitalDecisionSupport } from "./finalized-vital-decision-support";
+import { WestLevel } from "../components/west-level";
 import { WorkspaceSidebar } from "../components/workspace-sidebar";
 import { loadStationaryTimelineOpen, storeStationaryTimelineOpen } from "./stationary-timeline-preference";
 import { PhotoNoteDialog } from "../components/photo-note";
@@ -234,7 +236,11 @@ function EncounterWorkspace({ session, report, presentationMode, language, onSav
     () => documentTimeline(encounter.document, zone),
     [encounter.document, zone],
   );
-  const clinicalEvents = useMemo(() => encounterEvents(encounter.document, bundledEncounterDefinition, zone), [encounter.document, zone]);
+  const decisionSupport = report?.clinicalForm?.decisionSupport;
+  const latestWestLevel = useMemo(() => latestFinalizedVitalDecisionSupport(encounter.document, decisionSupport),
+    [encounter.document, decisionSupport]);
+  const clinicalEvents = useMemo(() => encounterEvents(encounter.document, bundledEncounterDefinition, zone, decisionSupport),
+    [encounter.document, zone, decisionSupport]);
   const timelineEvents = useMemo(() => completeReportTimeline(
     [...incidentEvents, ...clinicalEvents], reportNotes, zone,
   ), [incidentEvents, clinicalEvents, reportNotes, zone]);
@@ -270,7 +276,6 @@ function EncounterWorkspace({ session, report, presentationMode, language, onSav
     routeLabels: medicationChoiceLabels("eMedications.04"),
     fields: bundledEncounterDefinition.events.medication.fields.map((field) => ({ ...field,
       label: catalogText(field.reference, "label") ?? field.label })) };
-  const decisionSupport = report?.clinicalForm?.decisionSupport;
   const westOverrideRef = useRef<HTMLSelectElement>(null);
   const [westMissingColour, setWestMissingColour] = useState(false);
   const westDraft = vitalDraftDecisionSupport(shell.vitalDraft, decisionSupport);
@@ -1038,6 +1043,7 @@ function EncounterWorkspace({ session, report, presentationMode, language, onSav
           <span><small>{t("calls.unit")}</small><strong>{incident.callSign || t("calls.notProvided")}</strong></span>
           <span><small>{t("calls.priority")}</small><strong>{incident.dispatchPriority || t("calls.notProvided")}</strong></span>
           <span className="encounter-location"><small>{t("mobile.location")}</small><strong>{incident.location || t("calls.notProvided")}</strong></span>
+          {latestWestLevel && <div className="encounter-west-level"><WestLevel assessment={latestWestLevel} language={language} latest /></div>}
         </div> : <>
           <div className="header-kicker"><span>{incidentEvents[0]?.time ?? "--:--"}</span></div>
           <div className="incident-line"><div>
@@ -1048,6 +1054,7 @@ function EncounterWorkspace({ session, report, presentationMode, language, onSav
             <span>{t("calls.priority")} {incident.dispatchPriority || t("calls.notProvided")}</span>
             <strong>{incident.location}</strong>
           </div></div>
+          {latestWestLevel && <div className="encounter-west-level"><WestLevel assessment={latestWestLevel} language={language} latest /></div>}
         </>}
         {report && <div className="draft-actions">
           <PatientSummaryButton csrfToken={sessionRequestToken(session)} reportId={report.id} organizationId={session.organization.id} userId={session.user.id} onImported={refreshReport} documentKey={JSON.stringify(encounter.document)} form={report.clinicalForm} ready={syncStatus === "Saved"} language={language} />
