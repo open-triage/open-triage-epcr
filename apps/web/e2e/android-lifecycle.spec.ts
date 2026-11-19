@@ -77,6 +77,39 @@ test("native pause stops visible polling and resume refreshes once without overl
   await expect.poll(() => requests).toBe(3);
 });
 
+test("paired-unit polling queued behind enrollment skips dispatch while the native activity is paused", async ({ page }) => {
+  const lockName = "open-triage.installation-enrollment";
+  const bundled = await build({ bundle: true, write: false, format: "iife", platform: "browser", jsx: "automatic",
+    define: { "process.env": JSON.stringify({ NEXT_PUBLIC_API_URL: "same-origin" }) },
+    stdin: { resolveDir: path.resolve(__dirname, ".."), loader: "tsx", contents: `
+      import React from 'react';import {createRoot} from 'react-dom/client';
+      import {PairedUnit} from './components/paired-unit';
+      import {setNativeForeground} from './app/application-foreground';
+      const lockName=${JSON.stringify(lockName)};
+      navigator.locks.request(lockName,()=>new Promise(resolve=>{
+        window.releaseWhilePaused=()=>{setNativeForeground(false);resolve()};
+        createRoot(document.getElementById('root')).render(<PairedUnit language="en"/>);
+      }));
+      window.resumeNative=()=>setNativeForeground(true);` } });
+  await page.route("**/__paused-pairing-lock", route => route.fulfill({ contentType: "text/html", body: `<html><body><div id="root"></div><script>${bundled.outputFiles[0]!.text}</script></body></html>` }));
+  let requests = 0;
+  await page.route("**/api/installations/current", route => {
+    requests++;
+    return route.fulfill({ json: { enrolled: true, installation: { unitName: "Synthetic paired unit" } } });
+  });
+  await page.goto("/__paused-pairing-lock");
+  await expect.poll(() => page.evaluate(async name => (await navigator.locks.query()).pending?.some(lock => lock.name === name), lockName)).toBe(true);
+  // Queue a sentinel behind the pending poll so the assertion runs after it releases its lock.
+  await page.evaluate(async name => {
+    (window as unknown as { releaseWhilePaused: () => void }).releaseWhilePaused();
+    await navigator.locks.request(name, () => {});
+  }, lockName);
+  expect(requests).toBe(0);
+  await page.evaluate(() => (window as unknown as { resumeNative: () => void }).resumeNative());
+  await expect(page.getByText("Synthetic paired unit", { exact: false })).toBeVisible();
+  expect(requests).toBe(1);
+});
+
 test("offline native resume locks an expired readable report even when suspended timers did not fire", async ({ page, context }) => {
   const now = Date.now(), expires = now + 60000, reportId = demoOpenAssignment.report.id;
   const session = { csrfToken: "synthetic-csrf", user: { id: demoOpenAssignment.report.documentingUserId, displayName: "Synthetic clinician" },

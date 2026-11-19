@@ -1,5 +1,6 @@
 import { transitionInstallation } from "./installation-transition";
 import { apiRequestUrl, browserRouteUrl, browserRequestConfiguration } from "./browser-api";
+import { foregroundNetworkAllowed } from "./application-foreground";
 export type InstallationSummary={id:string;installationId:string;organizationId:string;unitId:string;unitName?:string;name:string;enrolledAt:string;revokedAt:string|null};
 export async function installationRequest<T>(path:string,body?:unknown):Promise<T> {
  if(!navigator.locks) throw new Error("Enrollment requires a browser with secure cross-tab storage coordination");
@@ -7,6 +8,8 @@ export async function installationRequest<T>(path:string,body?:unknown):Promise<
  const configuration=browserRequestConfiguration();
  if(configuration.mode==="static") throw new Error("Enrollment requires the live application");
  const request=async()=>{
+ // A status read can outlive the foreground check that queued it for the lock.
+ if(path==="current"&&!foregroundNetworkAllowed()) throw new DOMException("Native activity is paused", "AbortError");
  const response=await fetch(apiRequestUrl(`/api/installations/${path}`,configuration)??browserRouteUrl(`/api/installations/${path}`,configuration),{
  cache:"no-store",credentials:"include",...(body?{method:"POST",headers:{"content-type":"application/json","x-installation-enrollment":"1"},body:JSON.stringify(body)}:{})});
  if(!response.ok) throw new Error("Enrollment failed. Request a new code or use the intended browser installation.");
