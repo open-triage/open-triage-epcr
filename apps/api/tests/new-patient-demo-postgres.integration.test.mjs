@@ -185,7 +185,11 @@ integration("new demo patients support the generated-report lifecycle without a 
     const measuredAt = "2026-10-20T12:00:00+02:00";
     const enteredAt = "2026-10-20T12:01:00+02:00";
     const root = westOpened.report.document.groups.find(({ id }) => id === "PatientCareReportGroup").instances[0];
-    const calculation = { status: "unassessed", colour: null, systemKey: west.definition.key, version: west.definition.version };
+    const calculation = { status: "unassessed", colour: null, systemKey: west.definition.key, version: west.definition.version,
+      physiology: { total: null, colour: null, points: {} } };
+    const scaleField = west.fields.newsScale;
+    const scale = { id: randomUUID(), groupInstanceId: vitalGroupId, elementId: decisionSupportElementKey(scaleField),
+      value: { kind: "coded", code: "standard", codeSystem: scaleField.codeSystem } };
     const groups = [
       { id: sectionId, groupId: "eVitalsSection", ordinal: 0, parentGroupInstanceId: root.instanceId },
       { id: vitalGroupId, groupId: "eVitals.VitalGroup", ordinal: 0, parentGroupInstanceId: sectionId,
@@ -202,15 +206,16 @@ integration("new demo patients support the generated-report lifecycle without a 
 
     await assert.rejects(saveVital(westOpened.report.revision, [groups[0], {
       id: vitalGroupId, groupId: "eVitals.VitalGroup", ordinal: 0, parentGroupInstanceId: sectionId, documentedTime: measuredAt,
-    }], [measurement]), /one effective color/);
-    await assert.rejects(saveVital(westOpened.report.revision, groups, [measurement]), /one effective color/);
+    }], [measurement, scale]), /one effective color/);
+    await assert.rejects(saveVital(westOpened.report.revision, groups, [measurement]), /one configured NEWS scale/);
+    await assert.rejects(saveVital(westOpened.report.revision, groups, [measurement, scale]), /one effective color/);
     await assert.rejects(saveVital(westOpened.report.revision, groups, [measurement, {
       ...manual, sourceAttributes: { ...manual.sourceAttributes, enteredBy: ordinaryUserId },
     }]), /authorized author/);
     await assert.rejects(saveVital(westOpened.report.revision, [
       groups[0], { ...groups[1], decisionSupportCalculation: { ...calculation, colour: "green", status: "definitive" } },
-    ], [measurement]), /does not match the supported inputs/);
-    const saved = await saveVital(westOpened.report.revision, groups, [measurement, manual]);
+    ], [measurement, scale]), /does not match the supported inputs/);
+    const saved = await saveVital(westOpened.report.revision, groups, [measurement, scale, manual]);
     const downgraded = await saveVital(saved.revision, [], [{ ...manual, value: { ...manual.value, code: "green" },
       sourceAttributes: { ...manual.sourceAttributes, enteredAt: "2026-10-20T12:02:00+02:00" } }]);
     const reloaded = (await service.reopen("demo", westReport.reportId)).report.document.groups
@@ -257,6 +262,50 @@ integration("new demo patients support the generated-report lifecycle without a 
     await assert.rejects(saveVital(findingsSaved.revision, [], [
       { ...bleeding, value: undefined, tombstone: true }, { ...category, value: undefined, tombstone: true },
     ]), /does not match the supported inputs/);
+
+    const observation = {
+      ...measurement, sourceAttributes: {
+        "decisionSupportObservation:oxygen": "air", "decisionSupportObservation:consciousness": "A",
+        "decisionSupportObservation:pulse": "70",
+      },
+    };
+    const childGroup = (groupId) => ({ id: randomUUID(), groupId, ordinal: 0, parentGroupInstanceId: vitalGroupId });
+    const pressure = childGroup("eVitals.BloodPressureGroup");
+    const temperature = childGroup("eVitals.TemperatureGroup");
+    const numeric = (elementId, groupInstanceId, value, kind = "integer") => ({
+      id: randomUUID(), elementId, groupInstanceId, value: { kind, value },
+    });
+    const sbp = numeric("eVitals.06", pressure.id, 120);
+    const dbp = numeric("eVitals.07", pressure.id, "90", "text");
+    const temp = numeric("eVitals.24", temperature.id, 37, "numeric");
+    const spo2 = numeric("eVitals.12", vitalGroupId, 97);
+    const respiration = numeric("eVitals.14", vitalGroupId, 15);
+    const score = numeric(decisionSupportElementKey(west.fields.physiologyScore), vitalGroupId, 1);
+    const obstetric = { ...scale, value: { ...scale.value, code: "obstetric" } };
+    const complete = { ...assessment, decisionSupportCalculation: { ...assessment.decisionSupportCalculation, status: "definitive",
+      physiology: { total: 1, colour: "yellow", points: { respiratoryRate: 0, spo2: 0, oxygen: 0, systolic: 0,
+        diastolic: 1, heartRate: 0, consciousness: 0, temperature: 0 } } } };
+    const measured = [observation, obstetric, sbp, dbp, temp, spo2, respiration];
+    await assert.rejects(saveVital(findingsSaved.revision, [complete, pressure, temperature], [...measured,
+      { ...score, value: { ...score.value, value: 2 } },
+    ]), /NEWS score does not match/);
+    const completeSaved = await saveVital(findingsSaved.revision, [complete, pressure, temperature], [...measured, score]);
+    const scored = (await service.reopen("demo", westReport.reportId)).report.document.groups
+      .find(({ id }) => id === "eVitals.VitalGroup").instances.find(({ instanceId }) => instanceId === vitalGroupId);
+    assert.deepEqual(scored.decisionSupportCalculation, complete.decisionSupportCalculation);
+    assert.equal(scored.elements.find(({ id }) => id === score.elementId).values[0].value, 1);
+    await assert.rejects(saveVital(completeSaved.revision, [], [{ ...dbp, value: { ...dbp.value, value: "P" } }]), /NEWS score does not match/);
+    const partial = { ...assessment, decisionSupportCalculation: { ...assessment.decisionSupportCalculation,
+      physiology: { total: null, colour: "green", points: { respiratoryRate: 0, spo2: 0, oxygen: 0, systolic: 0,
+        heartRate: 0, consciousness: 0, temperature: 0 } } } };
+    const partialSaved = await saveVital(completeSaved.revision, [partial], [
+      { ...dbp, value: { ...dbp.value, value: "P" } }, { ...score, tombstone: true, value: undefined },
+    ]);
+    const unscored = (await service.reopen("demo", westReport.reportId)).report.document.groups
+      .find(({ id }) => id === "eVitals.VitalGroup").instances.find(({ instanceId }) => instanceId === vitalGroupId);
+    assert.equal(unscored.elements.some(({ id }) => id === score.elementId), false);
+    assert.deepEqual(unscored.decisionSupportCalculation, partial.decisionSupportCalculation);
+    assert.ok(partialSaved.revision > completeSaved.revision);
 
     // Simulate an encounter pinned before deployment of the current shipped version.
     const previousDefinition = { ...west.definition, version: `1.0.0-test.${randomUUID()}`, name: "WEST-A previous version" };

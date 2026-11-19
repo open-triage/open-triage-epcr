@@ -423,9 +423,9 @@ export class DraftReportService {
         ];
         const currentStates = await this.targetStates(manager, report.id, targets);
         const decisionSupport = (command.groups?.some((group) => group.decisionSupportCalculation ||
-          (report.decision_support_definition_id && group.groupId === "eVitals.VitalGroup" && !group.tombstone)) ||
+          (report.decision_support_definition_id && group.groupId.startsWith("eVitals."))) ||
           command.occurrences?.some(({ elementId }) => isDecisionSupportElement(elementId) ||
-            (report.decision_support_definition_id && elementId === "eVitals.01")))
+            (report.decision_support_definition_id && elementId.startsWith("eVitals."))))
           ? await loadReportDecisionSupport(manager, report) : undefined;
         const occurrenceMetadata = await this.elementMetadataBatch(
           manager,

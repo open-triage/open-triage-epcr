@@ -1,7 +1,8 @@
+import { isDeepStrictEqual } from "node:util";
 import { UnprocessableEntityException } from "@nestjs/common";
 import {
   calculateDecisionSupportFindings, decisionSupportElementKey, decisionSupportFindingResult,
-  decisionSupportMeasurementLocalTime, effectiveDecisionSupportColour, isTriageColour,
+  decisionSupportMeasurementLocalTime, decisionSupportObservationAttribute, decisionSupportPhysiology, effectiveDecisionSupportColour, isTriageColour,
   type ClinicalDecisionSupportConfiguration, type FinalizedDecisionSupportCalculation,
 } from "@open-triage/contracts";
 import type { EntityManager } from "typeorm";
@@ -62,27 +63,28 @@ export async function assertFinalizedVitalDecisions(
   groups: ReadonlyArray<DraftGroupMutation>, occurrences: ReadonlyArray<DraftOccurrenceMutation>,
   configuration?: ClinicalDecisionSupportConfiguration, newlyFinalized = new Set<string>(),
 ): Promise<void> {
-  const changes = occurrences.filter(({ elementId }) => isDecisionSupportElement(elementId));
   const assessedGroups = groups.filter(({ decisionSupportCalculation, tombstone }) => decisionSupportCalculation && !tombstone);
   if (!configuration) return;
   const { definition, fields } = configuration;
-  const correctedTimes = occurrences.filter(({ elementId }) => elementId === "eVitals.01")
-    .flatMap(({ groupInstanceId }) => groupInstanceId ? [groupInstanceId] : []);
+  const measurementKeys = Object.values(definition.inputs).flatMap((input) => "element" in input ? [input.element] : []);
+  const measurementElements = new Set(["eVitals.01", ...measurementKeys]);
+  const affected = new Set(groups.map(({ id }) => id));
   const changesByGroup = new Set([...assessedGroups.map(({ id }) => id), ...newlyFinalized]);
-  for (const occurrence of changes) {
-    if (!occurrence.groupInstanceId) throw new UnprocessableEntityException("Decision support requires a vital occurrence");
-    changesByGroup.add(occurrence.groupInstanceId);
+  for (const occurrence of occurrences) {
+    if (isDecisionSupportElement(occurrence.elementId)) {
+      if (!occurrence.groupInstanceId) throw new UnprocessableEntityException("Decision support requires a vital occurrence");
+      changesByGroup.add(occurrence.groupInstanceId);
+    }
+    if (occurrence.groupInstanceId && measurementElements.has(occurrence.elementId)) affected.add(occurrence.groupInstanceId);
   }
-
-  const affected = new Set([...changesByGroup, ...correctedTimes, ...groups
-    .filter((group) => group.groupId === definition.assessment.group && !group.tombstone)
-    .map(({ id }) => id)]);
-  if (!affected.size) return;
+  if (!affected.size && !changesByGroup.size) return;
   const keys = {
     override: decisionSupportElementKey(fields.overrideColour),
     categories: decisionSupportElementKey(fields.categories),
     criteria: decisionSupportElementKey(fields.criteria),
     noWarning: decisionSupportElementKey(fields.noWarningCriteria),
+    scale: decisionSupportElementKey(fields.newsScale),
+    score: decisionSupportElementKey(fields.physiologyScore),
   };
   const rows = await manager.query<Array<{
     id: string;
@@ -90,27 +92,50 @@ export async function assertFinalizedVitalDecisions(
     documented_time: string | Date | null;
     recorded_time: string | Date | null;
     recorded_offset: number | null;
+    recorded_attributes: Record<string, unknown> | null;
     decision_support_calculation: FinalizedDecisionSupportCalculation | null;
-    inputs: Array<{ elementId: string; code: string | null; boolean: boolean | null }>;
+    inputs: Array<{ elementId: string; code: string | null; boolean: boolean | null; integer: number | null; measurement: string | null }>;
   }>>(`
+    with recursive ancestors as (
+      select id, group_id, parent_group_instance_id from clinical.group_instance
+      where report_id = $1 and id = any($2::uuid[])
+      union
+      select parent.id, parent.group_id, parent.parent_group_instance_id
+      from ancestors join clinical.group_instance parent on parent.id = ancestors.parent_group_instance_id
+      where parent.report_id = $1
+    ), vital_roots as (
+      select id from ancestors where group_id = $5
+      union
+      select unnest($3::uuid[])
+    ), vital_tree as (
+      select id as root_id, id, ordinal from clinical.group_instance
+      where report_id = $1 and id in (select id from vital_roots) and tombstoned_at is null
+      union
+      select tree.root_id, child.id, child.ordinal
+      from vital_tree tree join clinical.group_instance child on child.parent_group_instance_id = tree.id
+      where child.report_id = $1 and child.tombstoned_at is null
+    )
     select vital.id, vital.group_id, vital.documented_time, vital.decision_support_calculation,
       measurement.value_datetime as recorded_time, measurement.value_utc_offset_minutes as recorded_offset,
-      coalesce(inputs.values, '[]'::json) as inputs
+      measurement.source_attributes as recorded_attributes, coalesce(inputs.values, '[]'::json) as inputs
     from clinical.group_instance vital
     left join lateral (
-      select value_datetime, value_utc_offset_minutes from clinical.element_occurrence
+      select value_datetime, value_utc_offset_minutes, source_attributes from clinical.element_occurrence
       where report_id = vital.report_id and group_instance_id = vital.id
         and element_id = 'eVitals.01' and tombstoned_at is null
       order by ordinal, id limit 1
     ) measurement on true
     left join lateral (
-      select json_agg(json_build_object('elementId', element_id, 'code', code, 'boolean', value_boolean)) as values
-      from clinical.element_occurrence
-      where report_id = vital.report_id and group_instance_id = vital.id
-        and element_id = any($3::text[]) and tombstoned_at is null
+      select json_agg(json_build_object('elementId', value.element_id, 'code', value.code, 'boolean', value.value_boolean,
+        'integer', value.value_integer, 'measurement', case when value.value_kind in ('text', 'integer', 'numeric')
+          then coalesce(value.value_text, value.value_integer::text, value.value_numeric::text) end)
+        order by tree.ordinal, tree.id, value.ordinal, value.id) as values
+      from vital_tree tree join clinical.element_occurrence value on value.group_instance_id = tree.id
+      where tree.root_id = vital.id and value.report_id = vital.report_id
+        and value.element_id = any($4::text[]) and value.tombstoned_at is null
     ) inputs on true
-    where vital.report_id = $1 and vital.id = any($2::uuid[]) and vital.tombstoned_at is null
-  `, [report.id, [...affected], Object.values(keys)]);
+    where vital.report_id = $1 and vital.id in (select id from vital_roots) and vital.tombstoned_at is null
+  `, [report.id, [...affected], [...changesByGroup], [...Object.values(keys), ...measurementKeys], definition.assessment.group]);
   for (const row of rows) {
     const { decision_support_calculation: calculation, inputs } = row;
     const inputCodes = (elementKey: string) => inputs.filter(({ elementId }) => elementId === elementKey).map(({ code }) => code);
@@ -132,8 +157,28 @@ export async function assertFinalizedVitalDecisions(
         new Set(categories).size !== categories.length || findingResult.categoryCodes.some((id) => !categories.includes(id))) {
       throw new UnprocessableEntityException("The documented decision support findings do not match their categories");
     }
-    const expected = calculateDecisionSupportFindings(definition, findingResult);
+    const scales = inputCodes(keys.scale);
+    const scale = scales[0];
+    const savedScores = inputs.filter(({ elementId }) => elementId === keys.score);
+    if (scales.length > 1 || (scales.length === 1 && (scale == null || !Object.hasOwn(definition.assessment.elements.newsScale.values, scale))) ||
+        (newlyFinalized.has(row.id) && !scale)) {
+      throw new UnprocessableEntityException("The finalized vital assessment requires one configured NEWS scale");
+    }
+    const observationPrefix = decisionSupportObservationAttribute("");
+    const observations = Object.fromEntries(Object.entries(row.recorded_attributes ?? {}).flatMap(([key, value]) =>
+      key.startsWith(observationPrefix) && typeof value === "string" ? [[key.slice(observationPrefix.length), value]] : []));
+    const measurements = Object.fromEntries(measurementKeys.flatMap((key) => {
+      const value = inputs.find(({ elementId }) => elementId === key)?.measurement;
+      return value == null ? [] : [[key, value]];
+    }));
+    const physiology = scale ? decisionSupportPhysiology(definition, scale, measurements, observations) : undefined;
+    if (physiology?.total == null ? savedScores.length !== 0 :
+        savedScores.length !== 1 || savedScores[0]?.integer !== physiology.total) {
+      throw new UnprocessableEntityException("The documented NEWS score does not match the supported observations");
+    }
+    const expected = calculateDecisionSupportFindings(definition, findingResult, physiology);
     if (calculation && (calculation.status !== expected.status || calculation.colour !== expected.colour ||
+        !isDeepStrictEqual(calculation.physiology, expected.physiology) ||
         ("criterionCode" in calculation ? calculation.criterionCode : undefined) !== ("criterionCode" in expected ? expected.criterionCode : undefined))) {
       throw new UnprocessableEntityException("The calculated vital result does not match the supported inputs");
     }
