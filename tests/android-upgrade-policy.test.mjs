@@ -1,11 +1,13 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import {readFile} from 'node:fs/promises';
 import catalog from '@open-triage/contracts/config/android-releases.json' with {type:'json'};
 import historical from './fixtures/android-published-legacy-releases.json' with {type:'json'};
 import lifecycle from '@open-triage/contracts/config/android-release-lifecycle.json' with {type:'json'};
-import {isAndroidReleaseCompatible} from '@open-triage/contracts/android-release';
+import {approvedAndroidReleaseUrl,isAndroidReleaseCompatible,parseAndroidReleaseDescriptor} from '@open-triage/contracts/android-release';
 import {evaluateAndroidUpgrade,parseAndroidReleaseLifecycle,parseAndroidUpgradeGraceDays} from '@open-triage/contracts/android-upgrade-policy';
 import {ANDROID_API_PROTOCOL_VERSION,ANDROID_API_CAPABILITIES} from '@open-triage/contracts/android-client-protocol';
+import {developmentPolicyCatalog} from '../scripts/android/development-policy-catalog.mjs';
 const policyReleases=[...catalog.releases,...historical.releases];
 const retired={versionCode:1,supersededAt:'2026-01-01T00:00:00.000Z',replacementTag:catalog.releases[0].tag};
 const replacement={status:'available',...catalog.releases[0]};
@@ -17,6 +19,25 @@ test('the retained final release is supported while removed candidates require t
   assert.equal(result.status,'upgrade-required');assert.equal(result.reason,'unknown-release');
   assert.equal(result.replacement.tag,replacement.tag);
  }
+});
+test('the native development journey supports the debug build independently of the signed release catalog',async()=>{
+ const gradle=await readFile(new URL('../android/app/build.gradle',import.meta.url),'utf8');
+ const versionCode=Number(/versionCode productionRelease \? releaseCode\.toInteger\(\) : (\d+)/.exec(gradle)?.[1]);
+ const versionName=/versionName productionRelease \? releaseName : "([^"]+)"/.exec(gradle)?.[1];
+ const {releases,signingIdentity}=developmentPolicyCatalog();
+ assert.equal(releases.length,1);
+ const [{descriptor,tag,downloadUrl}]=releases;
+ assert.deepEqual(parseAndroidReleaseDescriptor(descriptor),descriptor);
+ assert.equal(descriptor.versionCode,versionCode);
+ assert.equal(descriptor.versionName,versionName);
+ assert.equal(descriptor.certificateSha256,signingIdentity.certificateSha256);
+ assert.equal(downloadUrl,approvedAndroidReleaseUrl(tag,descriptor));
+ const request={...input,versionCode,releases,retirements:[],replacement:{status:'unavailable',reason:'not-selected'}};
+ const debug=evaluateAndroidUpgrade(request);
+ assert.equal(debug.status,'compatible');
+ assert.equal(debug.deadline,null);
+ assert.equal(debug.replacement,null);
+ assert.equal(evaluateAndroidUpgrade({...request,releases:[]}).reason,'unknown-release');
 });
 test('server-clock grace uses fixed retirement metadata at exact expiry and changes retroactively without reinstall or deployment clocks',()=>{
  const before=evaluateAndroidUpgrade(input);assert.equal(before.status,'approaching-upgrade');assert.equal(before.deadline,'2026-04-01T00:00:00.000Z');

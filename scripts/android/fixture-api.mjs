@@ -5,6 +5,7 @@ import { installTlsFixtureControl } from './tls-fixture-control.mjs';
 import { pdfServerCompatibilityFixture } from './pdf-server-compatibility-fixture.mjs';
 import { pdfDownloadFixture, pdfMediaHoldFixture } from './pdf-download-fixture.mjs';
 import { enrollmentBoundaryFixture } from './enrollment-boundary-fixture.mjs';
+import { developmentPolicyCatalog } from './development-policy-catalog.mjs';
 const fixture = JSON.parse(await readFile(process.argv[2], 'utf8'));
 const runtimeDatabase = new URL(fixture.databaseUrl);
 runtimeDatabase.searchParams.set('options', '-c role=open_triage_api_runtime');
@@ -20,20 +21,27 @@ Object.assign(process.env, {
 // Nest's CJS/ESM bridge must initialize before loading the application's modules on Node 22.
 const { NestFactory } = await import('@nestjs/core');
 const { AppModule } = await import('../../apps/api/dist/app.module.js');
+const { AdminModule } = await import('../../apps/api/dist/admin/admin.module.js');
+const { ANDROID_RELEASE_CATALOG, ANDROID_RELEASE_FETCH } = await import('../../apps/api/dist/admin/android-release.service.js');
+const { ANDROID_RELEASE_LIFECYCLE } = await import('../../apps/api/dist/admin/android-upgrade-policy.service.js');
+const providers = [...Reflect.getMetadata('providers', AdminModule)];
 let upgradeAcceptance;
 if(fixture.upgradeAcceptance) {
   const {upgradePolicyFixture}=await import('./upgrade-policy-fixture.mjs');
   upgradeAcceptance=await upgradePolicyFixture(fixture.upgradeAcceptance);
-  const {AdminModule}=await import('../../apps/api/dist/admin/admin.module.js');
-  const {ANDROID_RELEASE_CATALOG,ANDROID_RELEASE_FETCH}=await import('../../apps/api/dist/admin/android-release.service.js');
-  const {ANDROID_RELEASE_LIFECYCLE}=await import('../../apps/api/dist/admin/android-upgrade-policy.service.js');
-  // Explicit test-only providers, installed before normal Nest module construction.
-  Reflect.defineMetadata('providers',[...Reflect.getMetadata('providers',AdminModule),
+  providers.push(
     {provide:ANDROID_RELEASE_CATALOG,useValue:upgradeAcceptance.approved},
     {provide:ANDROID_RELEASE_LIFECYCLE,useValue:upgradeAcceptance.lifecycle},
-    {provide:ANDROID_RELEASE_FETCH,useValue:upgradeAcceptance.fetcher}],AdminModule);
+    {provide:ANDROID_RELEASE_FETCH,useValue:upgradeAcceptance.fetcher});
   process.env.ANDROID_APPROVED_RELEASE=upgradeAcceptance.tag;
+} else {
+  providers.push(
+    { provide: ANDROID_RELEASE_CATALOG, useValue: developmentPolicyCatalog() },
+    { provide: ANDROID_RELEASE_LIFECYCLE, useValue: { schemaVersion: 1, retirements: [] } },
+  );
 }
+// Install test-only providers before normal Nest module construction.
+Reflect.defineMetadata('providers', providers, AdminModule);
 
 const { agencyContextMiddleware } = await import('../../apps/api/dist/sessions/agency-context.middleware.js');
 const { PlatformErrorFilter } = await import('../../apps/api/dist/platform-error.filter.js');
