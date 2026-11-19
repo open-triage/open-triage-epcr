@@ -5,7 +5,7 @@ import { resolveCatalogElementText, resolveCatalogGroupText } from "../app/catal
 import { resolveMessage } from "../app/localization";
 import { useAgencyTimeZone } from "../app/agency-time-zone";
 import type { FormLanguage } from "../app/form-localization";
-import type { ClinicalFormConfiguration, EncounterDocument, EncounterGroupInstance, EncounterValue } from "@open-triage/contracts";
+import { effectiveDecisionSupportColour, type ClinicalFormConfiguration, type EncounterDocument, type EncounterGroupInstance, type EncounterValue } from "@open-triage/contracts";
 import React, { createContext, useContext, useEffect, useEffectEvent, useId, useMemo, useRef, useState } from "react";
 import {
   addRepeatingGroupOccurrence,
@@ -31,6 +31,8 @@ import { StationaryValidationMessages, stationaryFindingSeverity } from "./stati
 import { actionableStationaryFindings, stationaryReviewFindings, validateStationaryRecord } from "../app/stationary-validation";
 import { bundledEncounterDefinition, INITIAL_SHELL_STATE, reviewEncounter } from "../app/standard-encounter";
 import { withoutDemoProvenance } from "../app/demo-provenance";
+import { chooseVitalOverride, UNASSESSED_VITAL, vitalDecisionSupport, withVitalDecisionSupport } from "../app/vital-decision-support";
+import { VitalDecisionSupport } from "./vital-decision-support";
 
 export { stationaryGroupValidationFindings } from "../app/stationary-record";
 
@@ -50,7 +52,7 @@ function elementValidationFindings(findings: ReadonlyArray<StationarySectionFind
   });
 }
 
-const FormPresentationContext = createContext<{ language: FormLanguage }>({ language: "en" });
+const FormPresentationContext = createContext<{ language: FormLanguage; clinicianId?: string }>({ language: "en" });
 
 function ReadOnlyGroupField({ instance, placement, findings, catalogFields }: {
   readonly instance: EncounterGroupInstance;
@@ -189,15 +191,21 @@ function RepeatingGroupDialog({ placement, draft, instanceId, isNew, returnFocus
   readonly clinicalForm?: ClinicalFormConfiguration;
   readonly onDraftChange: (document: EncounterDocument) => void;
   readonly onCancel: () => void;
-  readonly onSave: () => void;
+  readonly onSave: (document: EncounterDocument) => void;
 }) {
   const titleId = useId();
   const frame = useRef<HTMLElement>(null);
   const [focusTarget] = useState(returnFocus);
-  const { language } = useContext(FormPresentationContext);
+  const { language, clinicianId } = useContext(FormPresentationContext);
   const t = (key: string, parameters: Record<string, string | number> = {}) => resolveMessage(language, key, parameters);
   const cancelDialog = useEffectEvent(onCancel);
   const instance = repeatingGroupInstances(draft, placement.id).find((candidate) => candidate.instanceId === instanceId);
+  const configuration = clinicalForm?.decisionSupport;
+  const assessVitals = configuration && clinicianId && placement.mode !== "read-only" &&
+    placement.id === configuration.definition.assessment.group && (isNew || instance?.decisionSupportCalculation);
+  const [assessment, setAssessment] = useState(() => configuration ? vitalDecisionSupport(instance, configuration) : UNASSESSED_VITAL);
+  const [missingColour, setMissingColour] = useState(false);
+  const overrideRef = useRef<HTMLSelectElement>(null);
   const liveFindings = useMemo(() => placement.mode === "read-only" ? [] : stationaryDialogFindings(draft, clinicalForm), [clinicalForm, draft, placement.mode]);
   useEffect(() => {
     const animationFrame = window.requestAnimationFrame(() => {
@@ -237,6 +245,26 @@ function RepeatingGroupDialog({ placement, draft, instanceId, isNew, returnFocus
     stationaryActionLabel(placement.presentation.label ?? getNemsisGroup(placement.id)?.name ?? placement.id));
   const validationFindings = stationaryGroupValidationFindings(draft, liveFindings, placement.id, instance.instanceId);
   const groupOnlyFindings = validationFindings.filter((finding) => !(finding.target.fieldId ?? finding.target.elementId));
+  const save = () => {
+    if (!assessVitals || !configuration) return onSave(draft);
+    if (!effectiveDecisionSupportColour(assessment.calculation, assessment.override?.colour)) {
+      setMissingColour(true);
+      overrideRef.current?.focus();
+      return;
+    }
+    let next = draft;
+    if (!instance.elements.some((element) => element.id === "eVitals.01")) {
+      const addedTime = editScalarOccurrence(draft, {
+        groupId: placement.id, groupInstanceId: instance.instanceId, elementId: "eVitals.01",
+        input: stationaryDateTimeDefault(draft, { groupId: placement.id, groupInstanceId: instance.instanceId }),
+      });
+      if (!addedTime.ok) return;
+      next = addedTime.document;
+    }
+    onSave({ ...next, groups: next.groups.map((group) => group.id !== placement.id ? group
+      : { ...group, instances: group.instances.map((entry) => entry.instanceId !== instance.instanceId ? entry
+        : withVitalDecisionSupport(entry, configuration, assessment)) }) });
+  };
   return <div className="dialog-backdrop" role="presentation" onMouseDown={(event) => {
     if (event.target === event.currentTarget) onCancel();
   }}>
@@ -245,6 +273,13 @@ function RepeatingGroupDialog({ placement, draft, instanceId, isNew, returnFocus
         <div><p className="eyebrow">{t(isNew ? "stationary.newRow" : editable ? "stationary.editRow" : "stationary.viewRow")}</p><h2 id={titleId}>{t(isNew ? "stationary.addNamed" : editable ? "stationary.editNamed" : "stationary.viewNamed", { label: actionLabel })}</h2></div>
         <button className="stationary-dialog-close" type="button" aria-label={t("stationary.closeDialog")} title={t("stationary.close")} onClick={onCancel}>×</button>
       </div>
+      {assessVitals && configuration && clinicianId && <VitalDecisionSupport definition={configuration.definition} assessment={assessment}
+        language={language} overrideRef={overrideRef} missingColour={missingColour}
+        onOverride={(colour) => {
+          setMissingColour(false);
+          const enteredAt = new Date().toISOString();
+          setAssessment((previous) => chooseVitalOverride(previous, colour, clinicianId, enteredAt));
+        }} />}
       <div className="stationary-group-dialog-fields">
         {placement.elements.map((element, index) => editable && element.mode !== "read-only"
           ? <GroupField key={element.id} document={draft} instance={instance} placement={element} findings={validationFindings} initialFocus={index === 0} catalogFields={clinicalForm?.catalogFields} onDocumentChange={onDraftChange} />
@@ -254,7 +289,7 @@ function RepeatingGroupDialog({ placement, draft, instanceId, isNew, returnFocus
       <NestedGroupContents document={draft} placement={placement} parentInstanceId={instance.instanceId} findings={liveFindings} clinicalForm={clinicalForm} onDocumentChange={onDraftChange} />
       {editable && <div className="note-dialog-actions">
         <button type="button" onClick={onCancel}>{t("stationary.cancel")}</button>
-        <button className="button-primary" type="button" onClick={onSave}>{t(isNew ? "stationary.addRow" : "stationary.saveChanges")}</button>
+        <button className="button-primary" type="button" onClick={save}>{t(isNew ? "stationary.addRow" : "stationary.saveChanges")}</button>
       </div>}
       <StationaryValidationMessages findings={groupOnlyFindings} />
     </section>
@@ -373,20 +408,21 @@ export function RepeatingGroupTable({ document, placement, parentInstanceId, fin
     <StationaryValidationMessages findings={validationFindings.filter((finding) => !(finding.target.fieldId ?? finding.target.elementId))} />
     {dialogState && <RepeatingGroupDialog key={`${dialogState.instanceId}:${dialogState.isNew}`} placement={placement} draft={dialogState.draft} instanceId={dialogState.instanceId} isNew={dialogState.isNew} returnFocus={dialogState.returnFocus} clinicalForm={clinicalForm}
       onDraftChange={(draft) => setDialogState((current) => current ? { ...current, draft } : current)} onCancel={() => setDialogState(undefined)}
-      onSave={() => { onDocumentChange(dialogState.draft); setDialogState(undefined); }} />}
+      onSave={(saved) => { onDocumentChange(saved); setDialogState(undefined); }} />}
   </section>;
 }
 
 /** Renders every catalogue-configured repeating group through canonical instance identities. */
-export function StationaryRepeatingGroups({ document, groups: configuredGroups, findings = [], clinicalForm, language = "en", onDocumentChange }: {
+export function StationaryRepeatingGroups({ document, groups: configuredGroups, findings = [], clinicalForm, language = "en", clinicianId, onDocumentChange }: {
   readonly document: EncounterDocument;
   readonly groups?: ReadonlyArray<CompiledStationaryGroup>;
   readonly findings?: ReadonlyArray<StationarySectionFinding>;
   readonly clinicalForm?: ClinicalFormConfiguration;
   readonly language?: FormLanguage;
+  readonly clinicianId?: string;
   readonly onDocumentChange: (document: EncounterDocument) => void;
 }) {
   const defaultGroups = useMemo(() => configuredRepeatingGroupRoots(), []);
   const groups = configuredGroups ?? defaultGroups;
-  return <FormPresentationContext.Provider value={{ language }}><div className="stationary-repeating-groups">{groups.map((group) => <RepeatingGroupTable key={group.id} document={document} placement={group} findings={findings} clinicalForm={clinicalForm} onDocumentChange={onDocumentChange} />)}</div></FormPresentationContext.Provider>;
+  return <FormPresentationContext.Provider value={{ language, clinicianId }}><div className="stationary-repeating-groups">{groups.map((group) => <RepeatingGroupTable key={group.id} document={document} placement={group} findings={findings} clinicalForm={clinicalForm} onDocumentChange={onDocumentChange} />)}</div></FormPresentationContext.Provider>;
 }

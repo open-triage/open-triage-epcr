@@ -6,6 +6,8 @@ import { readFile } from "node:fs/promises";
 import productionSettings from "@open-triage/contracts/config/installation.production.json";
 import demoAssignedCalls from "../public/demo-assigned-calls.json";
 import demoOpenAssignment from "../public/demo-open-assignment.json";
+import westDefinition from "../../../defines/decision_support/west-a-2025.json";
+import type { ClinicalDecisionSupportConfiguration, ClinicalFormConfiguration } from "@open-triage/contracts";
 
 const serverBacked = process.env.OPEN_TRIAGE_E2E_SERVER_MODE === "true";
 const assignedCall = demoAssignedCalls.assignedCalls[0]!;
@@ -29,7 +31,7 @@ const otherSession = {
 async function installRoutes(page: Page, persistentStorage = true, existing?: {
   readonly recoveryHandle: string;
   readonly reportKeyBase64: string;
-}) {
+}, clinicalForm?: ClinicalFormConfiguration) {
   let opened = Boolean(existing);
   let restarted = false;
   let recoveryHandle = existing?.recoveryHandle ?? "";
@@ -81,7 +83,9 @@ async function installRoutes(page: Page, persistentStorage = true, existing?: {
   } }));
   await page.route(`**/api/calls/${assignedCall.id}/open`, (route) => {
     opened = true;
-    return route.fulfill({ json: openedAssignment });
+    return route.fulfill({ json: clinicalForm
+      ? { ...openedAssignment, report: { ...openedAssignment.report, clinicalForm } }
+      : openedAssignment });
   });
   await page.route(`**/api/reports/${reportId}/protected-key-envelope`, async (route) => {
     const command = route.request().postDataJSON() as { schemaVersion: number; recoveryHandle: string; reportKeyBase64: string };
@@ -409,6 +413,113 @@ test("denied persistence falls back to encrypted best-effort IndexedDB", async (
   await page.getByRole("textbox", { name: "First Name", exact: true }).press("Tab");
   await expect(page.locator(".sync-status")).toHaveText("Pending sync");
   await expect.poll(async () => Number((await encryptedRecords(page))[0]?.ciphertextRevision)).toBeGreaterThan(before);
+});
+
+const westOverrideField = { id: "cb884a4d-10ba-56d4-b1d4-8d5e8ea2af2c", namespace: "west.opentriage.org", slug: "FixtureOverrideColour",
+  datatype: "coded", codeSystem: "https://opentriage.org/codes/west-a-2025/overrideColour",
+  choices: westDefinition.assessment.result.overrideAllowed.map((code) => ({ code, label: code })),
+};
+const westDecisionSupport = {
+  definition: westDefinition, fields: { overrideColour: westOverrideField },
+} as unknown as ClinicalDecisionSupportConfiguration;
+
+test("Mobile Vitals keeps an unsupported WEST draft and syncs a finalized manual downgrade", async ({ page, context }) => {
+  test.skip(!serverBacked, "requires OPEN_TRIAGE_E2E_SERVER_MODE=true");
+  await installRoutes(page, true, undefined, {
+    definition: { schemaVersion: 1, sections: [] }, catalogFields: {}, decisionSupport: westDecisionSupport,
+  });
+  await page.setViewportSize({ width: 320, height: 700 });
+  await page.goto("/");
+  await page.getByRole("button", { name: "Open call", exact: true }).click();
+  await expect(page.locator(".sync-status")).toHaveText("Saved");
+  await expect.poll(async () => (await encryptedRecords(page)).length).toBe(1);
+
+  const commands: Array<{ expectedRevision: number; groups: Array<Record<string, unknown>>;
+    occurrences: Array<Record<string, unknown>> }> = [];
+  await page.route(`**/api/reports/${reportId}/draft-changes`, async (route) => {
+    const command = route.request().postDataJSON() as typeof commands[number];
+    commands.push(command);
+    await route.fulfill({ json: { id: reportId, status: "draft", revision: command.expectedRevision + 1 } });
+  });
+  const before = Number((await encryptedRecords(page))[0]?.ciphertextRevision);
+  await context.setOffline(true);
+  await page.evaluate(() => window.dispatchEvent(new Event("offline")));
+  await page.getByRole("button", { name: "Add vital signs" }).click();
+  const dialog = page.getByRole("dialog", { name: "Vital signs" });
+  const systolic = dialog.getByRole("textbox", { name: /Systolic BP/ });
+  const override = dialog.getByRole("combobox", { name: "WEST override" });
+  await expect(dialog.getByRole("status")).toHaveText("Unassessed");
+  await systolic.fill("118");
+  await dialog.evaluate((element) => element.scrollTo(0, element.scrollHeight));
+  await expect(override).toBeInViewport();
+  await dialog.getByRole("button", { name: "Add vital set" }).click();
+  await expect(override).toBeFocused();
+  await expect(dialog.getByRole("alert")).toContainText("choose a WEST color");
+  await expect(systolic).toHaveValue("118");
+  await expect.poll(async () => Number((await encryptedRecords(page))[0]?.ciphertextRevision)).toBeGreaterThan(before);
+  expect(commands).toHaveLength(0);
+
+  await override.selectOption("red");
+  await expect(dialog.getByRole("status")).toContainText("Red · Manual");
+  await override.selectOption("");
+  await expect(dialog.getByRole("status")).toHaveText("Unassessed");
+  await override.selectOption("red");
+  await override.selectOption("green");
+  await expect(dialog.getByRole("status")).toContainText("Green · Manual");
+  await expect(dialog.getByRole("status")).toContainText("Calculated: Unassessed");
+  await dialog.getByRole("button", { name: "Add vital set" }).click();
+  await expect(dialog).toHaveCount(0);
+  await expect(page.locator(".sync-status")).toHaveText("Pending sync");
+  await page.locator(".timeline-event-button").filter({ hasText: "Vital signs" }).first().click();
+  await expect(override).toHaveValue("green");
+  await expect(systolic).toHaveValue("118");
+  await page.keyboard.press("Escape");
+
+  await context.setOffline(false);
+  await page.evaluate(() => window.dispatchEvent(new Event("online")));
+  await expect(page.locator(".sync-status")).toHaveText("Saved");
+  expect(commands).toHaveLength(1);
+  const group = commands[0]!.groups.find(({ groupId }) => groupId === "eVitals.VitalGroup");
+  expect(group).toMatchObject({ documentedTime: expect.any(String), decisionSupportCalculation: {
+    status: "unassessed", colour: null, systemKey: westDefinition.key, version: westDefinition.version,
+  } });
+  expect(commands[0]!.occurrences.filter(({ elementId }) => elementId === "west.opentriage.org.FixtureOverrideColour"))
+    .toEqual([expect.objectContaining({
+      groupInstanceId: group?.id,
+      sourceAttributes: { enteredBy: session.user.id, enteredAt: expect.any(String), calculatedColourWhenSelected: null },
+      value: expect.objectContaining({ kind: "coded", code: "green", codeSystem: westOverrideField.codeSystem }),
+    })]);
+});
+
+test("Stationary Vitals uses the same WEST finalization rule while retaining its field editor", async ({ page }) => {
+  test.skip(!serverBacked, "requires OPEN_TRIAGE_E2E_SERVER_MODE=true");
+  await installRoutes(page, true, undefined, {
+    definition: { schemaVersion: 1, sections: [{ key: "vitals", name: "Vitals", fields: [
+      { key: "measured", source: { kind: "nemsis", elementId: "eVitals.01" } },
+      { key: "pain", source: { kind: "nemsis", elementId: "eVitals.27" } },
+    ] }] }, catalogFields: {}, decisionSupport: westDecisionSupport,
+  });
+  await page.goto("/");
+  await page.getByRole("button", { name: "Open call", exact: true }).click();
+  await page.getByRole("button", { name: "Stationary", exact: true }).click();
+  await page.locator('[data-group-id="eVitals.VitalGroup"]').getByRole("button", { name: /Add/ }).click();
+  const dialog = page.getByRole("dialog", { name: /Add Vital/ });
+  const save = dialog.getByRole("button", { name: "Add row" });
+  const override = dialog.getByRole("combobox", { name: "WEST override" });
+  await save.click();
+  await expect(override).toBeFocused();
+  await expect(dialog.getByRole("alert")).toContainText("choose a WEST color");
+  await override.selectOption("yellow");
+  const synced = page.waitForRequest(`**/api/reports/${reportId}/draft-changes`);
+  await save.click();
+  await expect(dialog).toHaveCount(0);
+  const command = (await synced).postDataJSON();
+  expect(command.groups.find(({ groupId }: { groupId: string }) => groupId === "eVitals.VitalGroup"))
+    .toMatchObject({ documentedTime: expect.any(String), decisionSupportCalculation: {
+      status: "unassessed", colour: null, systemKey: westDefinition.key, version: westDefinition.version,
+    } });
+  expect(command.occurrences.find(({ elementId }: { elementId: string }) =>
+    elementId === "west.opentriage.org.FixtureOverrideColour").value.code).toBe("yellow");
 });
 
 for (const persistentStorage of [true, false]) {

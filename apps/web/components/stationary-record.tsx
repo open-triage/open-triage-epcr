@@ -30,7 +30,7 @@ function statusText(language: FormLanguage, errors: number, warnings: number): s
 
 /** Complete, sectioned stationary projection of the compiled NEMSIS record. */
 export function StationaryRecord({ document, findings = [], sectionFindings = findings,
-  formDefinition, catalogFields = {}, customFields, customGroups, catalogGroups, validation, readOnly = false, language = currentCatalogLanguage(), onDocumentChange }: {
+  formDefinition, catalogFields = {}, customFields, customGroups, catalogGroups, validation, decisionSupport, clinicianId, readOnly = false, language = currentCatalogLanguage(), onDocumentChange }: {
   readonly readOnly?: boolean;
   readonly document: EncounterDocument;
   readonly findings?: ReadonlyArray<StationarySectionFinding>;
@@ -42,6 +42,8 @@ export function StationaryRecord({ document, findings = [], sectionFindings = fi
   readonly customGroups?: ClinicalFormConfiguration["customGroups"];
   readonly catalogGroups?: ClinicalFormConfiguration["catalogGroups"];
   readonly validation?: ClinicalFormConfiguration["validation"];
+  readonly decisionSupport?: ClinicalFormConfiguration["decisionSupport"];
+  readonly clinicianId?: string;
   readonly language?: FormLanguage;
   readonly onDocumentChange: (document: EncounterDocument) => void;
 }) {
@@ -205,7 +207,7 @@ export function StationaryRecord({ document, findings = [], sectionFindings = fi
                 : inlineGroups.get(block.group.id)!.fields }
             ]} findings={findings} catalogFields={catalogFields} catalogGroups={catalogGroups} language={language} onDocumentChange={onDocumentChange} /></fieldset>
             : <StationaryRepeatingGroups key={`${block.group.id}:${blockIndex}`} document={document} groups={[readOnly ? { ...block.group, mode: "read-only" } : block.group]} findings={findings}
-              clinicalForm={formDefinition ? { definition: formDefinition, catalogFields, catalogGroups, ...(validation ? { validation } : {}) } : undefined} language={language} onDocumentChange={onDocumentChange} />)}
+              clinicalForm={formDefinition ? { definition: formDefinition, catalogFields, catalogGroups, validation, decisionSupport } : undefined} clinicianId={clinicianId} language={language} onDocumentChange={onDocumentChange} />)}
           <fieldset disabled={readOnly} className="stationary-record-fields">
           {"fields" in section && <CustomTextFields document={document} fields={section.fields} definitions={customFields}
             language={language} onDocumentChange={onDocumentChange} />}

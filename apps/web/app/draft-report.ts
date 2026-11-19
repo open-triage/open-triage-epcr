@@ -1,5 +1,5 @@
 import { platformRequestError } from "./platform-errors";
-import type { ActiveReportResource, ClinicalFormConfiguration, CreateReportTextNoteCommand, DeleteDraftReportResponse, DeleteReportTextNoteCommand, DeleteReportTextNoteResponse, DispatchCancellation, DispatchConflict, DispatchPriority, EncounterDocument, EncounterValue, ReportMediaPolicy, ReportNote, ReportTextNoteMutationResponse, UpdateReportTextNoteCommand } from "@open-triage/contracts";
+import type { ActiveReportResource, ClinicalFormConfiguration, CreateReportTextNoteCommand, DeleteDraftReportResponse, DeleteReportTextNoteCommand, DeleteReportTextNoteResponse, DispatchCancellation, DispatchConflict, DispatchPriority, EncounterDocument, EncounterValue, FinalizedDecisionSupportCalculation, ReportMediaPolicy, ReportNote, ReportTextNoteMutationResponse, UpdateReportTextNoteCommand } from "@open-triage/contracts";
 import type { ShellState } from "./standard-encounter";
 import { getNemsisDataElement, getNemsisGroup } from "./nemsis-data-model";
 import { DEMO_GROUP_CORRELATION_PREFIX, DEMO_PROVENANCE_VALUE, hasDemoProvenance } from "./demo-provenance";
@@ -69,6 +69,7 @@ export interface DraftGroupMutation {
   readonly parentGroupInstanceId?: string | null;
   readonly ordinal: number;
   readonly documentedTime?: string;
+  readonly decisionSupportCalculation?: FinalizedDecisionSupportCalculation;
   readonly correlationId?: string;
   readonly tombstone?: boolean;
 }
@@ -194,8 +195,12 @@ export function encounterDocumentToDraftMutations(
           ?? parentCandidates[0];
       if (customGroup && !parent) throw new Error(`Missing parent for custom group ${group.id}/${instance.instanceId}`);
       const groupInstanceId = groupTargetIds.get(instance.instanceId)!;
-      const documentedTime = typeof instance.attributes?.documentedTime === "string" ? instance.attributes.documentedTime : undefined;
+      const measurementTime = instance.decisionSupportCalculation
+        ? instance.elements.find((element) => element.id === "eVitals.01")?.values[0] : undefined;
+      const documentedTime = measurementTime?.kind === "scalar" && typeof measurementTime.value === "string" ? measurementTime.value
+        : typeof instance.attributes?.documentedTime === "string" ? instance.attributes.documentedTime : undefined;
       groups.push({ id: groupInstanceId, groupId: group.id, ordinal, ...(customGroup ? { customGroupDefinitionId: customGroup.id } : {}), ...(parent ? { parentGroupInstanceId: groupTargetIds.get(parent.instanceId)! } : {}), ...(documentedTime ? { documentedTime } : {}),
+        ...(instance.decisionSupportCalculation ? { decisionSupportCalculation: instance.decisionSupportCalculation } : {}),
         ...(hasDemoProvenance(instance.attributes) ? { correlationId: `${DEMO_GROUP_CORRELATION_PREFIX}${instance.instanceId}` } : {}) });
       instance.elements.filter((element) => element.id !== "eRecord.01").forEach((element) => element.values.forEach((value, valueOrdinal) => {
         occurrences.push({

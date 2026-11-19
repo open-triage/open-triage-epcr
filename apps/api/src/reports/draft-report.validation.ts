@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { isTriageColour, WEST_A_DECISION_SUPPORT_KEY } from "@open-triage/contracts";
 import type {
   CreateDraftReportCommand,
   DraftOccurrenceMutation,
@@ -219,6 +220,16 @@ export function validateSaveDraftReportCommand(value: unknown): SaveDraftReportC
     if (group.documentedTime !== undefined && group.documentedTime !== null && !validTimestamp(group.documentedTime)) findings.push(`${path}.documentedTime must be an ISO date-time`);
     optionalOffset(group.documentedUtcOffsetMinutes, `${path}.documentedUtcOffsetMinutes`, findings);
     if (group.tombstone !== undefined && typeof group.tombstone !== "boolean") findings.push(`${path}.tombstone must be a boolean`);
+    if (group.decisionSupportCalculation !== undefined) {
+      const calculation = group.decisionSupportCalculation;
+      if (!isRecord(calculation) || calculation.systemKey !== WEST_A_DECISION_SUPPORT_KEY ||
+          typeof calculation.version !== "string" || !calculation.version ||
+          (calculation.status === "unassessed" ? calculation.colour !== null
+            : !["definitive", "provisional"].includes(String(calculation.status)) || !isTriageColour(calculation.colour)) ||
+          Object.keys(calculation).some((key) => !["status", "colour", "version", "systemKey"].includes(key))) {
+        findings.push(`${path}.decisionSupportCalculation must be a pinned decision support result`);
+      }
+    }
   });
   occurrences.forEach((occurrence, index) => {
     validateOccurrence(occurrence, `occurrences[${index}]`, findings);
