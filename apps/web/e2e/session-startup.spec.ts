@@ -96,3 +96,63 @@ test("an expired server session returns to sign-in without exposing stored ident
   const states = await page.evaluate(() => (window as unknown as { startupStates: string[] }).startupStates);
   expect(states.some((text) => text.includes("Startup Clinician") || text.includes("Reconnect to continue"))).toBe(false);
 });
+
+test("startup recovers an interrupted browser logout without restoring the outgoing session", async ({ page, context }) => {
+  test.skip(!serverBacked, "requires OPEN_TRIAGE_E2E_SERVER_MODE=true");
+  await prepare(page);
+  const transitionKey = "open-triage.installation-transition.v1";
+  const generationKey = "open-triage.installation-generation.v1";
+  let restartRequests = 0;
+  await context.route("**/api/installation", (route) => route.fulfill({ json: { settings: productionSettings } }));
+  await context.route("**/api/sessions/authentication-options", (route) => route.fulfill({ json: { organization: false } }));
+  await context.route("**/api/sessions/current", async (route) => {
+    restartRequests++;
+    await route.fulfill({ json: session });
+  });
+  await page.addInitScript(({ transitionKey, generationKey }) => {
+    const generation = "logout:interrupted";
+    localStorage.setItem(transitionKey, generation);
+    localStorage.setItem(generationKey, generation);
+  }, { transitionKey, generationKey });
+  await page.goto("/");
+
+  await expect(page.getByRole("heading", { name: "Sign in", exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Sign in", exact: true })).toBeEnabled();
+  const storage = await page.evaluate(({ transitionKey, generationKey }) => ({
+    marker: localStorage.getItem(transitionKey),
+    generation: localStorage.getItem(generationKey),
+    session: localStorage.getItem("open-triage.clinician-session.v1"),
+  }), { transitionKey, generationKey });
+  expect(storage).toEqual({ marker: null, generation: "logout:interrupted", session: null });
+  expect(restartRequests).toBe(0);
+  const states = await page.evaluate(() => (window as unknown as { startupStates: string[] }).startupStates);
+  expect(states.some((text) => /Startup Clinician|could not connect/.test(text))).toBe(false);
+});
+
+test("a new browser tab waits for a live logout before showing sign-in", async ({ page, context }) => {
+  test.skip(!serverBacked, "requires OPEN_TRIAGE_E2E_SERVER_MODE=true");
+  await prepare(page);
+  await context.route("**/api/installation", (route) => route.fulfill({ json: { settings: productionSettings } }));
+  await context.route("**/api/sessions/authentication-options", (route) => route.fulfill({ json: { organization: false } }));
+  let releaseLogout!: () => void;
+  const held = new Promise<void>((resolve) => { releaseLogout = resolve; });
+  await context.route("**/api/sessions/current", async (route) => {
+    if (route.request().method() === "DELETE") {
+      await held;
+      await route.fulfill({ json: { ended: true } });
+    } else await route.fulfill({ json: session });
+  });
+  await page.goto("/");
+  const secondTab = await context.newPage();
+  const logoutRequested = page.waitForRequest((request) => request.method() === "DELETE" && request.url().endsWith("/api/sessions/current"));
+  await page.getByRole("button", { name: "Log out", exact: true }).click();
+  await logoutRequested;
+  try {
+    await secondTab.goto("/");
+    await expect(secondTab.getByText("Opening OpenTriage…", { exact: true })).toBeVisible();
+    await expect(secondTab.getByRole("button", { name: "Sign in", exact: true })).toHaveCount(0);
+  } finally {
+    releaseLogout();
+  }
+  await expect(secondTab.getByRole("button", { name: "Sign in", exact: true })).toBeEnabled();
+});

@@ -10,6 +10,25 @@ const eventName = INSTALLATION_TRANSITION_EVENT;
 const lockName = "open-triage.installation-clinical-context";
 
 type NativeTransitionState = {configured:boolean; blocked?:boolean; replacementPending?:boolean; handoffPending?:boolean; connectionContext?:string; origin?:string; managedContext?:string};
+
+/** Finish local logout after a browser tab closed or reloaded during the transition. */
+export async function resumeBrowserLogout(marker: string): Promise<boolean> {
+ const storage = window.localStorage;
+ const ownsLogout = () => storage.getItem(INSTALLATION_TRANSITION_KEY) === marker &&
+  storage.getItem(INSTALLATION_GENERATION_KEY) === marker;
+ if (!navigator.locks || !marker.startsWith("logout:") || !ownsLogout()) return false;
+ return navigator.locks.request(lockName, { mode: "exclusive", ifAvailable: true }, async (lock) => {
+  if (!lock || !ownsLogout()) return false;
+  try { await lockProtectedClinicalStorage(); } finally { clearProtectedRuntimeReports(); }
+  if (!ownsLogout()) return false;
+  clearClinicianSession(storage);
+  storage.removeItem(INSTALLATION_SESSION_HINT_KEY);
+  storage.removeItem(INSTALLATION_TRANSITION_KEY);
+  window.dispatchEvent(new Event(INSTALLATION_TRANSITION_COMPLETE_EVENT));
+  return true;
+ });
+}
+
 /** Resume only an abandoned JS barrier, under the same exclusive lock as confirmation. */
 export async function resumeNativeInstallationTransition<T extends NativeTransitionState>(state:T,reconcile:(context:string,purpose:"enrollment"|"logout",authenticationGeneration?:string)=>Promise<T>,isCurrent:()=>boolean=()=>true):Promise<T|null> {
  const marker=window.localStorage.getItem(INSTALLATION_TRANSITION_KEY);
@@ -73,12 +92,17 @@ export async function transitionInstallation<T>(replaceBinding: () => Promise<T>
  const prior=purpose==="enrollment"?loadClinicianSession(window.localStorage):null;
  if(prior?.csrfToken){const candidate={...prior};delete candidate.accessToken;window.localStorage.setItem(INSTALLATION_SESSION_HINT_KEY,JSON.stringify({generation,session:candidate}));}
  else window.localStorage.removeItem(INSTALLATION_SESSION_HINT_KEY);
- window.localStorage.setItem(INSTALLATION_GENERATION_KEY,generation);
- window.localStorage.setItem(INSTALLATION_TRANSITION_KEY,generation);
- window.dispatchEvent(new Event(eventName));
  const requireOwnership=()=>{if(window.localStorage.getItem(INSTALLATION_TRANSITION_KEY)!==generation||window.localStorage.getItem(INSTALLATION_GENERATION_KEY)!==generation)throw new InstallationContextChangedError();};
- try {
-  return await navigator.locks.request(lockName,{mode:"exclusive"},async()=>{
+ const complete=()=>{
+  if(window.localStorage.getItem(INSTALLATION_TRANSITION_KEY)===generation&&window.localStorage.getItem(INSTALLATION_GENERATION_KEY)===generation){
+   window.localStorage.removeItem(INSTALLATION_TRANSITION_KEY);
+   window.dispatchEvent(new Event(INSTALLATION_TRANSITION_COMPLETE_EVENT));
+  }
+ };
+ // Queue the owner before publishing the marker so recovery cannot acquire an
+ // exclusive lock between publication and the live transition's request.
+ const transition=navigator.locks.request(lockName,{mode:"exclusive"},async()=>{
+  try {
    requireOwnership();
    // The enrollment page may have no mounted clinician gate of its own.
    await lockProtectedClinicalStorage();
@@ -91,11 +115,15 @@ export async function transitionInstallation<T>(replaceBinding: () => Promise<T>
     try {if(JSON.parse(encoded).generation===generation&&window.localStorage.getItem(INSTALLATION_SESSION_HINT_KEY)===encoded)window.localStorage.removeItem(INSTALLATION_SESSION_HINT_KEY);}catch{/* Malformed public candidates supply no authority. */}
    }
    return result;
-  });
- } finally {
-  if(window.localStorage.getItem(INSTALLATION_TRANSITION_KEY)===generation&&window.localStorage.getItem(INSTALLATION_GENERATION_KEY)===generation){
-   window.localStorage.removeItem(INSTALLATION_TRANSITION_KEY);
-   window.dispatchEvent(new Event(INSTALLATION_TRANSITION_COMPLETE_EVENT));
-  }
+  } finally {complete();}
+ });
+ try {
+  window.localStorage.setItem(INSTALLATION_GENERATION_KEY,generation);
+  window.localStorage.setItem(INSTALLATION_TRANSITION_KEY,generation);
+  window.dispatchEvent(new Event(eventName));
+ } catch (error) {
+  void transition.catch(() => {});
+  throw error;
  }
+ return transition.finally(complete);
 }
