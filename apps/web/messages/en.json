@@ -192,6 +192,8 @@
   "mobile.westRemoveFinding": "Remove {finding}",
   "mobile.westNoWarningCriteria": "No warning criteria",
   "mobile.westCalculationChanged": "Calculation changed since override",
+  "mobile.westLatestLevel": "Latest WEST level · {result}",
+  "mobile.westRecordedLevel": "WEST · {result}",
   "mobile.westOverride": "WEST override",
   "mobile.westAutomatic": "Automatic",
   "mobile.westManual": "{colour} · Manual",

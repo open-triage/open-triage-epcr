@@ -1540,6 +1540,8 @@ a.button-link { display: inline-flex; align-items: center; justify-content: cent
 .vital-decision-support-indicator[data-colour="yellow"] { background: #c99b00; }
 .vital-decision-support-indicator[data-colour="orange"] { background: #c96212; }
 .vital-decision-support-indicator[data-colour="red"] { background: #c12b36; }
+.west-level { display: inline-flex; align-items: center; gap: 6px; color: var(--text-color); font-size: var(--text-caption); font-weight: 650; }
+.encounter-west-level { grid-column: 1 / -1; margin-block: 4px; }
 .vital-decision-support p { margin: 6px 0 0; color: var(--validation-error, #a11824); }
 
 .vital-west-findings { display: grid; gap: 8px; margin-block: 8px 12px; }

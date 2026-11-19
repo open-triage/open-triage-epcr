@@ -191,6 +191,8 @@
   "mobile.westRemoveFinding": "Ta bort {finding}",
   "mobile.westNoWarningCriteria": "Inga varningskriterier",
   "mobile.westCalculationChanged": "Beräkningen har ändrats sedan det manuella valet",
+  "mobile.westLatestLevel": "Senaste WEST-nivå · {result}",
+  "mobile.westRecordedLevel": "WEST · {result}",
   "mobile.westOverride": "Manuell WEST-färg",
   "mobile.westAutomatic": "Automatisk",
   "mobile.westManual": "{colour} · Manuell",

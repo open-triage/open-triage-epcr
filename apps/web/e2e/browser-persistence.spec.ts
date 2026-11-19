@@ -7,7 +7,7 @@ import productionSettings from "@open-triage/contracts/config/installation.produ
 import demoAssignedCalls from "../public/demo-assigned-calls.json";
 import demoOpenAssignment from "../public/demo-open-assignment.json";
 import westDefinition from "../../../defines/decision_support/west-a-2025.json";
-import type { ClinicalDecisionSupportConfiguration, ClinicalFormConfiguration } from "@open-triage/contracts";
+import type { ClinicalDecisionSupportConfiguration, ClinicalFormConfiguration, EncounterDocument, EncounterGroupInstance, FinalizedDecisionSupportCalculation } from "@open-triage/contracts";
 
 const serverBacked = process.env.OPEN_TRIAGE_E2E_SERVER_MODE === "true";
 const assignedCall = demoAssignedCalls.assignedCalls[0]!;
@@ -31,7 +31,7 @@ const otherSession = {
 async function installRoutes(page: Page, persistentStorage = true, existing?: {
   readonly recoveryHandle: string;
   readonly reportKeyBase64: string;
-}, clinicalForm?: ClinicalFormConfiguration) {
+}, clinicalForm?: ClinicalFormConfiguration, reportSnapshot?: () => { document: EncounterDocument; revision: number }) {
   let opened = Boolean(existing);
   let restarted = false;
   let recoveryHandle = existing?.recoveryHandle ?? "";
@@ -84,7 +84,7 @@ async function installRoutes(page: Page, persistentStorage = true, existing?: {
   await page.route(`**/api/calls/${assignedCall.id}/open`, (route) => {
     opened = true;
     return route.fulfill({ json: clinicalForm
-      ? { ...openedAssignment, report: { ...openedAssignment.report, clinicalForm } }
+      ? { ...openedAssignment, report: { ...openedAssignment.report, clinicalForm, ...reportSnapshot?.() } }
       : openedAssignment });
   });
   await page.route(`**/api/reports/${reportId}/protected-key-envelope`, async (route) => {
@@ -682,6 +682,100 @@ for (const persistentStorage of [true, false]) {
     await expect(name).toHaveValue("OFFLINE-AFTER-REQUEST");
   });
 }
+
+test("WEST history distinguishes each saved level and another browser converges after offline sync", async ({ page, context, browser }) => {
+  test.skip(!serverBacked, "requires OPEN_TRIAGE_E2E_SERVER_MODE=true");
+  const clinicalForm = {
+    definition: { schemaVersion: 1 as const, sections: [] }, catalogFields: {}, decisionSupport: westDecisionSupport,
+  };
+  const redId = "42000000-0000-4000-8000-000000000020";
+  const legacyId = "42000000-0000-4000-8000-000000000021";
+  const vital = (instanceId: string, time: string): EncounterGroupInstance => ({
+    instanceId, attributes: { "x-open-triage-owner": "clinician", documentedTime: time },
+    elements: [{ id: "eVitals.01", values: [{ occurrenceId: `${instanceId}:time`, kind: "scalar", value: time }] }],
+  });
+  const red: EncounterGroupInstance = {
+    ...vital(redId, "2025-03-02T08:00:00Z"),
+    decisionSupportCalculation: {
+      systemKey: westDecisionSupport.definition.key, version: westDefinition.version, status: "definitive", colour: "red",
+    },
+  };
+  const legacy = vital(legacyId, "2025-03-02T10:00:00Z");
+  let instances = [legacy, red];
+  let revision = openedAssignment.report.revision;
+  const baseDocument = openedAssignment.report.document as EncounterDocument;
+  const reportSnapshot = () => ({
+    revision,
+    document: { ...baseDocument, groups: [...baseDocument.groups.filter(({ id }) => id !== "eVitals.VitalGroup"),
+      { id: "eVitals.VitalGroup", instances }] },
+  });
+  await installRoutes(page, true, undefined, clinicalForm, reportSnapshot);
+  await page.route(`**/api/reports/${reportId}/draft-changes`, async (route) => {
+    const command = route.request().postDataJSON() as { expectedRevision: number;
+      groups: { groupId: string; id: string; documentedTime: string; decisionSupportCalculation: FinalizedDecisionSupportCalculation }[];
+      occurrences: { elementId: string; id: string; groupInstanceId: string; value: { code: string }; sourceAttributes: Record<string, string | null> }[];
+    };
+    const override = command.occurrences.find(({ elementId }) => elementId === "west.opentriage.org.FixtureOverrideColour")!;
+    const group = command.groups.find(({ id }) => id === override.groupInstanceId)!;
+    expect(group).toMatchObject({ groupId: "eVitals.VitalGroup", documentedTime: expect.any(String), decisionSupportCalculation: {
+      systemKey: westDecisionSupport.definition.key, version: westDefinition.version,
+    } });
+    const finalized = vital(group.id, group.documentedTime);
+    // Return the older red and unlabeled legacy records before the synced entry.
+    instances = [red, legacy, { ...finalized, decisionSupportCalculation: group.decisionSupportCalculation,
+      elements: [...finalized.elements, { id: override.elementId, values: [{
+        occurrenceId: override.id, kind: "coded", code: override.value.code, attributes: override.sourceAttributes,
+      }] }],
+    }];
+    revision = command.expectedRevision + 1;
+    await route.fulfill({ json: { id: reportId, status: "draft", revision } });
+  });
+
+  await page.setViewportSize({ width: 320, height: 740 });
+  await page.goto("/");
+  await page.getByRole("button", { name: "Open call", exact: true }).click();
+  await expect.poll(async () => (await encryptedRecords(page)).length).toBe(1);
+  const reportLevel = page.locator(".encounter-west-level");
+  const timeline = page.getByRole("region", { name: "Timeline", exact: true });
+  await expect(reportLevel).toHaveText("Latest WEST level · Red");
+  await expect(timeline.locator(".west-level")).toHaveCount(1);
+  const redRow = timeline.locator("li").filter({ hasText: "WEST · Red" });
+  await expect(redRow.getByRole("button", { name: /Vital signs/ })).toHaveAccessibleDescription("WEST · Red");
+  await expect(redRow.getByRole("img", { name: /Validation/ })).toBeVisible();
+
+  await expect.poll(async () => Number((await encryptedRecords(page))[0]?.synchronizedRevision)).toBeGreaterThan(0);
+  await page.getByRole("button", { name: "Add vital signs" }).click();
+  const dialog = page.getByRole("dialog", { name: "Vital signs" });
+  await expect(dialog.getByRole("status")).toHaveText("Unassessed");
+  await context.setOffline(true);
+  await page.evaluate(() => window.dispatchEvent(new Event("offline")));
+  await expect(page.locator("main[data-editing-blocked]")).toHaveCount(0);
+  await expect(reportLevel).toHaveText("Latest WEST level · Red");
+  await expect(timeline.locator(".west-level")).toHaveCount(1);
+  await dialog.getByRole("combobox", { name: "WEST override" }).selectOption("green");
+  await dialog.getByRole("button", { name: "Add vital set" }).click();
+  await expect(reportLevel).toHaveText("Latest WEST level · Green · Manual");
+  await expect(timeline.locator(".west-level")).toHaveText(["WEST · Green · Manual", "WEST · Red"]);
+  await expect(page.locator(".sync-status")).toHaveText("Pending sync");
+
+  await context.setOffline(false);
+  await page.evaluate(() => window.dispatchEvent(new Event("online")));
+  await expect(page.locator(".sync-status")).toHaveText("Saved");
+  expect(instances).toHaveLength(3);
+
+  const secondContext = await browser.newContext({ viewport: { width: 390, height: 844 }, locale: "en-US" });
+  try {
+    const second = await secondContext.newPage();
+    await installRoutes(second, true, undefined, clinicalForm, reportSnapshot);
+    await second.goto(page.url());
+    await second.getByRole("button", { name: "Open call", exact: true }).click();
+    await expect(second.locator(".encounter-west-level")).toHaveText("Latest WEST level · Green · Manual");
+    await expect(second.getByRole("region", { name: "Timeline", exact: true }).locator(".west-level"))
+      .toHaveText(["WEST · Green · Manual", "WEST · Red"]);
+  } finally {
+    await secondContext.close();
+  }
+});
 
 test("a second browser recovers its own offline copy without replacing the first", async ({ page, browser }) => {
   test.skip(!serverBacked, "requires OPEN_TRIAGE_E2E_SERVER_MODE=true");

@@ -1,5 +1,6 @@
-import type { EncounterDocument, EncounterGroupInstance, EncounterValue } from "@open-triage/contracts";
+import type { ClinicalDecisionSupportConfiguration, EncounterDocument, EncounterGroupInstance, EncounterValue } from "@open-triage/contracts";
 import { clinicianOwnedAttributes, DEMO_FALLBACK_DATE, hasDemoProvenance, withoutDemoProvenance } from "./demo-provenance";
+import { finalizedVitalDecisionSupport } from "./finalized-vital-decision-support";
 import { stableDraftId } from "./draft-report";
 import type { EncounterDefinition } from "./encounter-definition";
 import { getNemsisDataElement, resolveNemsisElementValues, requireNemsisDataElement } from "./nemsis-data-model";
@@ -345,12 +346,13 @@ function eventSubtreeIds(document: EncounterDocument, eventId: string): Set<stri
   return removed;
 }
 
-export function encounterEvents(document: EncounterDocument, definition: EncounterDefinition, zone: string | null = null): ReadonlyArray<EncounterEvent> {
-  return readEncounterEvents(document, definition, zone);
+export function encounterEvents(document: EncounterDocument, definition: EncounterDefinition, zone: string | null = null,
+  decisionSupport?: ClinicalDecisionSupportConfiguration): ReadonlyArray<EncounterEvent> {
+  return readEncounterEvents(document, definition, zone, undefined, decisionSupport);
 }
 
 function readEncounterEvents(document: EncounterDocument, definition: EncounterDefinition, zone: string | null,
-  sources?: EventSources): ReadonlyArray<EncounterEvent> {
+  sources?: EventSources, decisionSupport?: ClinicalDecisionSupportConfiguration): ReadonlyArray<EncounterEvent> {
   const remember = (eventId: string, instance: EncounterGroupInstance) => {
     if (!sources) return;
     const group = document.groups.find(({ instances }) => instances.includes(instance));
@@ -376,7 +378,9 @@ function readEncounterEvents(document: EncounterDocument, definition: EncounterD
         else if (value?.kind === "null" && value.notValue) values.nullValues[field.id] = value.notValue.code;
         else if (value?.kind === "pertinent-negative") values.nullValues[field.id] = value.code;
       });
-      events.push({ id: instance.instanceId, ...observed, kind: "care", title: definition.events.vitals.labels.timelineTitle, detail: vitalDetail(values, definition), reference: definition.events.vitals.references.group, visitorEntered: true, vitals: values });
+      const assessment = decisionSupport ? finalizedVitalDecisionSupport(instance, decisionSupport) : undefined;
+      events.push({ id: instance.instanceId, ...observed, kind: "care", title: definition.events.vitals.labels.timelineTitle, detail: vitalDetail(values, definition), reference: definition.events.vitals.references.group, visitorEntered: true, vitals: values,
+        ...(assessment ? { decisionSupport: assessment } : {}) });
     }
     if (group.id === "eProcedures.ProcedureGroup") {
       const procedure = coded(instance, "eProcedures.03");
