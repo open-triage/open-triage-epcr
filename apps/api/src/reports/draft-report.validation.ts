@@ -224,9 +224,10 @@ export function validateSaveDraftReportCommand(value: unknown): SaveDraftReportC
       const calculation = group.decisionSupportCalculation;
       if (!isRecord(calculation) || calculation.systemKey !== WEST_A_DECISION_SUPPORT_KEY ||
           typeof calculation.version !== "string" || !calculation.version ||
-          (calculation.status === "unassessed" ? calculation.colour !== null
+          (calculation.status === "unassessed" ? calculation.colour !== null || calculation.criterionCode !== undefined
             : !["definitive", "provisional"].includes(String(calculation.status)) || !isTriageColour(calculation.colour)) ||
-          Object.keys(calculation).some((key) => !["status", "colour", "version", "systemKey"].includes(key))) {
+          (calculation.criterionCode !== undefined && (typeof calculation.criterionCode !== "string" || !calculation.criterionCode)) ||
+          Object.keys(calculation).some((key) => !["status", "colour", "version", "systemKey", "criterionCode"].includes(key))) {
         findings.push(`${path}.decisionSupportCalculation must be a pinned decision support result`);
       }
     }

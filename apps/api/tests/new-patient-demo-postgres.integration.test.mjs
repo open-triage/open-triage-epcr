@@ -209,7 +209,7 @@ integration("new demo patients support the generated-report lifecycle without a 
     }]), /authorized author/);
     await assert.rejects(saveVital(westOpened.report.revision, [
       groups[0], { ...groups[1], decisionSupportCalculation: { ...calculation, colour: "green", status: "definitive" } },
-    ], [measurement]), /no supported inputs/);
+    ], [measurement]), /does not match the supported inputs/);
     const saved = await saveVital(westOpened.report.revision, groups, [measurement, manual]);
     const downgraded = await saveVital(saved.revision, [], [{ ...manual, value: { ...manual.value, code: "green" },
       sourceAttributes: { ...manual.sourceAttributes, enteredAt: "2026-10-20T12:02:00+02:00" } }]);
@@ -232,6 +232,31 @@ integration("new demo patients support the generated-report lifecycle without a 
       id: overrideId, groupInstanceId: vitalGroupId, elementId: manual.elementId, tombstone: true,
     }]), /one effective color/);
     assert.equal((await service.reopen("demo", westReport.reportId)).report.revision, downgraded.revision);
+
+    const westCode = (field, code, ordinal = 0) => ({
+      id: randomUUID(), groupInstanceId: vitalGroupId, ordinal, elementId: decisionSupportElementKey(west.fields[field]),
+      value: { kind: "coded", code, codeSystem: west.fields[field].codeSystem },
+    });
+    const bleeding = westCode("criteria", "bleeding.07");
+    const category = westCode("categories", "bleeding");
+    const assessment = { ...groups[1], decisionSupportCalculation: {
+      ...calculation, status: "provisional", colour: "orange", criterionCode: "bleeding.07",
+    } };
+    await assert.rejects(saveVital(downgraded.revision, [assessment], [bleeding]), /do not match their categories/);
+    await assert.rejects(saveVital(downgraded.revision, [assessment], [
+      bleeding, category, westCode("criteria", "bleeding.none", 1),
+    ]), /do not match their categories/);
+    const findingsSaved = await saveVital(downgraded.revision, [assessment], [
+      bleeding, category, { ...manual, value: undefined, tombstone: true },
+    ]);
+    const automatic = (await service.reopen("demo", westReport.reportId)).report.document.groups
+      .find(({ id }) => id === "eVitals.VitalGroup").instances.find(({ instanceId }) => instanceId === vitalGroupId);
+    assert.deepEqual(automatic.decisionSupportCalculation, assessment.decisionSupportCalculation);
+    assert.equal(automatic.elements.find(({ id }) => id === bleeding.elementId).values[0].code, "bleeding.07");
+    assert.equal(automatic.elements.find(({ id }) => id === category.elementId).values[0].code, "bleeding");
+    await assert.rejects(saveVital(findingsSaved.revision, [], [
+      { ...bleeding, value: undefined, tombstone: true }, { ...category, value: undefined, tombstone: true },
+    ]), /does not match the supported inputs/);
 
     // Simulate an encounter pinned before deployment of the current shipped version.
     const previousDefinition = { ...west.definition, version: `1.0.0-test.${randomUUID()}`, name: "WEST-A previous version" };

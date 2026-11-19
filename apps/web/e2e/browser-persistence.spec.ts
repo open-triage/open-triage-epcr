@@ -419,8 +419,17 @@ const westOverrideField = { id: "cb884a4d-10ba-56d4-b1d4-8d5e8ea2af2c", namespac
   datatype: "coded", codeSystem: "https://opentriage.org/codes/west-a-2025/overrideColour",
   choices: westDefinition.assessment.result.overrideAllowed.map((code) => ({ code, label: code })),
 };
+const westFixtureCoded = (name: string) => ({
+  namespace: "west.opentriage.org", slug: `Fixture${name}`, datatype: "coded",
+  codeSystem: `https://opentriage.org/codes/west-a-2025/${name}`, choices: [],
+});
 const westDecisionSupport = {
-  definition: westDefinition, fields: { overrideColour: westOverrideField },
+  definition: westDefinition, fields: {
+    overrideColour: westOverrideField,
+    categories: westFixtureCoded("Categories"),
+    criteria: westFixtureCoded("Criteria"),
+    noWarningCriteria: { ...westFixtureCoded("NoWarningCriteria"), datatype: "boolean" },
+  },
 } as unknown as ClinicalDecisionSupportConfiguration;
 
 test("Mobile Vitals keeps an unsupported WEST draft and syncs a finalized manual downgrade", async ({ page, context }) => {
@@ -489,6 +498,112 @@ test("Mobile Vitals keeps an unsupported WEST draft and syncs a finalized manual
       sourceAttributes: { enteredBy: session.user.id, enteredAt: expect.any(String), calculatedColourWhenSelected: null },
       value: expect.objectContaining({ kind: "coded", code: "green", codeSystem: westOverrideField.codeSystem }),
     })]);
+});
+
+test("Mobile WEST documents multiple findings and keeps the calculated level visible under an override", async ({ page }) => {
+  test.skip(!serverBacked, "requires OPEN_TRIAGE_E2E_SERVER_MODE=true");
+  await page.setViewportSize({ width: 320, height: 740 });
+  await installRoutes(page, true, undefined, {
+    definition: { schemaVersion: 1, sections: [] }, catalogFields: {}, decisionSupport: westDecisionSupport,
+    customFields: Object.fromEntries(Object.entries(westDecisionSupport.fields)),
+  });
+  await page.route("**/api/installation", (route) =>
+    route.fulfill({ json: { settings: { ...productionSettings, timeZone: "Europe/Stockholm" } } }));
+  await page.clock.setFixedTime(new Date("2026-10-20T04:59:00Z"));
+  await page.goto("/");
+  await page.getByRole("button", { name: "Open call", exact: true }).click();
+  await expect(page.locator(".sync-status")).toHaveText("Saved");
+  const commands: Array<{ expectedRevision: number; groups: Array<Record<string, unknown>>;
+    occurrences: Array<{ elementId: string; value: Record<string, unknown> }> }> = [];
+  await page.route(`**/api/reports/${reportId}/draft-changes`, async (route) => {
+    const command = route.request().postDataJSON() as typeof commands[number];
+    commands.push(command);
+    await route.fulfill({ json: { id: reportId, status: "draft", revision: command.expectedRevision + 1 } });
+  });
+  await page.getByRole("button", { name: "Add vital signs" }).click();
+  const dialog = page.getByRole("dialog", { name: "Vital signs" });
+  const category = dialog.getByRole("combobox", { name: "WEST category" });
+  const choices = dialog.locator(".vital-west-choices");
+  const documented = dialog.getByRole("list", { name: "Documented WEST findings" });
+  const status = dialog.getByRole("status");
+  const choose = dialog.getByRole("button", { name: "Choose finding" });
+  const override = dialog.getByRole("combobox", { name: "WEST override" });
+  await expect(category.locator('option[value^="gynaecology."]')).toHaveCount(6);
+  await expect(category.getByRole("option", { name: "Trauma/skador" })).toHaveCount(1);
+  await category.selectOption("trauma-injuries");
+  await choose.click();
+  await expect(choices.getByRole("button", { name: /Level [123]$/ }).first()).toBeVisible();
+  await expect(choices.locator('button[value="trauma-alert.01.03"]')).toHaveCount(0);
+  await choose.press("Escape");
+  await expect(choices).toHaveCount(0);
+  await expect(documented).toHaveCount(0);
+
+  await category.selectOption("gynaecology.01");
+  await choose.click();
+  await expect(choices.locator('button[value="gynaecology.01.08"]')).toHaveCount(0);
+  await choose.press("Escape");
+  await dialog.locator(".time-picker-trigger").click();
+  const timePicker = page.getByRole("dialog", { name: "Select clinical time" });
+  // Minute and hour wrap independently in the time wheel.
+  await timePicker.getByRole("spinbutton", { name: "Minute" }).press("ArrowUp");
+  await timePicker.getByRole("spinbutton", { name: "Hour" }).press("ArrowUp");
+  await timePicker.getByRole("button", { name: "Use date & time" }).click();
+  await choose.click();
+  await expect(choices.locator('button[value="gynaecology.01.08"]')).toBeVisible();
+  await choose.press("Escape");
+  await expect(documented).toHaveCount(0);
+
+  await category.selectOption("gynaecology.04");
+  await choose.click();
+  await choices.getByRole("button", { name: /Se infektion/ }).first().click();
+  await expect(category).toHaveValue("infection");
+  await expect(documented).toHaveCount(0);
+  await choose.click();
+  await choices.getByRole("button", { name: "No criteria met" }).click();
+  await expect(status).toHaveText("Unassessed");
+  await expect(documented).toContainText("No criteria met");
+
+  await category.selectOption("bleeding");
+  await choose.click();
+  await expect(choices.locator("[data-colour]").first()).toHaveAttribute("data-colour", "red");
+  await choices.locator('button[value="bleeding.07"]').click();
+  await expect(status).toContainText("Orange · Provisional");
+  await expect(status).toContainText("Riklig vaginalblödning");
+  await expect(dialog.getByRole("checkbox", { name: "No warning criteria" })).toBeDisabled();
+  await override.selectOption("green");
+  await expect(status).toContainText("Green · Manual");
+
+  await category.selectOption("gynaecology.03");
+  await choose.click();
+  await choices.locator('button[value="gynaecology.03.04"]').click();
+  await expect(status).toContainText("Calculated: Orange · Provisional");
+  await category.selectOption("pregnancy-postpartum");
+  await choose.click();
+  await choices.locator('button[value="pregnancy-postpartum.01"]').click();
+  await expect(status).toContainText("Calculated: Red");
+  await expect(status).toContainText("Calculation changed since override");
+  await expect(documented.getByRole("listitem").filter({ hasText: /Riklig vaginalblödning/ }).last()).toBeVisible();
+  await override.selectOption("");
+  await expect(status).toContainText("Red");
+  await expect(status).not.toContainText("Provisional");
+
+  await dialog.getByRole("button", { name: "Add vital set" }).click();
+  await expect(dialog).toHaveCount(0);
+  await expect(page.locator(".sync-status")).toHaveText("Saved");
+  expect(commands).toHaveLength(1);
+  expect(commands[0]!.groups).toContainEqual(expect.objectContaining({ groupId: "eVitals.VitalGroup",
+    decisionSupportCalculation: expect.objectContaining({ status: "definitive", colour: "red", criterionCode: "pregnancy-postpartum.01" }) }));
+  const storedCodes = (field: string) => commands[0]!.occurrences.filter(({ elementId }) => elementId.endsWith(field))
+    .map(({ value }) => value.code);
+  expect(commands[0]!.occurrences.find(({ elementId }) => elementId === "eVitals.01")?.value)
+    .toMatchObject({ kind: "datetime", utcOffsetMinutes: 120 });
+  expect(storedCodes("FixtureCriteria")).toEqual(["infection.none", "bleeding.07", "gynaecology.03.04", "pregnancy-postpartum.01"]);
+  expect(storedCodes("FixtureCategories")).toEqual(expect.arrayContaining(["infection", "bleeding", "gynaecology.03", "pregnancy-postpartum"]));
+  await page.locator(".timeline-event-button").filter({ hasText: "Vital signs" }).first().click();
+  await expect(documented).toContainText("No criteria met");
+  await expect(status).toContainText("Red");
+  await documented.getByRole("button", { name: /Remove Gravid med kraftig/ }).click();
+  await expect(status).toContainText("Orange · Provisional");
 });
 
 test("Stationary Vitals uses the same WEST finalization rule while retaining its field editor", async ({ page }) => {

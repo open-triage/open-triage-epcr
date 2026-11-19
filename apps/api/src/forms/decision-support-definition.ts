@@ -157,6 +157,7 @@ export function validateDecisionSupportDefinition(value: unknown): DecisionSuppo
   validateCategories(root.categories, windows, negative.code);
 
   const result = object(assessment.result, "Assessment result");
+  requireRule(typeof result.redIsDefinitiveWithIncompleteInputs === "boolean", "Invalid incomplete assessment rule");
   const overrides = stringKeys(result.overrideAllowed, "Override options");
   requireRule(overrides.length === colours.size && overrides.every((colour) => colours.has(colour as TriageColour)),
     "Invalid override options");

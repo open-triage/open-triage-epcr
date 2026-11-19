@@ -1,4 +1,4 @@
-import { effectiveDecisionSupportColour, isTriageColour, type DecisionSupportDefinition,
+import { decisionSupportCategoryCriteria, decisionSupportCriterionLabel, decisionSupportPickerCategories, effectiveDecisionSupportColour, isTriageColour, type DecisionSupportDefinition,
   type DraftDecisionSupportAssessment, type TriageColour } from "@open-triage/contracts";
 import type { Ref } from "react";
 import { resolveMessage } from "../app/localization";
@@ -21,6 +21,10 @@ export function VitalDecisionSupport({
     : definition.assessment.result.unsupportedDraft.label[locale];
   const calculationLabel = calculation.status === "provisional"
     ? t("mobile.westProvisional", { colour: label(calculation.colour) }) : label(calculation.colour);
+  const driver = calculation.status === "unassessed" || !calculation.criterionCode ? undefined
+    : decisionSupportPickerCategories(definition.categories).flatMap(decisionSupportCategoryCriteria)
+      .find(({ criterion }) => criterion.id === calculation.criterionCode);
+  const changed = override && calculation.colour !== override.calculatedColourWhenSelected;
   return <div className="vital-decision-support">
     <div className="vital-decision-support-controls">
       <div role="status" className="vital-decision-support-result">
@@ -28,6 +32,8 @@ export function VitalDecisionSupport({
         <div>
           <strong>{override ? t("mobile.westManual", { colour: label(effective) }) : calculationLabel}</strong>
           {override && <small>{t("mobile.westCalculated", { result: calculationLabel })}</small>}
+          {changed && <small>{t("mobile.westCalculationChanged")}</small>}
+          {driver && <small>{decisionSupportCriterionLabel(driver.criterion, driver.labelSuffix, locale)}</small>}
         </div>
       </div>
       <label>

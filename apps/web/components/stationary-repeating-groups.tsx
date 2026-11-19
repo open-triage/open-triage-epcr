@@ -31,7 +31,7 @@ import { StationaryValidationMessages, stationaryFindingSeverity } from "./stati
 import { actionableStationaryFindings, stationaryReviewFindings, validateStationaryRecord } from "../app/stationary-validation";
 import { bundledEncounterDefinition, INITIAL_SHELL_STATE, reviewEncounter } from "../app/standard-encounter";
 import { withoutDemoProvenance } from "../app/demo-provenance";
-import { chooseVitalOverride, UNASSESSED_VITAL, vitalDecisionSupport, withVitalDecisionSupport } from "../app/vital-decision-support";
+import { chooseVitalOverride, UNASSESSED_VITAL, vitalAssessmentWithFindings, vitalDecisionSupport, vitalRecordedLocalTime, withVitalDecisionSupport, withVitalMeasurementOffset } from "../app/vital-decision-support";
 import { VitalDecisionSupport } from "./vital-decision-support";
 
 export { stationaryGroupValidationFindings } from "../app/stationary-record";
@@ -201,9 +201,17 @@ function RepeatingGroupDialog({ placement, draft, instanceId, isNew, returnFocus
   const cancelDialog = useEffectEvent(onCancel);
   const instance = repeatingGroupInstances(draft, placement.id).find((candidate) => candidate.instanceId === instanceId);
   const configuration = clinicalForm?.decisionSupport;
+  const timeZone = useAgencyTimeZone();
+  const measurementValue = (entry: EncounterGroupInstance | undefined) =>
+    entry?.elements.find(({ id }) => id === "eVitals.01")?.values[0];
+  const [initialMeasurement] = useState(() => measurementValue(instance));
+  const timeChanged = measurementValue(instance) !== initialMeasurement;
   const assessVitals = configuration && clinicianId && placement.mode !== "read-only" &&
     placement.id === configuration.definition.assessment.group && (isNew || instance?.decisionSupportCalculation);
   const [assessment, setAssessment] = useState(() => configuration ? vitalDecisionSupport(instance, configuration) : UNASSESSED_VITAL);
+  const timedInstance = assessVitals && instance ? withVitalMeasurementOffset(instance, timeZone, timeChanged) : instance;
+  const liveAssessment = configuration
+    ? vitalAssessmentWithFindings(assessment, configuration.definition, vitalRecordedLocalTime(timedInstance) ?? "") : assessment;
   const [missingColour, setMissingColour] = useState(false);
   const overrideRef = useRef<HTMLSelectElement>(null);
   const liveFindings = useMemo(() => placement.mode === "read-only" ? [] : stationaryDialogFindings(draft, clinicalForm), [clinicalForm, draft, placement.mode]);
@@ -247,7 +255,7 @@ function RepeatingGroupDialog({ placement, draft, instanceId, isNew, returnFocus
   const groupOnlyFindings = validationFindings.filter((finding) => !(finding.target.fieldId ?? finding.target.elementId));
   const save = () => {
     if (!assessVitals || !configuration) return onSave(draft);
-    if (!effectiveDecisionSupportColour(assessment.calculation, assessment.override?.colour)) {
+    if (!effectiveDecisionSupportColour(liveAssessment.calculation, liveAssessment.override?.colour)) {
       setMissingColour(true);
       overrideRef.current?.focus();
       return;
@@ -263,7 +271,7 @@ function RepeatingGroupDialog({ placement, draft, instanceId, isNew, returnFocus
     }
     onSave({ ...next, groups: next.groups.map((group) => group.id !== placement.id ? group
       : { ...group, instances: group.instances.map((entry) => entry.instanceId !== instance.instanceId ? entry
-        : withVitalDecisionSupport(entry, configuration, assessment)) }) });
+        : withVitalDecisionSupport(withVitalMeasurementOffset(entry, timeZone, timeChanged || !initialMeasurement), configuration, liveAssessment)) }) });
   };
   return <div className="dialog-backdrop" role="presentation" onMouseDown={(event) => {
     if (event.target === event.currentTarget) onCancel();
@@ -273,12 +281,12 @@ function RepeatingGroupDialog({ placement, draft, instanceId, isNew, returnFocus
         <div><p className="eyebrow">{t(isNew ? "stationary.newRow" : editable ? "stationary.editRow" : "stationary.viewRow")}</p><h2 id={titleId}>{t(isNew ? "stationary.addNamed" : editable ? "stationary.editNamed" : "stationary.viewNamed", { label: actionLabel })}</h2></div>
         <button className="stationary-dialog-close" type="button" aria-label={t("stationary.closeDialog")} title={t("stationary.close")} onClick={onCancel}>×</button>
       </div>
-      {assessVitals && configuration && clinicianId && <VitalDecisionSupport definition={configuration.definition} assessment={assessment}
+      {assessVitals && configuration && clinicianId && <VitalDecisionSupport definition={configuration.definition} assessment={liveAssessment}
         language={language} overrideRef={overrideRef} missingColour={missingColour}
         onOverride={(colour) => {
           setMissingColour(false);
           const enteredAt = new Date().toISOString();
-          setAssessment((previous) => chooseVitalOverride(previous, colour, clinicianId, enteredAt));
+          setAssessment((previous) => chooseVitalOverride({ ...previous, calculation: liveAssessment.calculation }, colour, clinicianId, enteredAt));
         }} />}
       <div className="stationary-group-dialog-fields">
         {placement.elements.map((element, index) => editable && element.mode !== "read-only"

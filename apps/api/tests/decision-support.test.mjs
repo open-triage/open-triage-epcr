@@ -47,3 +47,48 @@ test("catalog codes match the adult picker and field identities survive new vers
   assert.ok(!criteria.includes("trauma-alert.01.03"));
   assert.ok(!criteria.includes("gynaecology.04.01"));
 });
+
+test("evaluates shared adult WEST findings against measurement-local window boundaries", async () => {
+  const {
+    calculateDecisionSupportFindings, decisionSupportCategoryCriteria, decisionSupportFindingResult,
+    decisionSupportMeasurementLocalTime, decisionSupportPickerCategories,
+  } = await import("@open-triage/contracts");
+  const categories = decisionSupportPickerCategories(definition.categories);
+  const timed = "gynaecology.01.08";
+  const criteria = decisionSupportCategoryCriteria(categories.find(({ id }) => id === "gynaecology.01"));
+  assert.equal(criteria.find(({ criterion }) => criterion.id === timed).criterion.time_window, "07-16");
+  for (const [instant, available] of [
+    ["2026-10-20T04:59:59Z", false], ["2026-10-20T05:00:00Z", true],
+    ["2026-10-20T13:59:59Z", true], ["2026-10-20T14:00:00Z", false],
+  ]) {
+    const localTime = decisionSupportMeasurementLocalTime(instant, 120);
+    const result = decisionSupportFindingResult(definition, { criteria: [timed], noWarningCriteria: false }, localTime);
+    assert.equal(result.valid, true);
+    assert.equal(result.highest?.criterion.id, available ? timed : undefined);
+    assert.deepEqual(calculateDecisionSupportFindings(definition, result), { status: "unassessed", colour: null });
+  }
+
+  const result = (criteria, noWarningCriteria = false) =>
+    decisionSupportFindingResult(definition, { criteria, noWarningCriteria }, "08:00");
+  for (const code of ["bleeding.07", "gynaecology.03.04"]) {
+    assert.deepEqual(calculateDecisionSupportFindings(definition, result([code])), {
+      status: "provisional", colour: "orange", criterionCode: code,
+    });
+  }
+  assert.deepEqual(calculateDecisionSupportFindings(definition, result(["bleeding.07", "pregnancy-postpartum.01"])), {
+    status: "definitive", colour: "red", criterionCode: "pregnancy-postpartum.01",
+  });
+  assert.deepEqual(calculateDecisionSupportFindings(definition, result(["bleeding.03"])), {
+    status: "provisional", colour: "yellow", criterionCode: "bleeding.03",
+  });
+  const alternate = structuredClone(definition);
+  alternate.assessment.result.redIsDefinitiveWithIncompleteInputs = false;
+  assert.equal(calculateDecisionSupportFindings(alternate, result(["pregnancy-postpartum.01"])).status, "provisional");
+  assert.equal(result([]).explicitNoWarningCriteria, false);
+  assert.equal(result([], true).explicitNoWarningCriteria, true);
+  assert.equal(result(["infection.none", "bleeding.none"]).explicitNoWarningCriteria, true);
+  assert.equal(result(["bleeding.none", "bleeding.07"]).valid, false);
+  assert.equal(result(["bleeding.07"], true).valid, false);
+  assert.equal(result(["trauma-alert.01.03"]).valid, false);
+  assert.equal(result(["gynaecology.04.01"]).valid, false);
+});
