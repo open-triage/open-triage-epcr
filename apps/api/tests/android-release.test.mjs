@@ -70,6 +70,16 @@ test('legacy descriptors remain compatible while missing required native capabil
  for(const requiredCapabilities of [['invalid capability'],['x','x'],Array(33).fill('x'),null])assert.throws(()=>parseAndroidReleaseDescriptor({...descriptor,compatibility:{...descriptor.compatibility,requiredCapabilities}}));
 });
 
+test('superseded candidates cannot advertise a download or fetch deleted release assets',()=>selection(async()=>{
+ let fetches=0;
+ const service=new AndroidReleaseService({requireCapability:async()=>{}},async()=>{fetches++;return new Response(payload);},catalog);
+ for(const versionCode of [1,2]){
+  process.env.ANDROID_APPROVED_RELEASE=historicalAndroidRelease(versionCode).tag;
+  assert.deepEqual(await service.read('authorized-reader'),{status:'unavailable',reason:'unverified'});
+ }
+ assert.equal(fetches,0);
+}));
+
 test('actual HTTP Admin endpoint uses cookie/session authorization, private no-store metadata and no write or reauthentication path',()=>selection(async()=>{
  const sessions={requireCapability:async(token,cap)=>{assert.equal(cap,'settings:read');if(!['reader-a','reader-b'].includes(token))throw new UnauthorizedException();}};
  const service=new AndroidReleaseService(sessions,async()=>new Response(payload),fixture());

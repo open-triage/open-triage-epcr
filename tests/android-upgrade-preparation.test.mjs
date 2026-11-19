@@ -5,19 +5,19 @@ import {mkdtempSync,writeFileSync,readFileSync,rmSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join,resolve} from 'node:path';
 import {spawnSync} from 'node:child_process';
-import catalog from '@open-triage/contracts/config/android-releases.json' with {type:'json'};
+import historical from './fixtures/android-published-legacy-releases.json' with {type:'json'};
 import {upgradePreparationProfile,upgradePreparationReceipt,decodeUpgradePreparationReceipt,upgradeProbeCallNumber} from '../scripts/android/upgrade-policy-fixture.mjs';
 import {assertUpgradeHarnessSource,assertFreshUpgradeTarget} from '../scripts/android/upgrade-harness-source.mjs';
 test('historical preparation binds the complete immutable published A1 descriptor',()=>{
- const a=structuredClone(catalog.releases.find(entry=>entry.descriptor.versionCode===1).descriptor);
+ const a=structuredClone(historical.releases.find(entry=>entry.descriptor.versionCode===1).descriptor);
  assert.equal(upgradePreparationProfile(a),'historical-a1-text-v1');
  for(const field of ['sourceCommit','apkSha256','certificateSha256'])assert.throws(()=>upgradePreparationProfile({...a,[field]:'a'.repeat(64)}),/exact immutable/);
  assert.throws(()=>upgradePreparationProfile({...a,applicationId:'org.attacker.app'}),/exact immutable/);
  for(const versionCode of [2,3,99])assert.equal(upgradePreparationProfile({...a,versionCode}),'current');
 });
 test('historical receipt survives the actual adb-shell argument parsing category without shell syntax',()=>{
- const a=catalog.releases.find(entry=>entry.descriptor.versionCode===1).descriptor;
- const b={...catalog.releases.find(entry=>entry.descriptor.versionCode===2).descriptor,versionCode:3};
+ const a=historical.releases.find(entry=>entry.descriptor.versionCode===1).descriptor;
+ const b={...historical.releases.find(entry=>entry.descriptor.versionCode===2).descriptor,versionCode:3};
  const value=upgradePreparationReceipt(a,b);
  assert.match(value,/^[A-Za-z0-9_-]+$/,'Receipt must use only safe bare shell argument characters');
  const result=spawnSync('/bin/sh',['-c',`printf '%s' ${value}`],{encoding:'utf8'});
@@ -41,7 +41,7 @@ test('upgrade driver refuses existing or unknown production state before any fix
 test('separate harness provenance rejects all production and unknown path changes',()=>{
  const artifactSource='a'.repeat(40),testSource='b'.repeat(40);
  assertUpgradeHarnessSource({artifactSource,testSource:artifactSource,changedPaths:[]});
- const allowed=['scripts/android-release-upgrade.mjs','android/app/src/androidTest/java/org/opentriage/development/HistoricalUpgradePreparation.java','scripts/android/journey-cleanup.mjs','tests/android-journey-cleanup.test.mjs'];
+ const allowed=['scripts/android-release-upgrade.mjs','android/app/src/androidTest/java/org/opentriage/development/HistoricalUpgradePreparation.java','scripts/android/journey-cleanup.mjs','tests/android-journey-cleanup.test.mjs','tests/fixtures/android-published-legacy-releases.json'];
  assertUpgradeHarnessSource({artifactSource,testSource,changedPaths:allowed});
  for(const path of ['apps/api/src/admin/android-upgrade-policy.service.ts','apps/web/app/android-client-policy.ts','packages/contracts/android-client-protocol.mjs','android/app/src/main/java/org/opentriage/development/TrustedConnection.java','android/app/build.gradle','scripts/unknown.mjs']){
   assert.throws(()=>assertUpgradeHarnessSource({artifactSource,testSource,changedPaths:[...allowed,path]}),/explicit test-only paths/);
@@ -51,8 +51,8 @@ test('separate harness provenance rejects all production and unknown path change
 });
 test('actual Java profile selector rejects every non-A1/current/production/prepare boundary',()=>{
  const folder=mkdtempSync(join(tmpdir(),'android-upgrade-profile-'));
- const origin=catalog.releases.find(entry=>entry.descriptor.versionCode===1).descriptor;
- const replacement={...catalog.releases.find(entry=>entry.descriptor.versionCode===2).descriptor,versionCode:3,sourceCommit:'c1e426a12d9dcc8541ec2090fb787fa6972b9dd1'};
+ const origin=historical.releases.find(entry=>entry.descriptor.versionCode===1).descriptor;
+ const replacement={...historical.releases.find(entry=>entry.descriptor.versionCode===2).descriptor,versionCode:3,sourceCommit:'c1e426a12d9dcc8541ec2090fb787fa6972b9dd1'};
  const receipt=upgradePreparationReceipt(origin,replacement);
  const receiptFields=decodeUpgradePreparationReceipt(receipt),invalidReceipts=receiptFields.map((_,index)=>{const changed=[...receiptFields];changed[index]='invalid';return Buffer.from(JSON.stringify(changed)).toString('base64url');});
  invalidReceipts.push(receipt+'=',receipt+'|sh','a/b',Buffer.from('{}').toString('base64url'),Buffer.from(JSON.stringify(receiptFields)+' ').toString('base64url'));

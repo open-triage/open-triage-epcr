@@ -16,6 +16,13 @@ export function historicalAndroidRelease(versionCode) {
  return structuredClone(selected);
 }
 
+/** Isolated policy tests retain old clients without approving their downloads in production. */
+export function androidPolicyTestCatalog() {
+ const result=structuredClone(catalog);
+ for(const entry of legacy.releases)if(!result.releases.some(current=>current.descriptor.versionCode===entry.descriptor.versionCode))result.releases.push(structuredClone(entry));
+ return result;
+}
+
 /** Synthetic transport bytes retain the selected committed version/tag/capability contract. */
 export function syntheticApprovedAndroidRelease(bytes,selected=latestApprovedAndroidRelease()) {
  const descriptor=structuredClone(selected.descriptor);

@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 const testOnlyPaths=new Set([
  'scripts/android/upgrade-harness-source.mjs',
  'scripts/android/upgrade-policy-fixture.mjs',
+ 'tests/fixtures/android-published-legacy-releases.json',
  'scripts/android/report-journey.mjs',
  'scripts/android/journey-cleanup.mjs',
  'tests/android-journey-cleanup.test.mjs',

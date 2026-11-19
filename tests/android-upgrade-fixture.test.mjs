@@ -5,6 +5,7 @@ import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {createHash} from 'node:crypto';
 import catalog from '@open-triage/contracts/config/android-releases.json' with {type:'json'};
+import historical from './fixtures/android-published-legacy-releases.json' with {type:'json'};
 import {ANDROID_CLIENT_REQUIRED_CAPABILITIES} from '@open-triage/contracts/android-client-protocol';
 import {verifyAndroidArtifact} from '@open-triage/contracts/android-artifact';
 import {upgradePolicyFixture} from '../scripts/android/upgrade-policy-fixture.mjs';
@@ -12,8 +13,8 @@ async function fixture(work){
  const directory=await mkdtemp(join(tmpdir(),'android-upgrade-fixture-'));
  try{
   const bytes=Buffer.from('Synthetic APK byte-verifier fixture'),hash=createHash('sha256').update(bytes).digest('hex'),apkBPath=join(directory,'candidate.apk');await writeFile(apkBPath,bytes);
-  const a=structuredClone(catalog.releases.find(entry=>entry.descriptor.versionCode===1).descriptor);
-  const b={...structuredClone(catalog.releases.find(entry=>entry.descriptor.versionCode===2).descriptor),versionCode:3,versionName:'0.1.0-rc.3',apkSha256:hash,apkBytes:bytes.length,artifact:`opentriage-0.1.0-rc.3-3-${hash}.apk`};
+  const a=structuredClone(historical.releases.find(entry=>entry.descriptor.versionCode===1).descriptor);
+  const b={...structuredClone(historical.releases.find(entry=>entry.descriptor.versionCode===2).descriptor),versionCode:3,versionName:'0.1.0-rc.3',apkSha256:hash,apkBytes:bytes.length,artifact:`opentriage-0.1.0-rc.3-3-${hash}.apk`};
   b.compatibility.requiredCapabilities=[...ANDROID_CLIENT_REQUIRED_CAPABILITIES];
   return await work({releaseA:a,releaseB:b,apkBPath},bytes);
  }finally{await rm(directory,{recursive:true,force:true});}
@@ -30,6 +31,14 @@ test('upgrade fixture rejects descriptor changes, missing gate support and any b
  for(const change of [value=>value.releaseA.apkSha256='a'.repeat(64),value=>value.releaseB.certificateSha256='b'.repeat(64),value=>value.releaseB.compatibility.requiredCapabilities=[],value=>value.releaseB.apkBytes++,value=>value.releaseB.apkSha256='c'.repeat(64)]){
   const changed=structuredClone(input);change(changed);await assert.rejects(upgradePolicyFixture(changed));
  }
+}));
+test('the retained final APK remains a current preparation baseline for the next signed upgrade',()=>fixture(async(input)=>{
+ const a=structuredClone(catalog.releases[0].descriptor);
+ const b={...structuredClone(a),versionCode:a.versionCode+1,versionName:'0.1.1',apkSha256:input.releaseB.apkSha256,apkBytes:input.releaseB.apkBytes,artifact:'opentriage-0.1.1.apk'};
+ const result=await upgradePolicyFixture({...input,releaseA:a,releaseB:b});
+ assert.deepEqual(result.approved.releases.find(entry=>entry.descriptor.versionCode===a.versionCode).descriptor,a);
+ const entry=result.approved.releases.find(entry=>entry.descriptor.versionCode===b.versionCode);
+ await verifyAndroidArtifact(entry.downloadUrl,b.apkBytes,b.apkSha256,result.fetcher);
 }));
 test('new gate acceptance uses the deployed policy service, original recovery assertions and actual Package Installer abandonment',async()=>{
  const api=await readFile(new URL('../scripts/android/fixture-api.mjs',import.meta.url),'utf8'),runner=await readFile(new URL('../scripts/android-release-upgrade.mjs',import.meta.url),'utf8');

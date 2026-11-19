@@ -1,13 +1,13 @@
 import 'reflect-metadata';
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import catalog from '@open-triage/contracts/config/android-releases.json' with {type:'json'};
+import {androidPolicyTestCatalog} from '../../../tests/helpers/android-release-fixtures.mjs';
 import {AndroidUpgradePolicyService,prepareAndroidNewWork} from '../dist/admin/android-upgrade-policy.service.js';
 import {agencyRequest} from '../dist/sessions/agency-context.js';
 import {legacyAndroidAgent,agencyContextMiddleware} from '../dist/sessions/agency-context.middleware.js';
 const ua='Dalvik/2.1.0 (Linux; U; Android 13; sdk_gphone64_x86_64 Build/TE1A.220922.010)';
 function fixture({native=false,retired=false,days=90,unsupported=false,missingBaseline=false}={}) {
- const releases=structuredClone(catalog),queries=[];
+ const releases=androidPolicyTestCatalog(),queries=[];
  if(missingBaseline)releases.releases=releases.releases.filter(e=>e.descriptor.versionCode!==1);
  if(unsupported)releases.releases.find(e=>e.descriptor.versionCode===1).descriptor.compatibility.requiredCapabilities=['not-supported'];
  const replacement={status:'available',tag:releases.releases[0].tag,descriptor:releases.releases[0].descriptor,downloadUrl:releases.releases[0].downloadUrl};

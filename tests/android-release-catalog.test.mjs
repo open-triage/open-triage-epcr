@@ -6,7 +6,7 @@ import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import catalog from '@open-triage/contracts/config/android-releases.json' with {type:'json'};
 import legacy from './fixtures/android-published-legacy-releases.json' with {type:'json'};
-import {latestApprovedAndroidRelease,syntheticApprovedAndroidRelease} from './helpers/android-release-fixtures.mjs';
+import {latestApprovedAndroidRelease,syntheticApprovedAndroidRelease,androidPolicyTestCatalog} from './helpers/android-release-fixtures.mjs';
 import { androidApkArtifactName, approvedAndroidReleaseUrl, parseAndroidReleaseDescriptor } from '@open-triage/contracts/android-release';
 
 test('new APK names contain the version once while metadata verifies bytes and historical artifacts remain valid',()=>{
@@ -33,9 +33,24 @@ test('every approved catalog entry preserves the owned signing identity and immu
  }
 });
 
-test('published historical releases retain their exact descriptors, digests and locations as the catalog grows',()=>{
+test('superseded candidates remain offline test evidence and cannot be selected as approved downloads',()=>{
  assert.deepEqual(catalog.signingIdentity,legacy.signingIdentity);
- assert.deepEqual(catalog.releases.filter(entry=>[1,2].includes(entry.descriptor.versionCode)),legacy.releases);
+ assert(catalog.releases.some(entry=>entry.tag==='android-v9-0.1.0-rc.9'));
+ assert.deepEqual(legacy.releases.map(entry=>entry.descriptor.versionCode),[8,6,5,4,2,1]);
+ for(const entry of legacy.releases){
+  assert.deepEqual(parseAndroidReleaseDescriptor(entry.descriptor),entry.descriptor);
+  assert.equal(entry.downloadUrl,approvedAndroidReleaseUrl(entry.tag,entry.descriptor));
+  assert(!catalog.releases.some(current=>current.tag===entry.tag||current.descriptor.versionCode===entry.descriptor.versionCode));
+ }
+});
+
+test('historical policy fixtures preserve client coverage without changing production approvals',()=>{
+ const original=structuredClone(catalog),isolated=androidPolicyTestCatalog();
+ assert.deepEqual(isolated.releases[0],catalog.releases[0]);
+ assert.deepEqual(new Set(isolated.releases.map(entry=>entry.descriptor.versionCode)),new Set([...catalog.releases,...legacy.releases].map(entry=>entry.descriptor.versionCode)));
+ isolated.releases[0].descriptor.apkSha256='0'.repeat(64);
+ isolated.releases.at(-1).descriptor.apkSha256='0'.repeat(64);
+ assert.deepEqual(catalog,original);assert.notEqual(legacy.releases.at(-1).descriptor.apkSha256,'0'.repeat(64));
 });
 
 test('shared release fixtures use the current committed version and preserve its capability contract',()=>{

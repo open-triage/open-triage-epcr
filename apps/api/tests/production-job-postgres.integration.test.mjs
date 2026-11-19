@@ -1,7 +1,7 @@
 import {androidUpgradePolicyFixture} from './fixtures/android-upgrade-policy.mjs';
 import {AndroidUpgradePolicyService} from '../dist/admin/android-upgrade-policy.service.js';
 import {AndroidReleaseService} from '../dist/admin/android-release.service.js';
-import catalog from '@open-triage/contracts/config/android-releases.json' with {type:'json'};
+import {androidPolicyTestCatalog} from '../../../tests/helpers/android-release-fixtures.mjs';
 import {createHash} from 'node:crypto';
 import {enableProductionWorkflowForTesting} from './fixtures/production-workflow-rollout.mjs';
 import assert from 'node:assert/strict';
@@ -114,7 +114,7 @@ integration('runtime production jobs resolve live enrollment, schedules, dispatc
  // retirement cannot invalidate owned report reopen, call retry or command replay.
  {
   const previousSelection=process.env.ANDROID_APPROVED_RELEASE;
-  const approved=structuredClone(catalog),replacement=approved.releases[0],bytes=Buffer.from('synthetic upgrade-policy replacement');
+  const approved=androidPolicyTestCatalog(),replacement=approved.releases[0],bytes=Buffer.from('synthetic upgrade-policy replacement');
   const hash=createHash('sha256').update(bytes).digest('hex');
   replacement.descriptor.apkSha256=hash;replacement.descriptor.apkBytes=bytes.length;
   replacement.descriptor.artifact=`opentriage-${replacement.descriptor.versionName}-${replacement.descriptor.versionCode}-${hash}.apk`;

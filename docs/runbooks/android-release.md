@@ -1,9 +1,32 @@
 # Signed Android releases
 
+## Release retention
+
+RC9 (`android-v9-0.1.0-rc.9`, version code 9) is the final Android release.
+Keep its existing version name, tag, signed APK and evidence unchanged. Its
+historical RC name does not require a replacement build or republished assets.
+
+Keep final releases for each patch version and the latest candidate while its
+final release is pending. Remove superseded candidate releases after removing
+their entries from the approved download catalog. Release deletion must wait
+until that catalog change is deployed to installations using those entries.
+Do not delete final release tags or rewrite signed artifact descriptors.
+
+The production catalog contains only retained downloads. Historical descriptors
+in `tests/fixtures/android-published-legacy-releases.json` are offline test
+evidence, not available downloads or production approvals. Compatibility and
+historical recovery tests use those fixed descriptors and synthetic transport
+bytes without fetching old releases. Future signed upgrade acceptance uses RC9
+as its previous published APK; a historical A1 emulator run requires a separately
+retained copy of that exact APK and descriptor.
+
+## Artifact names
+
 New APK filenames use only the version name, for example
-`opentriage-0.1.0-rc.6.apk`. The Android version code and SHA-256 stay in
+`opentriage-0.1.0-rc.9.apk`. The Android version code and SHA-256 stay in
 `release.json`, with the digest also in `SHA256SUMS`. Existing published artifact
-names and URLs remain immutable and supported by download validation.
+names remain supported by download validation; deleted candidate URLs are no
+longer downloadable.
 Candidates 1–5 only recognize their original filename format in the installed
 upgrade UI. Update those builds through browser Admin, the public release page,
 MDM or ADB; the new build recognizes both filename formats.

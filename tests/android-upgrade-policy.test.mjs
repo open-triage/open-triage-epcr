@@ -1,13 +1,23 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import catalog from '@open-triage/contracts/config/android-releases.json' with {type:'json'};
+import historical from './fixtures/android-published-legacy-releases.json' with {type:'json'};
 import lifecycle from '@open-triage/contracts/config/android-release-lifecycle.json' with {type:'json'};
 import {isAndroidReleaseCompatible} from '@open-triage/contracts/android-release';
 import {evaluateAndroidUpgrade,parseAndroidReleaseLifecycle,parseAndroidUpgradeGraceDays} from '@open-triage/contracts/android-upgrade-policy';
 import {ANDROID_API_PROTOCOL_VERSION,ANDROID_API_CAPABILITIES} from '@open-triage/contracts/android-client-protocol';
+const policyReleases=[...catalog.releases,...historical.releases];
 const retired={versionCode:1,supersededAt:'2026-01-01T00:00:00.000Z',replacementTag:catalog.releases[0].tag};
 const replacement={status:'available',...catalog.releases[0]};
-const input={versionCode:1,releases:catalog.releases,retirements:[retired],graceDays:90,serverTime:'2026-03-31T23:59:59.999Z',serverProtocol:ANDROID_API_PROTOCOL_VERSION,serverCapabilities:ANDROID_API_CAPABILITIES,replacement};
+const input={versionCode:1,releases:policyReleases,retirements:[retired],graceDays:90,serverTime:'2026-03-31T23:59:59.999Z',serverProtocol:ANDROID_API_PROTOCOL_VERSION,serverCapabilities:ANDROID_API_CAPABILITIES,replacement};
+test('the retained final release is supported while removed candidates require the retained upgrade',()=>{
+ assert.equal(evaluateAndroidUpgrade({...input,releases:catalog.releases,retirements:[],versionCode:replacement.descriptor.versionCode}).status,'compatible');
+ for(const entry of historical.releases){
+  const result=evaluateAndroidUpgrade({...input,releases:catalog.releases,retirements:[],versionCode:entry.descriptor.versionCode});
+  assert.equal(result.status,'upgrade-required');assert.equal(result.reason,'unknown-release');
+  assert.equal(result.replacement.tag,replacement.tag);
+ }
+});
 test('server-clock grace uses fixed retirement metadata at exact expiry and changes retroactively without reinstall or deployment clocks',()=>{
  const before=evaluateAndroidUpgrade(input);assert.equal(before.status,'approaching-upgrade');assert.equal(before.deadline,'2026-04-01T00:00:00.000Z');
  const at=evaluateAndroidUpgrade({...input,serverTime:before.deadline});assert.equal(at.status,'upgrade-required');
@@ -32,8 +42,8 @@ test('retirement requires exact approved compatible replacement; no selected, un
 });
 test('lifecycle validation rejects ambiguous, unknown, non-increasing and invalid-time retirements; live catalog contains no invented retirement',()=>{
  assert.deepEqual(parseAndroidReleaseLifecycle(lifecycle,catalog.releases),[]);
- assert.deepEqual(parseAndroidReleaseLifecycle({schemaVersion:1,retirements:[retired]},catalog.releases),[retired]);
- for(const value of [{schemaVersion:2,retirements:[]},{schemaVersion:1,retirements:[retired,retired]},{schemaVersion:1,retirements:[{...retired,versionCode:99}]},{schemaVersion:1,retirements:[{...retired,replacementTag:'unknown'}]},{schemaVersion:1,retirements:[{...retired,versionCode:replacement.descriptor.versionCode}]},{schemaVersion:1,retirements:[{...retired,supersededAt:'2026-02-30T00:00:00.000Z'}]}]) assert.throws(()=>parseAndroidReleaseLifecycle(value,catalog.releases));
+ assert.deepEqual(parseAndroidReleaseLifecycle({schemaVersion:1,retirements:[retired]},policyReleases),[retired]);
+ for(const value of [{schemaVersion:2,retirements:[]},{schemaVersion:1,retirements:[retired,retired]},{schemaVersion:1,retirements:[{...retired,versionCode:99}]},{schemaVersion:1,retirements:[{...retired,replacementTag:'unknown'}]},{schemaVersion:1,retirements:[{...retired,versionCode:replacement.descriptor.versionCode}]},{schemaVersion:1,retirements:[{...retired,supersededAt:'2026-02-30T00:00:00.000Z'}]}]) assert.throws(()=>parseAndroidReleaseLifecycle(value,policyReleases));
  for(const value of [-1,366,1.5,'90',null,NaN])assert.throws(()=>parseAndroidUpgradeGraceDays(value));
  for(const value of [0,90,365])assert.equal(parseAndroidUpgradeGraceDays(value),value);
 });

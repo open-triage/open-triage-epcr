@@ -16,7 +16,7 @@ import {AndroidReleaseService} from '../dist/admin/android-release.service.js';
 import {InstallationEnrollmentService} from '../dist/admin/installation-enrollment.service.js';
 import {CsrfGuard} from '../dist/sessions/csrf.guard.js';
 import {agencyRequest} from '../dist/sessions/agency-context.js';
-import catalog from '@open-triage/contracts/config/android-releases.json' with {type:'json'};
+import {androidPolicyTestCatalog} from '../../../tests/helpers/android-release-fixtures.mjs';
 const integration=process.env.DATABASE_URL?test:test.skip;
 if(process.env.REQUIRE_DATABASE_INTEGRATION&&!process.env.DATABASE_URL)throw Error('DATABASE_URL required');
 const status=code=>error=>error.getStatus?.()===code;
@@ -39,7 +39,7 @@ integration('installation upgrade policy persists once across agencies with live
   await owner.query('update app_identity.local_credential set must_change_password=false,temporary_password_expires_at=null');
   const sessions=new ClinicianSessionService(db),sign=async username=>sessions.create({username,password});
   const ownerSession=await sign('owner'),superSession=await sign('superadmin'),ordinary=await sign('agencyadmin'),clinicalA=await sign('clinician-a'),clinicalB=await sign('clinician-b');
-  const payload=Buffer.from('synthetic approved replacement APK'),approved=structuredClone(catalog),digest=createHash('sha256').update(payload).digest('hex');
+  const payload=Buffer.from('synthetic approved replacement APK'),approved=androidPolicyTestCatalog(),digest=createHash('sha256').update(payload).digest('hex');
   const current=approved.releases[0];current.descriptor.apkSha256=digest;current.descriptor.apkBytes=payload.length;current.descriptor.artifact=`opentriage-${current.descriptor.versionName}-${current.descriptor.versionCode}-${digest}.apk`;current.downloadUrl=`https://github.com/open-triage/open-triage-epcr/releases/download/${current.tag}/${current.descriptor.artifact}`;
   process.env.ANDROID_APPROVED_RELEASE=current.tag;
   const release=new AndroidReleaseService(sessions,async()=>new Response(payload),approved);
