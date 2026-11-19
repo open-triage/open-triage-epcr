@@ -60,7 +60,7 @@ export function AndroidRuntimeGate({ children }: { children: React.ReactNode }) 
       try {
         const state=provided??await AndroidConnection.state();
         if(!active||revision.current!==observedRevision){waiting=stillWaiting();return;}
-        const next=await resumeNativeInstallationTransition(state,(context,purpose)=>AndroidConnection.reconcileTransition({connectionContext:context,purpose}),()=>active&&revision.current===observedRevision);
+        const next=await resumeNativeInstallationTransition(state,(context,purpose,authenticationGeneration)=>AndroidConnection.reconcileTransition({connectionContext:context,purpose,authenticationGeneration}),()=>active&&revision.current===observedRevision);
         if(!active||revision.current!==observedRevision){waiting=stillWaiting();return;}
         waiting=next===null;
         if(active)applyState(next??state);

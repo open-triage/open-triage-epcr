@@ -85,8 +85,16 @@ public class NativeTransitionResumeTest {
     rpc(activity,"{connectionContext:window.__nativeState.connectionContext,purpose:'enrollment'}");assertEquals("true",evaluate(activity,"Boolean(window.__resumeResult.value?.configured)"));assertEquals(2,vault.read().saved().getJSONArray("cookies").length());assertNull(vault.pendingAuthentication());
     evaluate(activity,"window.__nativeState=window.__resumeResult.value");
     personalRpc(activity,"{connectionContext:'wrong-context'}");assertEquals("true",evaluate(activity,"Boolean(window.__personalResult.error)"));assertNotNull(vault.personalContinuation());
-    rpc(activity,"{connectionContext:window.__nativeState.connectionContext,purpose:'logout'}");assertEquals(1,vault.read().saved().getJSONArray("cookies").length());assertEquals("open_triage_installation",vault.read().saved().getJSONArray("cookies").getJSONObject(0).getString("name"));assertEquals("https://transition.invalid",vault.read().origin);
+    String generation="authentication:11111111-1111-4111-8111-111111111111";
+    var launched=new JSONObject().put("secret","synthetic-return").put("authenticationGeneration",generation);
+    vault.pendingAuthentication(launched);
+    rpc(activity,"{connectionContext:window.__nativeState.connectionContext,purpose:'logout',authenticationGeneration:"+JSONObject.quote(generation)+"}");
+    assertEquals(launched.toString(),vault.pendingAuthentication().toString());
+    assertEquals(1,vault.read().saved().getJSONArray("cookies").length());assertEquals("open_triage_installation",vault.read().saved().getJSONArray("cookies").getJSONObject(0).getString("name"));assertEquals("https://transition.invalid",vault.read().origin);
     assertNull(vault.personalContinuation());
+    evaluate(activity,"window.__nativeState=window.__resumeResult.value");
+    rpc(activity,"{connectionContext:window.__nativeState.connectionContext,purpose:'logout',authenticationGeneration:'authentication:22222222-2222-4222-8222-222222222222'}");
+    assertNull(vault.pendingAuthentication());
    }
    JSONObject pending=new JSONObject().put("candidate",TrustedConnection.restore(saved).installationOnly().saved()).put("body",new JSONObject().put("token","T".repeat(43))).put("createdAt",System.currentTimeMillis());vault.stage(TrustedConnection.restore(saved).installationOnly(),pending);vault.pendingAuthentication(new JSONObject().put("secret","must-remain-pending"));
    try(var activity=ActivityScenario.launch(MainActivity.class)){

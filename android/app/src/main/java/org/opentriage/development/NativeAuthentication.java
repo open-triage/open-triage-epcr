@@ -6,6 +6,13 @@ import org.json.JSONObject;
 
 /** Only the approved API bootstrap URL leaves the app; redemption remains in the vault. */
 final class NativeAuthentication {
+    static boolean validTransitionGeneration(String generation) {
+        return generation != null && generation.matches("authentication:[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}");
+    }
+    static boolean ownsTransition(JSONObject pending, String generation) {
+        return pending != null && validTransitionGeneration(generation) &&
+            generation.equals(pending.optString("authenticationGeneration", null));
+    }
     static void validateStart(String origin, String destination, String secret) {
         URI uri = URI.create(destination);
         if (!secret.matches("[A-Za-z0-9_-]{43}") || destination.contains(secret) || !destination.startsWith(origin + "/api/sessions/oidc/native/start?ticket=") ||

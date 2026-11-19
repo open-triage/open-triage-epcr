@@ -11,12 +11,13 @@ const lockName = "open-triage.installation-clinical-context";
 
 type NativeTransitionState = {configured:boolean; blocked?:boolean; replacementPending?:boolean; handoffPending?:boolean; connectionContext?:string; origin?:string; managedContext?:string};
 /** Resume only an abandoned JS barrier, under the same exclusive lock as confirmation. */
-export async function resumeNativeInstallationTransition<T extends NativeTransitionState>(state:T,reconcile:(context:string,purpose:"enrollment"|"logout")=>Promise<T>,isCurrent:()=>boolean=()=>true):Promise<T|null> {
+export async function resumeNativeInstallationTransition<T extends NativeTransitionState>(state:T,reconcile:(context:string,purpose:"enrollment"|"logout",authenticationGeneration?:string)=>Promise<T>,isCurrent:()=>boolean=()=>true):Promise<T|null> {
  const marker=window.localStorage.getItem(INSTALLATION_TRANSITION_KEY);
  if(!marker||!state.configured||state.blocked||state.replacementPending||state.handoffPending)return state;
  if(marker.startsWith("handoff:"))return null;
  const generation=window.localStorage.getItem(INSTALLATION_GENERATION_KEY);
  const purpose=marker.startsWith("enrollment:")&&generation===marker?"enrollment":"logout";
+ const authenticationGeneration=marker.startsWith("authentication:")&&generation===marker?marker:undefined;
  const matches=()=>isCurrent()&&window.localStorage.getItem(INSTALLATION_TRANSITION_KEY)===marker&&window.localStorage.getItem(INSTALLATION_GENERATION_KEY)===generation;
  if(!navigator.locks||!state.connectionContext)return null;
  return navigator.locks.request(lockName,{mode:"exclusive",ifAvailable:true},async lock=>{
@@ -25,7 +26,7 @@ export async function resumeNativeInstallationTransition<T extends NativeTransit
   if(!matches())return null;
   clearClinicianSession(window.localStorage);
   if(purpose!=="enrollment")window.localStorage.removeItem(INSTALLATION_SESSION_HINT_KEY);
-  const next=await reconcile(state.connectionContext!,purpose);
+  const next=await reconcile(state.connectionContext!,purpose,authenticationGeneration);
   if(!matches()||!next.configured||next.blocked||next.replacementPending||!next.connectionContext||next.origin!==state.origin||next.managedContext!==state.managedContext)return null;
   window.localStorage.removeItem(INSTALLATION_TRANSITION_KEY);
   window.dispatchEvent(new Event(INSTALLATION_TRANSITION_COMPLETE_EVENT));
@@ -66,7 +67,7 @@ export function participateInInstallationTransition(endContext: () => Promise<vo
 }
 
 /** Common boundary for local and future federated login: no personal evidence is reused. */
-export async function transitionInstallation<T>(replaceBinding: () => Promise<T>, purpose:"enrollment"|"logout"|"handoff"="logout"): Promise<T> {
+export async function transitionInstallation<T>(replaceBinding: () => Promise<T>, purpose:"enrollment"|"logout"|"handoff"|"authentication"="logout"): Promise<T> {
  if(!navigator.locks) throw new Error("Secure cross-tab coordination is required");
  const generation=`${purpose}:${crypto.randomUUID()}`;
  const prior=purpose==="enrollment"?loadClinicianSession(window.localStorage):null;

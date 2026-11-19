@@ -4,6 +4,16 @@ import org.json.JSONObject;
 import org.junit.Test;
 
 public class NativeAuthenticationTest {
+    @Test public void onlyTheJournaledAuthenticationMaySurviveTransitionRecovery() throws Exception {
+        String generation = "authentication:11111111-1111-4111-8111-111111111111";
+        var pending = new JSONObject().put("authenticationGeneration", generation);
+        assertTrue(NativeAuthentication.ownsTransition(pending, generation));
+        assertFalse(NativeAuthentication.ownsTransition(pending, "authentication:22222222-2222-4222-8222-222222222222"));
+        assertFalse(NativeAuthentication.ownsTransition(pending, null));
+        assertFalse(NativeAuthentication.ownsTransition(null, generation));
+        assertFalse(NativeAuthentication.ownsTransition(new JSONObject(), generation));
+        assertFalse(NativeAuthentication.ownsTransition(new JSONObject().put("authenticationGeneration", "logout:old"), "logout:old"));
+    }
     @Test public void rejectsRedirectAndSecretConfusion() {
         String origin = "https://installation.test", secret = "a".repeat(43);
         String start = origin + "/api/sessions/oidc/native/start?ticket=" + "b".repeat(43);

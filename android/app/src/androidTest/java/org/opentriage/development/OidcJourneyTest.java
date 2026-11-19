@@ -156,6 +156,10 @@ public class OidcJourneyTest extends PairingJourneyTest {
                 pairIfNeeded();
                 waitFor(ORGANIZATION_LOGIN + " || document.querySelector('.session-identity')");
                 if ("true".equals(evaluate("Boolean(document.querySelector('.session-identity'))"))) click("Log out");
+                if (phase.equals("prepare")) {
+                    // Hold the real exclusive barrier past the durable native browser launch.
+                    evaluate("(()=>{const request=navigator.locks.request.bind(navigator.locks);navigator.locks.request=(...args)=>{const [name,options,work]=args;return name==='open-triage.installation-clinical-context'&&options?.mode==='exclusive'?request(name,options,async lock=>{await work(lock);await new Promise(()=>{});}):request(...args);};})()");
+                }
                 click("Sign in with your organization");
                 provider(false);
                 if(expected.equals("pending"))previewCancellationPreservesAuthentication();
@@ -171,6 +175,10 @@ public class OidcJourneyTest extends PairingJourneyTest {
                 return;
             }
             if (phase.equals("prepare")) {
+                var pending = new ConnectionVault(InstrumentationRegistry.getInstrumentation().getTargetContext()).pendingAuthentication();
+                assertNotNull("The launched browser must have a durable native return", pending);
+                assertEquals("The pending native return must own the unfinished JS transition",
+                    JSONObject.quote(pending.getString("authenticationGeneration")), evaluate("localStorage.getItem('open-triage.installation-transition.v1')"));
                 android.os.Bundle checkpoint = new android.os.Bundle();checkpoint.putString("opentriage_phase", "oidc-ready-for-process-kill");
                 InstrumentationRegistry.getInstrumentation().sendStatus(0, checkpoint);
                 Thread.sleep(600000);fail("The host must terminate this still-running process");

@@ -15,7 +15,7 @@ async function fixture(page:Page,extra:Record<string,unknown>={}) {
     state:async()=>({...window.fixture.state}),addListener:async(event,callback)=>{window.fixture.emit=value=>{window.fixture.state=value;callback(value)};return{remove:async()=>{}}},
     finishAuthentication:async()=>{window.fixture.polls++;return{outcome:'idle'}},
     resumePersonalSession:async({connectionContext})=>{const f=window.fixture;f.resumes=(f.resumes||0)+1;if(f.unsupported)throw Object.assign(Error('android.serverUpgradeRequired'),{code:'SERVER_INCOMPATIBLE'});if(f.state.blocked||f.state.replacementPending||f.state.handoffPending||connectionContext!==f.state.connectionContext)throw Error('Native authority unavailable');return f.durable&&f.personal&&!f.pendingOidc?{session:{...f.session,user:{...f.session.user,displayName:'Valid native clinician'}}}:{}},
-    reconcileTransition:async({connectionContext,purpose})=>{const f=window.fixture;const captured={...f.state};if(f.holdReconcile){await new Promise(resolve=>{f.releaseReconcile=resolve});return{...captured,connectionContext:'late-old-context'}}if(f.state.blocked||f.state.replacementPending||connectionContext!==f.state.connectionContext)throw Error('Native transition remains locked');f.reconciliations++;f.pendingOidc=false;if(purpose==='logout')f.personal=false;f.state.connectionContext='reconciled-context';return{...f.state}},
+    reconcileTransition:async({connectionContext,purpose,authenticationGeneration})=>{const f=window.fixture;const captured={...f.state};if(f.holdReconcile){await new Promise(resolve=>{f.releaseReconcile=resolve});return{...captured,connectionContext:'late-old-context'}}if(f.state.blocked||f.state.replacementPending||connectionContext!==f.state.connectionContext)throw Error('Native transition remains locked');f.reconciliations++;f.reconciledGeneration=authenticationGeneration;if(!authenticationGeneration||f.pendingGeneration!==authenticationGeneration)f.pendingOidc=false;if(purpose==='logout')f.personal=false;f.state.connectionContext='reconciled-context';return{...f.state}},
     request:async({path})=>{const f=window.fixture;f.requests.push(path);let value=path==='/api/installation'?window.installation:path==='/api/sessions/authentication-options'?{organization:false}:(path==='/api/sessions/current'||path==='/api/sessions/current/continuation')?{...f.session,csrfToken:undefined}:path==='/api/calls/assigned'?window.calls:path==='/api/reports/open'?{openCalls:[],completedReportIds:[],refreshedAt:new Date().toISOString()}:{};return{status:(path==='/api/sessions/current'||path==='/api/sessions/current/continuation')&&!f.personal?401:200,headers:{'content-type':'application/json'},bodyBase64:btoa(JSON.stringify(value))}}
    }:{state:async()=>({active:true}),addListener:async()=>({remove:async()=>{}})};
   `}));
@@ -69,6 +69,21 @@ test('orphaned confirmed transition reaches primary login after restart without 
 test('interruption before native confirmation continues the current valid login without another prompt',async({page})=>{
  await fixture(page,{personal:true,purpose:"enrollment"});await expect(page.locator('.session-identity')).toContainText('Valid native clinician');
  await expect(page.locator('input[name=username]')).toHaveCount(0);expect(await marker(page)).toBeNull();await expect(page.locator('body')).not.toContainText('Stale cached user');expect(await page.evaluate(()=>localStorage.getItem('open-triage.installation-session-candidate.v1'))).toBeNull();
+});
+
+for (const matches of [true, false]) test(`interrupted native authentication preserves only its own pending return (matches=${matches})`, async ({page})=>{
+ const generation='authentication:11111111-1111-4111-8111-111111111111';
+ await page.addInitScript(marker=>{
+  localStorage.setItem('seeded','1');
+  localStorage.setItem('open-triage.installation-transition.v1',marker);
+  localStorage.setItem('open-triage.installation-generation.v1',marker);
+ },generation);
+ await fixture(page,{personal:true,pendingGeneration:matches?generation:'authentication:22222222-2222-4222-8222-222222222222'});
+ await expect(page.locator('input[name=username]')).toBeVisible();
+ expect(await marker(page)).toBeNull();
+ expect(await page.evaluate(()=>(window as unknown as {fixture:unknown}).fixture)).toMatchObject({
+  reconciledGeneration:generation,pendingOidc:matches,personal:false,reconciliations:1,
+ });
 });
 
 test('a live cross-tab exclusive transition is never reconciled or cleared',async({page})=>{

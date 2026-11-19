@@ -20,10 +20,10 @@ type ConnectionPlugin = {
   acknowledgeAgencyHandoff(options: {connectionContext?:string}): Promise<AndroidConnectionState>;
   cancelAgencyHandoff(options: {connectionContext?: string}): Promise<AndroidConnectionState & {session?: AuthenticatedSession}>;
   version(): Promise<{versionCode: number; versionName?: string; androidApiLevel?: number; webViewVersion?: string}>;
-  beginAuthentication(options: { purpose: "login" | "switch"; csrfToken?: string }): Promise<void>;
+  beginAuthentication(options: { purpose: "login" | "switch"; csrfToken?: string; authenticationGeneration?:string }): Promise<void>;
   finishAuthentication(): Promise<{outcome: "idle" | "waiting" | "succeeded" | "pending" | "denied" | "failed"}>;
   state(): Promise<AndroidConnectionState>;
-  reconcileTransition(options: { connectionContext: string; purpose:"enrollment"|"logout" }): Promise<AndroidConnectionState>;
+  reconcileTransition(options: { connectionContext: string; purpose:"enrollment"|"logout"; authenticationGeneration?:string }): Promise<AndroidConnectionState>;
   refreshInstallation(options: {connectionContext?: string}): Promise<AndroidConnectionState>;
   beginReplacement(): Promise<AndroidConnectionState>;
   resumeEnrollment(): Promise<AndroidConnectionState>;

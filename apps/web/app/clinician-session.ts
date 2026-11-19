@@ -184,19 +184,20 @@ export async function beginPersonalClinicianSession(purpose:"login"|"switch",csr
   const {transitionInstallation}=await import("./installation-transition");
   assertAuthenticationInstallationGeneration(initialGeneration);
   let generation:string|null=null;
+  const native=isAndroidRuntime();
   // Keep the shared barrier through the begin response: pending writers settle
   // while outgoing authority is live, and another tab cannot log in while that
   // response still owns the outgoing cookie.
   const result=await transitionInstallation(async()=>{
     generation=window.localStorage.getItem(INSTALLATION_GENERATION_KEY);
-    if(isAndroidRuntime()){
-      await AndroidConnection.beginAuthentication({purpose,...(csrfToken?{csrfToken}:{})});
+    if(native){
+      await AndroidConnection.beginAuthentication({purpose,...(csrfToken?{csrfToken}:{}),...(generation?{authenticationGeneration:generation}:{})});
       return null;
     }
     const response=await fetch(url,browserRequestInit({method:"POST",headers:{"content-type":"application/json","x-personal-authentication":"1",...(csrfToken?{"x-csrf-token":csrfToken}:{})},body:JSON.stringify({purpose})}));
     if(!response.ok)throw await platformRequestError(response);
     return await response.json() as {authorizationUrl:string};
-  });
+  },native?"authentication":"logout");
   assertAuthenticationInstallationGeneration(generation);
   if(!result)throw new PersonalAuthenticationRedirect("Personal authentication started");
   return navigateToPersonalAuthentication(result.authorizationUrl,false);

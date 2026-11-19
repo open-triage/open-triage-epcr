@@ -317,10 +317,13 @@ public class OpenTriageConnectionPlugin extends LifecycleBoundPlugin {
         String purpose = call.getString("purpose", "");
         if (!purpose.equals("enrollment") && !purpose.equals("logout")) throw new IllegalArgumentException("Unknown transition purpose");
         allowed(active); long revision = revisions.current();
-        // stage() strips personal cookies durably before the first confirmation
-        // POST; promotion/abandonment never copy them back. A remaining valid
-        // native login therefore belongs to an unconfirmed transition.
-        vault.pendingAuthentication(null);
+        // A browser launch can outlive the JS barrier. Retain only the return
+        // that native code journaled for this exact abandoned authentication.
+        String authenticationGeneration = call.getString("authenticationGeneration");
+        if (!purpose.equals("logout") || authenticationGeneration == null ||
+            !NativeAuthentication.ownsTransition(vault.pendingAuthentication(), authenticationGeneration)) {
+            vault.pendingAuthentication(null);
+        }
         if (purpose.equals("logout")) { vault.clearPersonalContinuation(); active = active.installationOnly(); vault.write(active); }
         allowed(active);
         if (revision != revisions.current()) throw new ManagedFailure("MANAGED_BLOCKED");
@@ -635,9 +638,12 @@ public class OpenTriageConnectionPlugin extends LifecycleBoundPlugin {
         NativeAuthentication.validateStart(active.origin, destination, secret);
         allowed(active);
         long revision = revisions.current();
-        vault.pendingAuthentication(new JSONObject().put("secret", secret).put("origin", active.origin)
+        JSONObject pending = new JSONObject().put("secret", secret).put("origin", active.origin)
             .put("trust", NativeAuthentication.connectionIdentity(active.origin, active.caPem)).put("context", policy().context())
-            .put("installation", installation));
+            .put("installation", installation);
+        String authenticationGeneration = call.getString("authenticationGeneration");
+        if (NativeAuthentication.validTransitionGeneration(authenticationGeneration)) pending.put("authenticationGeneration", authenticationGeneration);
+        vault.pendingAuthentication(pending);
         // The external browser owns provider pages; none inherits the Capacitor bridge.
         var launched = new java.util.concurrent.CountDownLatch(1);
         var failure = new java.util.concurrent.atomic.AtomicReference<Exception>();
