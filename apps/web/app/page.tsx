@@ -667,7 +667,7 @@ function EncounterWorkspace({ session, report, presentationMode, language, onSav
     setWestMissingColour(false);
     if (finding.id === MISSING_VITALS_FINDING_ID) {
       dispatch({ type: "view-selected", view: "timeline" });
-      dispatch({ type: "vitals-started", id: crypto.randomUUID(), date: localClinicalDate(new Date(), zone), time: localClinicalTime(zone) });
+      dispatch({ type: "vitals-started", id: crypto.randomUUID(), date: localClinicalDate(new Date(), zone), time: localClinicalTime(zone), decisionSupport });
       return;
     }
     dispatch({ type: "review-finding-selected", id: finding.id, decisionSupport });
@@ -811,7 +811,7 @@ function EncounterWorkspace({ session, report, presentationMode, language, onSav
     rememberTrigger(event.currentTarget);
     setEditingFinding(null);
     setOpenNullField(null);
-    dispatch({ type: "vitals-started", id: crypto.randomUUID(), date: localClinicalDate(new Date(), zone), time: localClinicalTime(zone) });
+    dispatch({ type: "vitals-started", id: crypto.randomUUID(), date: localClinicalDate(new Date(), zone), time: localClinicalTime(zone), decisionSupport });
   }
 
   function startProcedure(event: React.MouseEvent<HTMLButtonElement>) {

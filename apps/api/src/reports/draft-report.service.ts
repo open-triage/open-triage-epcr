@@ -37,7 +37,7 @@ import {
   validateSaveDraftReportCommand
 } from "./draft-report.validation.js";
 import { dispatchConflicts, encounterDocument, nextPcrNumber, seedDispatchEncounter } from "./encounter-document.persistence.js";
-import { assertFinalizedVitalDecisions, assertNewOverrideProvenance, isDecisionSupportElement,
+import { assertFinalizedVitalDecisions, isDecisionSupportElement, validateVitalOverrideProvenance,
   loadReportDecisionSupport, newlyFinalizedVitals } from "./vital-decision-support.js";
 import { customCodedValueFindings } from "./custom-coded-validation.js";
 import { withReportSnapshot } from "./report-snapshot.js";
@@ -507,7 +507,7 @@ export class DraftReportService {
 
         const newlyFinalized = await newlyFinalizedVitals(manager, report, winningGroups, decisionSupport);
         await this.applyGroups(manager, report, { ...command, groups: winningGroups });
-        await this.applyOccurrences(manager, report, command, winningOccurrences, occurrenceMetadata);
+        const acceptedVitalOverrides = await this.applyOccurrences(manager, report, command, winningOccurrences, occurrenceMetadata);
         await assertFinalizedVitalDecisions(manager, report, winningGroups, winningOccurrences, decisionSupport, newlyFinalized);
         if (reconciledSingleton) await this.assertPinnedCardinality(manager, report);
         if (winningOccurrences.some((occurrence) => occurrenceMetadata.get(occurrence.id)?.base_datatype === "coded"))
@@ -524,7 +524,8 @@ export class DraftReportService {
         `, [reportId, nextRevision, command.commandId, command.authorId,
           command.deviceId ?? null, command.clientTime ?? null, JSON.stringify({
             baseRevision: command.expectedRevision,
-            groups: command.groups ?? [], occurrences: command.occurrences ?? []
+            groups: command.groups ?? [], occurrences: command.occurrences ?? [],
+            ...(acceptedVitalOverrides.length ? { acceptedVitalOverrides } : {}),
           })]);
         await this.storeTargetStates(manager, report.id, winningTargets);
         await this.storeReconciliationAudits(manager, report.id, audits);
@@ -1360,7 +1361,10 @@ export class DraftReportService {
     command: SaveDraftReportCommand,
     occurrences: ReadonlyArray<DraftOccurrenceMutation>,
     metadataByOccurrence: ReadonlyMap<string, ElementMetadata>
-  ): Promise<void> {
+  ) {
+    const upserts = occurrences.filter((occurrence) => !occurrence.tombstone);
+    const acceptedVitalOverrides = await validateVitalOverrideProvenance(manager, report.id, upserts.filter(({ id }) =>
+      metadataByOccurrence.get(id)?.decision_support_field === "overrideColour"), command.authorId);
     const tombstones = occurrences.filter((occurrence) => occurrence.tombstone);
     if (tombstones.length) {
       const removed = mutationRows<{ id: string }>(await manager.query(`
@@ -1380,14 +1384,12 @@ export class DraftReportService {
       }
     }
 
-    const upserts = occurrences.filter((occurrence) => !occurrence.tombstone);
-    if (!upserts.length) return;
+    if (!upserts.length) return acceptedVitalOverrides;
     for(const occurrence of upserts)await validateDestinationProvenance(manager,report.organization_id,occurrence.elementId,occurrence.value,occurrence.provenanceDetail?.destinationSelection);
     const rows = upserts.map((occurrence) => {
       const metadata = metadataByOccurrence.get(occurrence.id)!;
       const value = occurrence.value!;
       this.validateDatatype(value, metadata, occurrence.elementId);
-      if (metadata.decision_support_field === "overrideColour") assertNewOverrideProvenance(occurrence, command.authorId);
       if (metadata.base_datatype === "binary" && value.kind === "binary" &&
           (value.value.length < 1 || value.value.length > 100000 ||
            !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(value.value) ||
@@ -1520,6 +1522,7 @@ export class DraftReportService {
     if (saved.length !== upserts.length) {
       throw new ConflictException("One or more occurrence identities already belong to different data");
     }
+    return acceptedVitalOverrides;
   }
 
   private async elementMetadataBatch(

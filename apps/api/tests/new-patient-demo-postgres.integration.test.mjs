@@ -307,6 +307,34 @@ integration("new demo patients support the generated-report lifecycle without a 
     assert.deepEqual(unscored.decisionSupportCalculation, partial.decisionSupportCalculation);
     assert.ok(partialSaved.revision > completeSaved.revision);
 
+    // An offline repeat can still cite the original red override after the
+    // source has been downgraded and then returned to Automatic.
+    const repeatId = randomUUID();
+    const repeatTime = "2026-10-20T12:15:00+02:00";
+    const repeatGroup = { ...groups[1], id: repeatId, ordinal: 1, documentedTime: repeatTime };
+    const repeatMeasurement = { ...measurement, id: randomUUID(), groupInstanceId: repeatId,
+      value: { kind: "datetime", value: repeatTime } };
+    const repeatScale = { ...scale, id: randomUUID(), groupInstanceId: repeatId };
+    const inherited = { ...manual, id: randomUUID(), groupInstanceId: repeatId,
+      sourceAttributes: { ...manual.sourceAttributes, inheritedFromMeasurement: vitalGroupId } };
+    for (const impostor of [
+      { ...inherited, sourceAttributes: { ...inherited.sourceAttributes, enteredBy: ordinaryUserId } },
+      { ...inherited, sourceAttributes: { ...inherited.sourceAttributes, inheritedFromMeasurement: randomUUID() } },
+      { ...inherited, value: { ...inherited.value, code: "yellow" } },
+    ]) {
+      await assert.rejects(saveVital(partialSaved.revision, [repeatGroup], [repeatMeasurement, repeatScale, impostor]),
+        /does not match an accepted decision/);
+    }
+    await assert.rejects(saveVital(partialSaved.revision, [repeatGroup], [repeatMeasurement, repeatScale, {
+      ...inherited, sourceAttributes: { ...inherited.sourceAttributes, inheritedFromMeasurement: repeatId },
+    }]), /different source measurement/);
+    await saveVital(partialSaved.revision, [repeatGroup], [repeatMeasurement, repeatScale, inherited]);
+    const repeat = (await service.reopen("demo", westReport.reportId)).report.document.groups
+      .find(({ id }) => id === "eVitals.VitalGroup").instances.find(({ instanceId }) => instanceId === repeatId);
+    const reopenedOverride = repeat.elements.find(({ id }) => id === inherited.elementId).values[0];
+    assert.equal(reopenedOverride.code, "red");
+    assert.deepEqual(reopenedOverride.attributes, { ...inherited.sourceAttributes, "x-open-triage-owner": "clinician" });
+
     // Simulate an encounter pinned before deployment of the current shipped version.
     const previousDefinition = { ...west.definition, version: `1.0.0-test.${randomUUID()}`, name: "WEST-A previous version" };
     const [{ id: priorPin }] = await manager.query(`with inserted as (

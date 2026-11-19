@@ -1,3 +1,4 @@
+import { decisionSupportElementKey } from "@open-triage/contracts";
 import type { ActiveReportResource, ClinicalFormConfiguration, ClinicianSession, DispatchPriority, EncounterDocument, OpenCall, OpenAssignmentResponse, ReopenOpenCallResponse } from "@open-triage/contracts";
 import type { ActiveDraftReport, RetainedSignedDraftAttempt, SaveDraftReportCommand, SavedDraftReport } from "./draft-report";
 import { browserRequestConfiguration } from "./browser-api";
@@ -342,12 +343,26 @@ export function cachedReopenResponse(storage: StoragePort, ownerUserId: string, 
   return { callNumber: cached.callNumber, report: { ...cached.report, document: cached.report.document, dispatchConflicts: cached.report.dispatchConflicts ?? [], status: "draft" } };
 }
 
+type PendingDraftDelta = Pick<SaveDraftReportCommand, "demoAction" | "occurrences">;
+
+function draftChangeToCoalesce(cached: CachedOpenReport, change: PendingDraftDelta): QueuedDraftChange | undefined {
+  const last = cached.queuedChanges.at(-1);
+  if (!last || last.attempted || last.command.demoAction !== change.demoAction) return;
+  const override = cached.report.clinicalForm?.decisionSupport?.fields.overrideColour;
+  const overrideKey = override && decisionSupportElementKey(override);
+  // A repeat measurement can reference a manual decision from an earlier offline
+  // save. Preserve that decision's receipt even if the source is later corrected.
+  if (overrideKey && [last.command, change].some(({ occurrences }) =>
+    occurrences.some(({ elementId }) => elementId === overrideKey))) return;
+  return last;
+}
+
 export function queueDraftChange(storage: StoragePort, reportId: string, command: SaveDraftReportCommand): void {
   const cached = read(storage).find((candidate) => candidate.report.id === reportId);
   if (!cached) throw new Error(`Report ${reportId} is not cached for offline use`);
   const queued = [...cached.queuedChanges];
-  const last = queued.at(-1);
-  if (last && !last.attempted && last.command.demoAction === command.demoAction) {
+  const last = draftChangeToCoalesce(cached, command);
+  if (last) {
     // These are incremental deltas, not full snapshots. Preserve earlier edits
     // (including tombstones), and never fold clinician edits into a demo action.
     const merge = <T extends { id: string }>(previous: readonly T[], next: readonly T[]): T[] =>
@@ -445,12 +460,12 @@ export function discardQueuedDraftChanges(
   });
 }
 
-export function expectedRevisionForNextChange(storage: StoragePort, reportId: string, fallbackRevision: number,
-  demoAction?: SaveDraftReportCommand["demoAction"]): number {
+export function nextDraftChangeMetadata(storage: StoragePort, reportId: string, fallbackRevision: number,
+  change: PendingDraftDelta): { existing?: SaveDraftReportCommand; expectedRevision: number } {
   const cached = read(storage).find((candidate) => candidate.report.id === reportId);
-  const last = cached?.queuedChanges.at(-1);
-  if (last && !last.attempted && last.command.demoAction === demoAction) return last.command.expectedRevision;
-  return (cached?.report.revision ?? fallbackRevision) + (cached?.queuedChanges.length ?? 0);
+  const existing = cached && draftChangeToCoalesce(cached, change)?.command;
+  return { existing, expectedRevision: existing?.expectedRevision ??
+    (cached?.report.revision ?? fallbackRevision) + (cached?.queuedChanges.length ?? 0) };
 }
 
 /** Keeps independently synchronized note revisions aligned with later form commands. */

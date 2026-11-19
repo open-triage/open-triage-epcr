@@ -26,23 +26,27 @@ export function compareVitalMeasurements(a: VitalMeasurementOrder, b: VitalMeasu
     (a.instanceId < b.instanceId ? -1 : a.instanceId > b.instanceId ? 1 : 0);
 }
 
+export function vitalMeasurementOrder(instance: EncounterGroupInstance): VitalMeasurementOrder | undefined {
+  const measurement = instance.elements.find(({ id }) => id === "eVitals.01")?.values[0];
+  const measurementInstant = measurement?.kind === "scalar" && typeof measurement.value === "string"
+    ? measurement.value : instance.attributes?.documentedTime;
+  if (typeof measurementInstant !== "string" || !Number.isFinite(Date.parse(measurementInstant))) return undefined;
+  return { instanceId: instance.instanceId, measurementInstant };
+}
+
 export function finalizedVitalDecisionSupport(
   instance: EncounterGroupInstance,
   configuration: ClinicalDecisionSupportConfiguration,
 ): FinalizedVitalDecisionSupport | undefined {
   const saved = instance.decisionSupportCalculation;
-  if (!saved) return undefined;
-  const measurement = instance.elements.find(({ id }) => id === "eVitals.01")?.values[0];
-  const measurementInstant = measurement?.kind === "scalar" && typeof measurement.value === "string"
-    ? measurement.value : instance.attributes?.documentedTime;
-  if (typeof measurementInstant !== "string" || !Number.isFinite(Date.parse(measurementInstant))) return undefined;
+  const measurement = saved && vitalMeasurementOrder(instance);
+  if (!saved || !measurement) return undefined;
 
   const { calculation, override } = vitalDecisionSupport(instance, configuration);
   const colour = effectiveDecisionSupportColour(calculation, override?.colour);
   if (!colour || (!override && calculation.status === "unassessed")) return undefined;
   return {
-    instanceId: instance.instanceId,
-    measurementInstant,
+    ...measurement,
     systemKey: saved.systemKey,
     version: saved.version,
     colour,

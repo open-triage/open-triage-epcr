@@ -686,6 +686,92 @@ test("Mobile WEST scores the selected NEWS scale and syncs only a complete integ
   ]));
 });
 
+test("Mobile WEST repeat vitals preserve offline decisions and start fresh measurements", async ({ page, context }) => {
+  test.skip(!serverBacked, "requires OPEN_TRIAGE_E2E_SERVER_MODE=true");
+  await page.setViewportSize({ width: 320, height: 740 });
+  await installRoutes(page, true, undefined, {
+    definition: { schemaVersion: 1, sections: [] }, catalogFields: {}, decisionSupport: westDecisionSupport,
+    customFields: Object.fromEntries(Object.entries(westDecisionSupport.fields)),
+  });
+  await page.clock.setFixedTime(new Date("2026-10-20T08:00:00Z"));
+  await page.goto("/");
+  await page.getByRole("button", { name: "Open call", exact: true }).click();
+  await expect(page.locator(".sync-status")).toHaveText("Saved");
+  await expect.poll(async () => (await encryptedRecords(page)).length).toBe(1);
+  const commands: Array<{ commandId: string; expectedRevision: number; groups: Array<{ id: string; groupId: string }>;
+    occurrences: Array<{ elementId: string; value?: { code?: string }; sourceAttributes?: Record<string, unknown> }> }> = [];
+  await page.route(`**/api/reports/${reportId}/draft-changes`, async (route) => {
+    const command = route.request().postDataJSON() as typeof commands[number];
+    commands.push(command);
+    await route.fulfill({ json: { id: reportId, status: "draft", revision: command.expectedRevision + 1 } });
+  });
+
+  await context.setOffline(true);
+  await page.evaluate(() => window.dispatchEvent(new Event("offline")));
+  const dialog = page.getByRole("dialog", { name: "Vital signs" });
+  const add = page.getByRole("button", { name: "Add vital signs" });
+  const save = dialog.getByRole("button", { name: "Add vital set" });
+  const scale = dialog.getByRole("combobox", { name: "NEWS scale" });
+  const override = dialog.getByRole("combobox", { name: "WEST override" });
+  const systolic = dialog.getByRole("textbox", { name: /Systolic BP/ });
+  const oxygen = dialog.getByRole("combobox", { name: "Oxygen", exact: true });
+  const consciousness = dialog.getByRole("combobox", { name: "Consciousness", exact: true });
+  await add.click();
+  await scale.selectOption("copd");
+  await systolic.fill("120");
+  await oxygen.selectOption("air");
+  await consciousness.selectOption("A");
+  await dialog.getByRole("combobox", { name: "WEST category" }).selectOption("infection");
+  await dialog.getByRole("button", { name: "Choose finding" }).click();
+  await dialog.getByRole("button", { name: "No criteria met" }).click();
+  await dialog.getByRole("checkbox", { name: "No warning criteria" }).check();
+  await override.selectOption("red");
+  await save.click();
+  await expect(dialog).toHaveCount(0);
+
+  await page.clock.setFixedTime(new Date("2026-10-20T08:15:00Z"));
+  await add.click();
+  await expect(scale).toHaveValue("copd");
+  await expect(override).toHaveValue("red");
+  await expect(dialog.getByRole("list", { name: "Documented WEST findings" })).toContainText("No criteria met");
+  await expect(dialog.getByRole("checkbox", { name: "No warning criteria" })).toBeChecked();
+  await expect(systolic).toHaveValue("");
+  await expect(oxygen).toHaveValue("");
+  await expect(consciousness).toHaveValue("");
+  await expect(dialog.locator("output")).toHaveCount(0);
+  await save.click();
+  await expect(dialog).toHaveCount(0);
+  await expect(page.locator(".sync-status")).toHaveText("Pending sync");
+  await page.getByRole("button", { name: "Save & close" }).click();
+  await expect(page.getByRole("heading", { name: "Open reports" })).toBeVisible();
+  await page.getByRole("button", { name: "Reopen report" }).click();
+  const rows = page.locator(".timeline-event-button").filter({ hasText: "Vital signs" });
+  await rows.first().click();
+  await expect(override).toHaveValue("red");
+  await expect(systolic).toHaveValue("");
+  await page.keyboard.press("Escape");
+  await add.click();
+  await override.selectOption("");
+  await save.click();
+  await expect(override).toBeFocused();
+  await expect(dialog.getByRole("alert")).toContainText("choose a WEST color");
+  await page.keyboard.press("Escape");
+
+  await context.setOffline(false);
+  await page.evaluate(() => window.dispatchEvent(new Event("online")));
+  await expect(page.locator(".sync-status")).toHaveText("Saved");
+  expect(commands).toHaveLength(2);
+  expect(commands[1]!.commandId).not.toBe(commands[0]!.commandId);
+  expect(commands[1]!.expectedRevision).toBe(commands[0]!.expectedRevision + 1);
+  const sourceId = commands[0]!.groups.find(({ groupId }) => groupId === "eVitals.VitalGroup")?.id;
+  const selection = (index: number) => commands[index]!.occurrences.find(({ elementId }) =>
+    elementId === "west.opentriage.org.FixtureOverrideColour");
+  expect(selection(1)).toMatchObject({ value: { code: "red" }, sourceAttributes: {
+    ...selection(0)?.sourceAttributes, inheritedFromMeasurement: sourceId,
+  } });
+  expect(commands[1]!.occurrences.some(({ elementId }) => elementId === "eVitals.06")).toBe(false);
+});
+
 test("Stationary Vitals uses the same WEST finalization rule while retaining its field editor", async ({ page }) => {
   test.skip(!serverBacked, "requires OPEN_TRIAGE_E2E_SERVER_MODE=true");
   await installRoutes(page, true, undefined, {

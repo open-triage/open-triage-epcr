@@ -14,7 +14,7 @@ import {
   cachedReopenResponse,
   clearProtectedRuntimeReports,
   discardQueuedDraftChanges,
-  expectedRevisionForNextChange,
+  nextDraftChangeMetadata,
   markDraftChangeAttempted,
   nextDraftChange,
   OFFLINE_REPORTS_STORAGE_KEY,
@@ -243,9 +243,9 @@ test("Populate cannot replace unsaved clinician work or absorb later ordinary ed
   const storage = memoryStorage();
   cacheOpenedReport(storage, session, opened, "CALL-51");
   queueDraftChange(storage, opened.report.id, command("manual", 4));
-  assert.equal(expectedRevisionForNextChange(storage, opened.report.id, 4, "populate"), 5);
+  assert.equal(nextDraftChangeMetadata(storage, opened.report.id, 4, { demoAction: "populate", occurrences: [] }).expectedRevision, 5);
   queueDraftChange(storage, opened.report.id, { ...command("populate", 5), demoAction: "populate" });
-  assert.equal(expectedRevisionForNextChange(storage, opened.report.id, 4), 6);
+  assert.equal(nextDraftChangeMetadata(storage, opened.report.id, 4, { occurrences: [] }).expectedRevision, 6);
   queueDraftChange(storage, opened.report.id, command("later-manual", 6));
   assert.deepEqual(queuedDraftChanges(storage, opened.report.id).map(({ command: item }) =>
     [item.commandId, item.demoAction, item.expectedRevision]),
@@ -258,7 +258,7 @@ test("reconnect replay keeps attempted command identities and advances queued re
   queueDraftChange(storage, opened.report.id, command("command-1", 4));
   markDraftChangeAttempted(storage, opened.report.id, "command-1");
 
-  assert.equal(expectedRevisionForNextChange(storage, opened.report.id, 4), 5);
+  assert.equal(nextDraftChangeMetadata(storage, opened.report.id, 4, { occurrences: [] }).expectedRevision, 5);
   queueDraftChange(storage, opened.report.id, command("command-2", 5));
   assert.equal(nextDraftChange(storage, opened.report.id)?.command.commandId, "command-1");
 
