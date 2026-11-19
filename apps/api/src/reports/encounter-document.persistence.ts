@@ -6,6 +6,8 @@ import {
   type DispatchConflict,
   type EncounterDocument,
   type EncounterValue,
+  type EncounterGroupInstance,
+  type FinalizedDecisionSupportCalculation,
 } from "@open-triage/contracts";
 import type { EntityManager } from "typeorm";
 import { databaseInteger, databaseNumber } from "../database/mutation-result.js";
@@ -40,6 +42,7 @@ type StoredGroupRow = {
   ordinal: string | number;
   documented_time: Date | string | null;
   correlation_id: string | null;
+  decision_support_calculation?: FinalizedDecisionSupportCalculation | null;
 };
 
 type StoredOccurrenceRow = {
@@ -336,7 +339,7 @@ export async function encounterDocument(manager: Queryable, reportId: string, in
   const report = reports[0];
   if (!report) throw new TypeError(`Report ${reportId} is unavailable`);
   const groups = await manager.query<StoredGroupRow[]>(`
-    select id, parent_group_instance_id, group_id, ordinal, documented_time, correlation_id from clinical.group_instance
+    select id, parent_group_instance_id, group_id, ordinal, documented_time, correlation_id, decision_support_calculation from clinical.group_instance
     where report_id = $1 and tombstoned_at is null order by group_id, ordinal, id
   `, [reportId]);
   const occurrences = await manager.query<StoredOccurrenceRow[]>(`
@@ -374,7 +377,7 @@ export async function encounterDocument(manager: Queryable, reportId: string, in
 }
 
 export function assembleEncounterDocument(report: ReportDocumentRow, groups: StoredGroupRow[], occurrences: StoredOccurrenceRow[]): EncounterDocument {
-  const byGroup = new Map<string, { id: string; instances: Array<{ instanceId: string; parentInstanceId?: string; attributes?: Record<string, string>; elements: Array<{ id: string; values: EncounterValue[] }> }> }>();
+  const byGroup = new Map<string, { id: string; instances: EncounterGroupInstance[] }>();
   for (const group of groups) {
     const target = byGroup.get(group.group_id) ?? { id: group.group_id, instances: [] };
     const groupOccurrences = occurrences.filter((item) => item.group_instance_id === group.id);
@@ -390,6 +393,7 @@ export function assembleEncounterDocument(report: ReportDocumentRow, groups: Sto
       instanceId: group.id,
       ...(group.parent_group_instance_id ? { parentInstanceId: group.parent_group_instance_id } : {}),
       ...(Object.keys(attributes).length ? { attributes } : {}),
+      ...(group.decision_support_calculation ? { decisionSupportCalculation: group.decision_support_calculation } : {}),
       elements: [] as Array<{ id: string; values: EncounterValue[] }>,
     };
     for (const occurrence of groupOccurrences) {

@@ -21,6 +21,9 @@ import {EpsOutgoingPreview} from '../components/eps-outgoing-preview';
 import {EpsSigningCheckbox,EpsDeliveryStatus,useEpsSigningActivation,useSigningExportSelection} from '../components/eps-sign-export';
 import { MedicationDialog } from "../components/medication-dialog";
 import { resolveCatalogElementText } from "./catalog-localization";
+import { VitalDecisionSupport } from "../components/vital-decision-support";
+import { UNASSESSED_VITAL } from "./vital-decision-support";
+import { effectiveDecisionSupportColour } from "@open-triage/contracts";
 import { ProcedureDialog } from "../components/procedure-dialog";
 import { QuickActionIcon } from "../components/quick-action-icon";
 import { StationaryRecord } from "../components/stationary-record";
@@ -266,6 +269,11 @@ function EncounterWorkspace({ session, report, presentationMode, language, onSav
     routeLabels: medicationChoiceLabels("eMedications.04"),
     fields: bundledEncounterDefinition.events.medication.fields.map((field) => ({ ...field,
       label: catalogText(field.reference, "label") ?? field.label })) };
+  const decisionSupport = report?.clinicalForm?.decisionSupport;
+  const westOverrideRef = useRef<HTMLSelectElement>(null);
+  const [westMissingColour, setWestMissingColour] = useState(false);
+  const westDraft = shell.vitalDraft?.decisionSupport ?? UNASSESSED_VITAL;
+  const westEffectiveColour = effectiveDecisionSupportColour(westDraft.calculation, westDraft.override?.colour);
   const vitalDefinition = mobileDisplayDefinition(bundledEncounterDefinition, language, report?.clinicalForm).events.vitals;
   const displayDefinition = { ...bundledEncounterDefinition, events: { ...bundledEncounterDefinition.events,
     procedure: procedureDefinition, medication: medicationDefinition, vitals: vitalDefinition } };
@@ -637,12 +645,13 @@ function EncounterWorkspace({ session, report, presentationMode, language, onSav
       return;
     }
     if (!("eventType" in finding)) return;
+    setWestMissingColour(false);
     if (finding.id === MISSING_VITALS_FINDING_ID) {
       dispatch({ type: "view-selected", view: "timeline" });
       dispatch({ type: "vitals-started", id: crypto.randomUUID(), date: localClinicalDate(new Date(), zone), time: localClinicalTime(zone) });
       return;
     }
-    dispatch({ type: "review-finding-selected", id: finding.id });
+    dispatch({ type: "review-finding-selected", id: finding.id, decisionSupport });
   }
 
   function inlineChecklistEditor(finding: SigningFinding): ReactNode {
@@ -755,8 +764,13 @@ function EncounterWorkspace({ session, report, presentationMode, language, onSav
 
   function openTimelineEvent(event: EncounterEvent, trigger: HTMLElement) {
     rememberTrigger(trigger);
-    if (event.vitals) setOpenNullField(null);
-    dispatch({ type: event.vitals ? "vitals-opened" : event.kind === "procedure" ? "procedure-opened" : event.kind === "medication" ? "medication-opened" : "note-opened", id: event.id });
+    if (event.vitals) {
+      setOpenNullField(null);
+      setWestMissingColour(false);
+      dispatch({ type: "vitals-opened", id: event.id, decisionSupport });
+    } else {
+      dispatch({ type: event.kind === "procedure" ? "procedure-opened" : event.kind === "medication" ? "medication-opened" : "note-opened", id: event.id });
+    }
   }
 
   function closeStationaryTimeline() {
@@ -774,6 +788,7 @@ function EncounterWorkspace({ session, report, presentationMode, language, onSav
   }
 
   function startVitals(event: React.MouseEvent<HTMLButtonElement>) {
+    setWestMissingColour(false);
     rememberTrigger(event.currentTarget);
     setEditingFinding(null);
     setOpenNullField(null);
@@ -1097,6 +1112,8 @@ function EncounterWorkspace({ session, report, presentationMode, language, onSav
             customGroups={report?.clinicalForm?.customGroups}
             catalogGroups={report?.clinicalForm?.catalogGroups}
             validation={report?.clinicalForm?.validation}
+            decisionSupport={decisionSupport}
+            clinicianId={session.user.id}
             onDocumentChange={(document) => dispatch({ type: "document-opened", document })}
           />
         </div>
@@ -1288,6 +1305,12 @@ function EncounterWorkspace({ session, report, presentationMode, language, onSav
               <div><p className="eyebrow">{shell.vitalDraft.isNew ? vitalDefinition.labels.newEyebrow : vitalDefinition.labels.editEyebrow}</p><h2 id="vital-dialog-title">{vitalDefinition.labels.editorTitle}</h2></div>
               {!shell.vitalDraft.isNew && <DialogRemoveButton language={language} onClick={() => { setOpenNullField(null); dispatch({ type: "vitals-removed" }); }} />}
             </div>
+            {decisionSupport && <VitalDecisionSupport definition={decisionSupport.definition} assessment={westDraft}
+              language={language} overrideRef={westOverrideRef} missingColour={westMissingColour && !westEffectiveColour}
+              onOverride={(colour) => {
+                setWestMissingColour(false);
+                dispatch({ type: "vitals-override-changed", colour, enteredBy: session.user.id, enteredAt: new Date().toISOString() });
+              }} />}
             <TimePicker language={language} className={vitalFindingActive && editingFinding && !editingVitalField ? `finding-frame ${editingFinding.severity}` : undefined} initialFocus label={vitalDefinition.labels.time} date={shell.vitalDraft.date} onDateChange={(value) => dispatch({ type: "vitals-date-changed", value })} value={shell.vitalDraft.time} selectedInstant={shell.vitalDraft.dateTime} onDateTimeChange={(date, time, dateTime) => dispatch({ type: "clinical-time-selected", kind: "vitals", date, time, dateTime })} onChange={(value) => dispatch({ type: "vitals-time-changed", value })} />
             <DialogValidationMessage finding={vitalFindingActive && !editingVitalField ? editingActionableFinding : undefined} />
             <div className="vital-grid">
@@ -1316,7 +1339,15 @@ function EncounterWorkspace({ session, report, presentationMode, language, onSav
               );})}
             </div>
             <p className="null-help">{vitalDefinition.labels.absenceHelp}</p>
-            <div className="note-dialog-actions"><DialogCancelButton language={language} onClick={() => { setOpenNullField(null); dispatch({ type: "vitals-cancelled" }); }} /><button className="button-primary" type="button" onClick={() => { setOpenNullField(null); dispatch({ type: "vitals-saved" }); }}>{shell.vitalDraft.isNew ? vitalDefinition.labels.add : vitalDefinition.labels.save}</button></div>
+            <div className="note-dialog-actions"><DialogCancelButton language={language} onClick={() => { setOpenNullField(null); dispatch({ type: "vitals-cancelled" }); }} /><button className="button-primary" type="button" onClick={() => {
+              setOpenNullField(null);
+              if (decisionSupport && !westEffectiveColour) {
+                setWestMissingColour(true);
+                westOverrideRef.current?.focus();
+                return;
+              }
+              dispatch({ type: "vitals-saved", decisionSupport });
+            }}>{shell.vitalDraft.isNew ? vitalDefinition.labels.add : vitalDefinition.labels.save}</button></div>
           </section>
         </div>
       )}

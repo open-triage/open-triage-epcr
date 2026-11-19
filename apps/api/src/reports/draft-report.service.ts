@@ -12,7 +12,7 @@ import { InjectDataSource } from "@nestjs/typeorm";
 import { DataSource, type EntityManager } from "typeorm";
 import { retryTransaction } from "../database/retry-transaction.js";
 import { mutationRows } from "../database/mutation-result.js";
-import { DEFAULT_IMAGE_MEDIA_LIMIT_BYTES, DEFAULT_REPORT_MEDIA_ALLOWANCE_BYTES, SYNTHETIC_DEMO_FIXTURE } from "@open-triage/contracts";
+import { decisionSupportElementKey, DEFAULT_IMAGE_MEDIA_LIMIT_BYTES, DEFAULT_REPORT_MEDIA_ALLOWANCE_BYTES, SYNTHETIC_DEMO_FIXTURE } from "@open-triage/contracts";
 import type { ActiveReportResource, DeleteDraftReportResponse, DispatchConflict, EncounterValue, OpenCallsResponse, ReopenOpenCallResponse, ResolveDispatchConflictCommand } from "@open-triage/contracts";
 import { derivePatientKey, patientKeyConfigFromEnvironment } from "@open-triage/contracts/patient-key";
 import { ClinicianSessionService } from "../sessions/clinician-session.service.js";
@@ -37,6 +37,8 @@ import {
   validateSaveDraftReportCommand
 } from "./draft-report.validation.js";
 import { dispatchConflicts, encounterDocument, nextPcrNumber, seedDispatchEncounter } from "./encounter-document.persistence.js";
+import { assertFinalizedVitalDecisions, assertNewOverrideProvenance, isDecisionSupportElement,
+  loadReportDecisionSupport, newlyFinalizedVitals } from "./vital-decision-support.js";
 import { customCodedValueFindings } from "./custom-coded-validation.js";
 import { withReportSnapshot } from "./report-snapshot.js";
 import { reportTextNotes } from "./report-note.persistence.js";
@@ -87,6 +89,7 @@ type ElementMetadata = {
   max_occurs: number | null;
   text_constraints?: { minLength?: number; maxLength?: number; pattern?: string; minimum?: number; maximum?: number } | null;
   custom_definition?: import("@open-triage/contracts").CatalogDraftCustomElement | null;
+  decision_support_field?: import("@open-triage/contracts").DecisionSupportFieldName;
   form_choice_policy?: import("@open-triage/contracts").FormDraftField["choicePolicy"];
 };
 
@@ -419,10 +422,16 @@ export class DraftReportService {
           ...(command.occurrences ?? []).map((value) => ({ type: "occurrence" as const, value }))
         ];
         const currentStates = await this.targetStates(manager, report.id, targets);
+        const decisionSupport = (command.groups?.some((group) => group.decisionSupportCalculation ||
+          (report.decision_support_definition_id && group.groupId === "eVitals.VitalGroup" && !group.tombstone)) ||
+          command.occurrences?.some(({ elementId }) => isDecisionSupportElement(elementId) ||
+            (report.decision_support_definition_id && elementId === "eVitals.01")))
+          ? await loadReportDecisionSupport(manager, report) : undefined;
         const occurrenceMetadata = await this.elementMetadataBatch(
           manager,
           report,
-          (command.occurrences ?? []).filter((occurrence) => !occurrence.tombstone)
+          (command.occurrences ?? []).filter((occurrence) => !occurrence.tombstone),
+          decisionSupport,
         );
         const singletonStates = await this.singletonTargetStates(
           manager,
@@ -496,8 +505,10 @@ export class DraftReportService {
           }
         }
 
+        const newlyFinalized = await newlyFinalizedVitals(manager, report, winningGroups, decisionSupport);
         await this.applyGroups(manager, report, { ...command, groups: winningGroups });
         await this.applyOccurrences(manager, report, command, winningOccurrences, occurrenceMetadata);
+        await assertFinalizedVitalDecisions(manager, report, winningGroups, winningOccurrences, decisionSupport, newlyFinalized);
         if (reconciledSingleton) await this.assertPinnedCardinality(manager, report);
         if (winningOccurrences.some((occurrence) => occurrenceMetadata.get(occurrence.id)?.base_datatype === "coded"))
           await this.assertCodedChoiceCombinations(manager, report);
@@ -1280,20 +1291,21 @@ export class DraftReportService {
         insert into clinical.group_instance
           (id, report_id, catalog_release_id, parent_group_instance_id, group_id, source_kind,
            custom_group_definition_id, ordinal, correlation_id, documented_time,
-           documented_utc_offset_minutes, created_by)
+           documented_utc_offset_minutes, decision_support_calculation, created_by)
         select incoming.id, $1, $2, incoming.parent_group_instance_id, incoming.group_id,
                incoming.source_kind, incoming.custom_group_definition_id, incoming.ordinal,
                incoming.correlation_id, incoming.documented_time,
-               incoming.documented_utc_offset_minutes, $3
+               incoming.documented_utc_offset_minutes, incoming.decision_support_calculation, $3
         from jsonb_to_recordset($4::jsonb) as incoming(
           id uuid, parent_group_instance_id uuid, group_id text, source_kind text,
           custom_group_definition_id uuid, ordinal integer, correlation_id text,
-          documented_time timestamptz, documented_utc_offset_minutes smallint)
+          documented_time timestamptz, documented_utc_offset_minutes smallint, decision_support_calculation jsonb)
         on conflict (id) do update set
           parent_group_instance_id = excluded.parent_group_instance_id,
           ordinal = excluded.ordinal, correlation_id = excluded.correlation_id,
           documented_time = excluded.documented_time,
           documented_utc_offset_minutes = excluded.documented_utc_offset_minutes,
+          decision_support_calculation = coalesce(excluded.decision_support_calculation, clinical.group_instance.decision_support_calculation),
           server_received_time = now(), tombstoned_at = null
         where clinical.group_instance.report_id = excluded.report_id
           and clinical.group_instance.group_id = excluded.group_id
@@ -1309,7 +1321,8 @@ export class DraftReportService {
         ordinal: group.ordinal,
         correlation_id: group.correlationId ?? null,
         documented_time: group.documentedTime ?? null,
-        documented_utc_offset_minutes: group.documentedUtcOffsetMinutes ?? null
+        documented_utc_offset_minutes: group.documentedUtcOffsetMinutes ?? null,
+        decision_support_calculation: group.decisionSupportCalculation ?? null
       }))) ]));
       if (saved.length !== layer.length) {
         throw new ConflictException("One or more group identities already belong to different data");
@@ -1374,6 +1387,7 @@ export class DraftReportService {
       const metadata = metadataByOccurrence.get(occurrence.id)!;
       const value = occurrence.value!;
       this.validateDatatype(value, metadata, occurrence.elementId);
+      if (metadata.decision_support_field === "overrideColour") assertNewOverrideProvenance(occurrence, command.authorId);
       if (metadata.base_datatype === "binary" && value.kind === "binary" &&
           (value.value.length < 1 || value.value.length > 100000 ||
            !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(value.value) ||
@@ -1511,7 +1525,8 @@ export class DraftReportService {
   private async elementMetadataBatch(
     manager: EntityManager,
     report: ReportRow,
-    occurrences: ReadonlyArray<DraftOccurrenceMutation>
+    occurrences: ReadonlyArray<DraftOccurrenceMutation>,
+    pinnedDecisionSupport?: import("@open-triage/contracts").ClinicalDecisionSupportConfiguration,
   ): Promise<Map<string, ElementMetadata>> {
     if (!occurrences.length) return new Map();
     const elementIds = [...new Set(occurrences.map(({ elementId }) => elementId))];
@@ -1544,7 +1559,10 @@ export class DraftReportService {
         where ff.id = any($1::uuid[]) and ff.form_version_id = $2
       `, [formFieldIds, report.form_version_id]) : [];
     const fieldsById = new Map(fields.map((metadata) => [metadata.form_field_id!, metadata]));
-    const customElementIds = elementIds.filter((id) => id.split(".").length > 2);
+    const decisionIds = elementIds.filter(isDecisionSupportElement);
+    const decisionSupport = decisionIds.length ? pinnedDecisionSupport ?? await loadReportDecisionSupport(manager, report) : undefined;
+    const decisionByElement = new Map(Object.values(decisionSupport?.fields ?? {}).map((field) => [decisionSupportElementKey(field), field]));
+    const customElementIds = elementIds.filter((id) => id.split(".").length > 2 && !isDecisionSupportElement(id));
     const custom = customElementIds.length ? await manager.query<ElementMetadata[]>(`
       select ced.namespace || '.' || ced.slug as element_id,ff.id as form_field_id,
              ced.id as element_identity_id,ced.base_datatype,
@@ -1564,6 +1582,25 @@ export class DraftReportService {
     const result = new Map<string, ElementMetadata>();
     for (const occurrence of occurrences) {
       let metadata = standardByElement.get(occurrence.elementId) ?? customByElement.get(occurrence.elementId);
+      const decisionField = decisionByElement.get(occurrence.elementId);
+      if (decisionField) {
+        if (occurrence.formFieldId || !occurrence.groupInstanceId) {
+          throw new UnprocessableEntityException("Decision support fields belong to their vital occurrence");
+        }
+        metadata = {
+          element_id: occurrence.elementId,
+          element_identity_id: decisionField.id,
+          base_datatype: decisionField.integer ? "integer" : decisionField.datatype,
+          analytical_repeatable: true,
+          identifying: false,
+          allowed_absence_states: [],
+          supports_not_values: false,
+          supports_pertinent_negatives: false,
+          max_occurs: decisionField.recurrence === "single" ? 1 : null,
+          custom_definition: decisionField,
+          decision_support_field: decisionField.decisionSupportField,
+        };
+      }
       const field = occurrence.formFieldId ? fieldsById.get(occurrence.formFieldId) : undefined;
       if (!metadata && field?.base_datatype && field.element_id === occurrence.elementId) metadata = field;
       if (!metadata) {

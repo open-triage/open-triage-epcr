@@ -5,7 +5,7 @@ import { readFile } from "node:fs/promises";
 import test from "node:test";
 import pg from "pg";
 import { ConflictException, NotFoundException, UnauthorizedException } from "@nestjs/common";
-import { SYNTHETIC_DEMO_FIXTURE, WEST_A_DECISION_SUPPORT_KEY } from "@open-triage/contracts";
+import { decisionSupportElementKey, SYNTHETIC_DEMO_FIXTURE, WEST_A_DECISION_SUPPORT_KEY } from "@open-triage/contracts";
 import { AgencySettingsService } from "../dist/admin/agency-settings.service.js";
 import { CatalogAuthoringService } from "../dist/admin/catalog-authoring.service.js";
 import { DraftReportService } from "../dist/reports/draft-report.service.js";
@@ -177,6 +177,61 @@ integration("new demo patients support the generated-report lifecycle without a 
     await assert.rejects(db.transaction(() => manager.query(
       "update clinical.report set decision_support_definition_id=null where id=$1", [westReport.reportId])),
     /decision support pin is immutable/);
+
+    const override = west.fields.overrideColour;
+    const vitalGroupId = randomUUID();
+    const sectionId = randomUUID();
+    const overrideId = randomUUID();
+    const measuredAt = "2026-10-20T12:00:00+02:00";
+    const enteredAt = "2026-10-20T12:01:00+02:00";
+    const root = westOpened.report.document.groups.find(({ id }) => id === "PatientCareReportGroup").instances[0];
+    const calculation = { status: "unassessed", colour: null, systemKey: west.definition.key, version: west.definition.version };
+    const groups = [
+      { id: sectionId, groupId: "eVitalsSection", ordinal: 0, parentGroupInstanceId: root.instanceId },
+      { id: vitalGroupId, groupId: "eVitals.VitalGroup", ordinal: 0, parentGroupInstanceId: sectionId,
+        documentedTime: measuredAt, decisionSupportCalculation: calculation },
+    ];
+    const measurement = { id: randomUUID(), groupInstanceId: vitalGroupId, elementId: "eVitals.01",
+      value: { kind: "datetime", value: measuredAt } };
+    const manual = { id: overrideId, groupInstanceId: vitalGroupId, elementId: decisionSupportElementKey(override),
+      value: { kind: "coded", code: "red", codeSystem: override.codeSystem },
+      sourceAttributes: { enteredBy: userId, enteredAt, calculatedColourWhenSelected: null } };
+    const saveVital = (expectedRevision, groups, occurrences) => service.save("demo", westReport.reportId, {
+      commandId: randomUUID(), expectedRevision, authorId: userId, groups, occurrences,
+    });
+
+    await assert.rejects(saveVital(westOpened.report.revision, [groups[0], {
+      id: vitalGroupId, groupId: "eVitals.VitalGroup", ordinal: 0, parentGroupInstanceId: sectionId, documentedTime: measuredAt,
+    }], [measurement]), /one effective color/);
+    await assert.rejects(saveVital(westOpened.report.revision, groups, [measurement]), /one effective color/);
+    await assert.rejects(saveVital(westOpened.report.revision, groups, [measurement, {
+      ...manual, sourceAttributes: { ...manual.sourceAttributes, enteredBy: ordinaryUserId },
+    }]), /authorized author/);
+    await assert.rejects(saveVital(westOpened.report.revision, [
+      groups[0], { ...groups[1], decisionSupportCalculation: { ...calculation, colour: "green", status: "definitive" } },
+    ], [measurement]), /no supported inputs/);
+    const saved = await saveVital(westOpened.report.revision, groups, [measurement, manual]);
+    const downgraded = await saveVital(saved.revision, [], [{ ...manual, value: { ...manual.value, code: "green" },
+      sourceAttributes: { ...manual.sourceAttributes, enteredAt: "2026-10-20T12:02:00+02:00" } }]);
+    const reloaded = (await service.reopen("demo", westReport.reportId)).report.document.groups
+      .find(({ id }) => id === "eVitals.VitalGroup").instances.find(({ instanceId }) => instanceId === vitalGroupId);
+    assert.deepEqual(reloaded.decisionSupportCalculation, calculation);
+    assert.equal(Date.parse(reloaded.attributes.documentedTime), Date.parse(measuredAt));
+    const [storedOverride] = reloaded.elements.find(({ id }) => id === manual.elementId).values;
+    assert.equal(storedOverride.occurrenceId, overrideId);
+    assert.equal(storedOverride.code, "green");
+    assert.deepEqual(storedOverride.attributes, { ...manual.sourceAttributes, enteredAt: "2026-10-20T12:02:00+02:00",
+      "x-open-triage-owner": "clinician" });
+
+    await assert.rejects(saveVital(downgraded.revision, [], [{
+      ...measurement, value: { kind: "datetime", value: "2026-10-20T15:00:00+02:00" },
+    }]), /measurement time/);
+    await assert.rejects(saveVital(downgraded.revision, [{ ...groups[1], decisionSupportCalculation: undefined, documentedTime: null }], []),
+      /measurement time/);
+    await assert.rejects(saveVital(downgraded.revision, [], [{
+      id: overrideId, groupInstanceId: vitalGroupId, elementId: manual.elementId, tombstone: true,
+    }]), /one effective color/);
+    assert.equal((await service.reopen("demo", westReport.reportId)).report.revision, downgraded.revision);
 
     // Simulate an encounter pinned before deployment of the current shipped version.
     const previousDefinition = { ...west.definition, version: `1.0.0-test.${randomUUID()}`, name: "WEST-A previous version" };

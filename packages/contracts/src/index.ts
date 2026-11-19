@@ -2203,6 +2203,7 @@ export type EncounterGroupInstance = {
   /** Stable identity of the containing group occurrence for nested NEMSIS groups. */
   readonly parentInstanceId?: string;
   readonly attributes?: EncounterAttributes;
+  readonly decisionSupportCalculation?: import("./decision-support.js").FinalizedDecisionSupportCalculation;
   readonly elements: ReadonlyArray<EncounterElement>;
   readonly [extension: string]: unknown;
 };

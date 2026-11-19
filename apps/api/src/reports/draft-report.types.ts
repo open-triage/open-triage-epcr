@@ -1,4 +1,4 @@
-import type { ReportMediaPolicy } from "@open-triage/contracts";
+import type { FinalizedDecisionSupportCalculation, ReportMediaPolicy } from "@open-triage/contracts";
 
 export type PatientIdentityState = "known" | "unknown" | "temporary" | "unavailable";
 
@@ -41,6 +41,7 @@ export interface DraftGroupMutation {
   ordinal: number;
   correlationId?: string | null;
   documentedTime?: string | null;
+  decisionSupportCalculation?: FinalizedDecisionSupportCalculation;
   documentedUtcOffsetMinutes?: number | null;
   tombstone?: boolean;
 }

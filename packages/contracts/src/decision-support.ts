@@ -126,3 +126,41 @@ export function decisionSupportCategoryCriteria(category: DecisionSupportCategor
 export function isSelectableDecisionSupportCriterion(criterion: DecisionSupportCriterion): boolean {
   return criterion.population !== "paediatric" && !criterion.navigateToCategory;
 }
+
+export type DecisionSupportCalculation =
+  | { readonly status: "unassessed"; readonly colour: null }
+  | { readonly status: "provisional" | "definitive"; readonly colour: TriageColour };
+
+export type FinalizedDecisionSupportCalculation = DecisionSupportCalculation & {
+  readonly systemKey: DecisionSupportSystemKey;
+  readonly version: string;
+};
+
+export interface DecisionSupportOverride {
+  readonly colour: TriageColour;
+  readonly enteredBy: string;
+  readonly enteredAt: string;
+  readonly calculatedColourWhenSelected: TriageColour | null;
+  readonly inheritedFromMeasurement?: string;
+}
+
+export interface DraftDecisionSupportAssessment {
+  readonly calculation: DecisionSupportCalculation;
+  readonly override: DecisionSupportOverride | null;
+}
+
+export const UNASSESSED_DECISION_SUPPORT: DecisionSupportCalculation = { status: "unassessed", colour: null };
+
+export function isTriageColour(value: unknown): value is TriageColour {
+  return value === "green" || value === "yellow" || value === "orange" || value === "red";
+}
+
+export function effectiveDecisionSupportColour(
+  calculation: DecisionSupportCalculation, overrideColour?: TriageColour | null,
+): TriageColour | null {
+  return overrideColour ?? calculation.colour;
+}
+
+export function decisionSupportElementKey(field: Pick<DecisionSupportCatalogElement, "namespace" | "slug">): string {
+  return `${field.namespace}.${field.slug}`;
+}
