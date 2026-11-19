@@ -16,6 +16,7 @@ import { DataSource, type EntityManager } from "typeorm";
 import { mutationRows } from "../database/mutation-result.js";
 import { ClinicianSessionService } from "../sessions/clinician-session.service.js";
 import { clinicalDocumentConfiguration } from "../forms/clinical-form-configuration.js";
+import { pinShippedDecisionSupport } from "../forms/decision-support.js";
 import { dispatchConflicts, encounterDocument, nextPcrNumber, seedDispatchEncounter } from "../reports/encounter-document.persistence.js";
 import { withReportSnapshot } from "../reports/report-snapshot.js";
 import { reportTextNotes } from "../reports/report-note.persistence.js";
@@ -60,6 +61,7 @@ type ReportRow = {
   form_version_id: string;
   catalog_release_id: string;
   validation_version_id: string | null;
+  decision_support_definition_id?: string | null;
   form_definition_sha256: string | null;
   catalog_artifact_sha256: string | null;
   validation_compiled_sha256: string | null;
@@ -437,10 +439,13 @@ export class AssignedCallsService {
         if (!incident) throw new NotFoundException("Assignment incident is unavailable for this call dataset");
 
         const versions = await manager.query<Array<{ id: string; catalog_release_id: string; validation_version_id: string;
-          form_definition_sha256: string; catalog_artifact_sha256: string; validation_compiled_sha256: string }>>(`
+          form_definition_sha256: string; catalog_artifact_sha256: string; validation_compiled_sha256: string;
+          decision_support_system?: string | null }>>(`
           select active.form_version_id as id,active.catalog_release_id,active.validation_version_id,
-            active.form_definition_sha256,active.catalog_artifact_sha256,active.validation_compiled_sha256
+            active.form_definition_sha256,active.catalog_artifact_sha256,active.validation_compiled_sha256,
+            settings.decision_support_system
           from app_identity.active_configuration_bundle active
+          left join app_identity.agency_settings settings on settings.organization_id=active.organization_id
           join forms.form_version fv on fv.id=active.form_version_id and fv.status='published'
           where active.organization_id = $1
           limit 1
@@ -448,6 +453,8 @@ export class AssignedCallsService {
         const version = versions[0];
         if (!version) throw new ConflictException("The agency Stationary default is unavailable");
 
+        const decisionSupportPin = await pinShippedDecisionSupport(manager, current.organization.id,
+          version.catalog_release_id, version.decision_support_system);
         const agencyVersions = await manager.query<Array<{ id: string }>>(`
           select id from app_identity.agency_demographic_version
           where organization_id = $1 and catalog_release_id = $2 and effective_from <= now()
@@ -473,12 +480,12 @@ export class AssignedCallsService {
             (id, organization_id, incident_id, patient_id, agency_demographic_version_id,
              form_version_id, catalog_release_id, documenting_user_id, validation_version_id, synthetic,
              synthetic_generated_by, synthetic_source_assignment_id,form_definition_sha256,
-             catalog_artifact_sha256,validation_compiled_sha256)
-          values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $15, $10, $11, $12, $13, $14)
+             catalog_artifact_sha256,validation_compiled_sha256,decision_support_definition_id)
+          values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $15, $10, $11, $12, $13, $14,$16)
         `, [reportId, current.organization.id, assignment.incident_id, patientId, agencyVersion.id,
           version.id, version.catalog_release_id, current.user.id, version.validation_version_id,
           assignment.synthetic_generated_by, assignment.synthetic_generated_by ? assignment.id : null,
-          version.form_definition_sha256,version.catalog_artifact_sha256,version.validation_compiled_sha256,assignment.synthetic]);
+          version.form_definition_sha256,version.catalog_artifact_sha256,version.validation_compiled_sha256,assignment.synthetic,decisionSupportPin]);
         const receipts = assignment.dispatch_receipt_id
           ? await manager.query<Array<{ source_payload: Record<string, unknown> }>>(`
               select source_payload from clinical.dispatch_receipt
@@ -600,7 +607,7 @@ export class AssignedCallsService {
     replacementAssignment: AssignedCall | null
   ): Promise<OpenAssignmentResponse> {
       const reports = await manager.query<ReportRow[]>(`
-        select id, documenting_user_id, form_version_id, catalog_release_id, validation_version_id,
+        select id, documenting_user_id, form_version_id, catalog_release_id, validation_version_id, decision_support_definition_id,
                form_definition_sha256, catalog_artifact_sha256, validation_compiled_sha256, revision, status, synthetic, synthetic_generated_by,
                expires_at, media_settings_revision, report_media_allowance_bytes, image_media_limit_bytes,
                dispatch_canceled_at, dispatch_cancellation_revision, dispatch_cancellation_receipt_id
@@ -613,7 +620,7 @@ export class AssignedCallsService {
       const notes = await reportTextNotes(manager, report.id);
       const conflicts = await dispatchConflicts(manager, report.id);
       const clinicalForm = await clinicalDocumentConfiguration(manager, assignment.organization_id, report.form_version_id, report.catalog_release_id,
-        report.validation_version_id, report.validation_compiled_sha256);
+        report.validation_version_id, report.validation_compiled_sha256, report.decision_support_definition_id);
       await recordPatientAccess(manager, { organizationId: assignment.organization_id, actorId: documentingUserId,
         reportIds: [report.id], action: "assignment.open", careProcess: "documentation" });
       return {

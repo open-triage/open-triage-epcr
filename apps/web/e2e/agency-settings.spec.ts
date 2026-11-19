@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { DEFAULT_AGENCY_APPEARANCE } from '@open-triage/contracts';
+import { DEFAULT_AGENCY_APPEARANCE, WEST_A_DECISION_SUPPORT_KEY } from '@open-triage/contracts';
 import { build } from 'esbuild';
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
@@ -17,10 +17,11 @@ test.beforeAll(async()=>{
       createRoot(document.getElementById('root')).render(<AgencySettingsPanel csrfToken="csrf" canWrite={params.get('readonly')!=='1'} language={params.get('language')}/>);
     `}});script=result.outputFiles[0]!.text;
 });
-for(const language of ['en','sv'])for(const layout of ['phone','short-large-text','tablet'])test(`${language} Demo unit selection saves, clears and survives a failed unit refresh on ${layout}`,async({page},testInfo)=>{
+for(const language of ['en','sv'])for(const layout of ['phone','short-large-text','tablet'])test(`${language} Demo unit and WEST settings save and clear on ${layout}`,async({page},testInfo)=>{
   await page.setViewportSize(layout==='tablet'?{width:800,height:1024}:layout==='short-large-text'?{width:320,height:440}:{width:390,height:844});
   const t=(en:string,sv:string)=>language==='sv'?sv:en;
   let settings={organizationId:'agency',revision:1,language:'en',regionalFormat:null,timeZone:'UTC',demoUnitId:null as string|null,
+    decisionSupportSystem:null as string|null,
     syntheticRetentionHours:24,reportMediaAllowanceBytes:52428800,imageMediaLimitBytes:10485760,
     defaultReportMediaAllowanceBytes:52428800,defaultImageMediaLimitBytes:10485760,appearance:DEFAULT_AGENCY_APPEARANCE,
     demographics:{versionId:'version',version:1,catalogReleaseId:'catalog',agencyUniqueStateId:'EMS',agencyNumber:'123',stateCode:'00',stateDisplay:null,stateCodeSystem:'ANSI-STATE',stateTerminologyVersion:null,effectiveFrom:'2026-10-17T00:00:00Z'},storageGrowthWarning:false,updatedAt:'2026-10-17T00:00:00Z'};
@@ -42,20 +43,25 @@ for(const language of ['en','sv'])for(const layout of ['phone','short-large-text
   });
   await page.goto(`/__settings?language=${language}`);
   const select=page.getByLabel(t('Default unit for Demo users','Standardenhet för Demo-användare'),{exact:true});
+  const decisionSupport=page.getByLabel(t("Decision support system","Beslutsstödsystem"),{exact:true});
+  await expect(decisionSupport).toHaveValue("");
   await expect(select).toBeDisabled();
   failUnits=false;await page.getByRole('button',{name:t('Retry loading units','Försök hämta enheter igen')}).click();
   await expect(select).toBeEnabled();
   await expect(select.locator('option')).toHaveCount(2);
-  await select.selectOption('unit-b');expect(saves).toBe(0);
+  await select.selectOption('unit-b');await decisionSupport.selectOption(WEST_A_DECISION_SUPPORT_KEY);expect(saves).toBe(0);
   const save=page.getByRole('button',{name:t('Save','Spara'),exact:true});
   await save.click();await expect.poll(()=>saves).toBe(1);await expect(save).toBeDisabled();
   await page.reload();await expect(select).toHaveValue('unit-b');
+  await expect(decisionSupport).toHaveValue(WEST_A_DECISION_SUPPORT_KEY);
   await select.scrollIntoViewIfNeeded();await expect(select).toBeInViewport();
   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),JSON.stringify(await page.evaluate(()=>[...document.querySelectorAll('body *')].filter(node=>node.getClientRects().length&&node.getBoundingClientRect().right>innerWidth+1).map(node=>({tag:node.tagName,cls:node.className,width:node.getBoundingClientRect().width,text:node.textContent?.slice(0,60)}))))).toBe(true);
   const accessibility=await new AxeBuilder({page}).include('.agency-settings').analyze();
   expect(accessibility.violations.filter(({impact})=>impact==='serious'||impact==='critical')).toEqual([]);
   await page.screenshot({path:testInfo.outputPath(`demo-default-${language}-${layout}.png`)});
-  await select.selectOption('');await save.click();await expect.poll(()=>saves).toBe(2);
+  await select.selectOption('');await decisionSupport.selectOption('');await save.click();await expect.poll(()=>saves).toBe(2);
   expect(settings.demoUnitId).toBeNull();
+  expect(settings.decisionSupportSystem).toBeNull();
   await page.goto(`/__settings?language=${language}&readonly=1`);await expect(select).toBeDisabled();
+  await expect(decisionSupport).toBeDisabled();
 });

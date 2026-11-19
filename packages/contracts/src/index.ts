@@ -1,3 +1,4 @@
+export * from "./decision-support.js";
 export { SUPPORTED_UI_LANGUAGES, isSupportedUiLanguage } from "./ui-languages.generated.js";
 export { filterValidationRuleLibrary } from "./validation-rule-library.js";
 export { DEFAULT_PAIRING_EXPIRY_MINUTES, MAX_PAIRING_EXPIRY_MINUTES } from "./installation-enrollment.js";
@@ -975,6 +976,8 @@ export const DEFAULT_AGENCY_AUTHENTICATION_LIMITS: Readonly<AgencyAuthentication
 export const MAX_AGENCY_AUTHENTICATION_ATTEMPTS = 1_000;
 
 export interface AgencyMediaSettings {
+  /** Null or absent leaves clinical decision support disabled. */
+  decisionSupportSystem?: import("./decision-support.js").DecisionSupportSystemKey | null;
   /** Default for Demo users without an explicit installation pairing. */
   demoUnitId?: string | null;
   organizationId: string;
@@ -998,6 +1001,8 @@ export interface AgencyMediaSettings {
 }
 
 export interface UpdateAgencyMediaSettingsCommand {
+  /** Omitted preserves the selection; null disables it for new encounters. */
+  decisionSupportSystem?: import("./decision-support.js").DecisionSupportSystemKey | null;
   /** Omitted preserves the current default; null disables automatic pairing. */
   demoUnitId?: string | null;
   expectedRevision: number;
@@ -1664,6 +1669,7 @@ export interface FormDraftDefinition {
 
 /** Runtime projection of the immutable form and catalog versions pinned to a report. */
 export interface ClinicalFormConfiguration {
+  decisionSupport?: import("./decision-support.js").ClinicalDecisionSupportConfiguration;
   customFields?: Record<string, CatalogDraftCustomElement>;
   customGroups?: Record<string, CatalogDraftCustomGroup>;
   /** Group wording from the same immutable catalog as the fields. */

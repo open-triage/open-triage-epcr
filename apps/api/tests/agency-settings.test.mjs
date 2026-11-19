@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import test from "node:test";
 import { ConflictException, UnauthorizedException, UnprocessableEntityException } from "@nestjs/common";
-import { DEFAULT_AGENCY_APPEARANCE } from "@open-triage/contracts";
+import { DEFAULT_AGENCY_APPEARANCE, WEST_A_DECISION_SUPPORT_KEY } from "@open-triage/contracts";
 import { AgencySettingsService as BaseAgencySettingsService } from "../dist/admin/agency-settings.service.js";
 import { contrastRatio, validateUpdateAgencyMediaSettings } from "../dist/admin/agency-settings.validation.js";
 
@@ -42,12 +42,16 @@ const command = (revision = 1, bytes = 50 * 1024 * 1024) => ({ expectedRevision:
 
 test("Agency Settings validation accepts complete bounded settings and rejects unsafe presentation", () => {
   assert.deepEqual(validateUpdateAgencyMediaSettings(command(2, 75 * 1024 * 1024)), command(2, 75 * 1024 * 1024));
+  assert.equal(validateUpdateAgencyMediaSettings({ ...command(), decisionSupportSystem: WEST_A_DECISION_SUPPORT_KEY })
+    .decisionSupportSystem, WEST_A_DECISION_SUPPORT_KEY);
+  assert.equal(validateUpdateAgencyMediaSettings({ ...command(), decisionSupportSystem: null }).decisionSupportSystem, null);
   assert.ok(contrastRatio("#00783a", "#ffffff") >= 4.5);
   for (const input of [
     null,
     { ...command(), expectedRevision: 0 },
     { ...command(), language: "fr" },
     { ...command(), regionalFormat: "fr-FR" },
+    { ...command(), decisionSupportSystem: "unregistered" },
     { ...command(), timeZone: "Invalid/Zone" },
     { ...command(), timeZone: "+02:00" },
     { ...command(), reportMediaAllowanceBytes: 1024 * 1024 + 1 },

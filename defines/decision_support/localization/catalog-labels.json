@@ -1,0 +1,26 @@
+{
+  "categories": {
+    "title": { "en": "WEST categories", "sv": "WEST-kategorier" },
+    "description": { "en": "Categories documented for this vital measurement.", "sv": "Dokumenterade kategorier för denna mätning av vitalparametrar." }
+  },
+  "criteria": {
+    "title": { "en": "WEST assessed criteria", "sv": "Bedömda WEST-kriterier" },
+    "description": { "en": "Clinical criteria or explicit negative findings documented by category.", "sv": "Kliniska kriterier eller uttryckligen negativa fynd dokumenterade per kategori." }
+  },
+  "noWarningCriteria": {
+    "title": { "en": "WEST no warning criteria", "sv": "WEST inga varningskriterier" },
+    "description": { "en": "Explicit absence of warning criteria for this measurement.", "sv": "Uttrycklig frånvaro av varningskriterier för denna mätning." }
+  },
+  "newsScale": {
+    "title": { "en": "NEWS scale", "sv": "NEWS-skala" },
+    "description": { "en": "The clinical scale selected for this measurement.", "sv": "Klinisk skala som valts för denna mätning." }
+  },
+  "overrideColour": {
+    "title": { "en": "Manual WEST color", "sv": "Manuell WEST-färg" },
+    "description": { "en": "The clinician's manual triage color for this measurement.", "sv": "Vårdgivarens manuella triagefärg för denna mätning." }
+  },
+  "physiologyScore": {
+    "title": { "en": "Calculated NEWS total", "sv": "Beräknad NEWS-poäng" },
+    "description": { "en": "Read-only integer total for the selected scale.", "sv": "Skrivskyddad totalpoäng i heltal för vald skala." }
+  }
+}

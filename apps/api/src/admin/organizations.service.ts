@@ -103,7 +103,7 @@ export class OrganizationsService {
         await manager.query(`update app_identity.agency_settings set brand_text=$2, pwa_name=$2,
           pwa_short_name=left($2,12), time_zone=$3 where organization_id=$1`, [agency.id, command.name, command.timeZone]);
         if (settings) await new AgencySettingsService(this.database, this.sessions)
-          .updateInTransaction(manager, agency.id, actor.user.id, settings);
+          .updateInTransaction(manager, agency.id, actor.user.id, settings, command.catalogReleaseId);
         const startingConfiguration = await installStartingConfiguration(this.database, manager, actor, token, agency, command);
         await this.audit(manager, actor.user.id, agency.id, "agency.create", { ...startingConfiguration, name: command.name,
           parentOrganizationId: command.parentOrganizationId, hostname: command.hostname });

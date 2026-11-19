@@ -1,7 +1,7 @@
 import type { AuditDump, AuditPage, AuditQuery, AuditUserPage, ClinicalAuditValues } from "@open-triage/contracts";
 import { platformRequestError } from "./platform-errors";
 import type { AdminCapabilityCatalog, AdminContext, AdminRole, AdminRoleHistory, AdminRoleList, AdminRoleSummaryList, AdminSessionList, AdminUserPage, AuthoringVersionOption, CancelOwnershipTransferCommand, CatalogDefinitionView, CatalogDraft, CatalogValidationResult, FormCatalogElementPage, InitiateOwnershipTransferCommand, OwnershipTransferState, ProvisionAdminUserCommand, ProvisionedAdminUser, PublishedCatalog, PublishedStationaryForm, PublishedValidationVersion, ReplaceAdminUserRolesCommand, ResetAdminCredentialCommand, ResetAdminCredentialResult, RevokedAdminSession, SaveAdminRoleCommand, StationaryFormActivation, StationaryFormDraft, UpdatedAdminUser, UpdatedAdminUserRoles, UpdateAdminUserCommand, ValidationActivation, ValidationDraft, ValidationDraftResult, ValidationRulePage, ValidationRuleSource } from "@open-triage/contracts";
-import type { AgencyMediaSettings, UpdateAgencyMediaSettingsCommand } from "@open-triage/contracts";
+import type { AgencyMediaSettings, DecisionSupportCatalogElement, UpdateAgencyMediaSettingsCommand } from "@open-triage/contracts";
 import { apiRequestUrl, browserRequestConfiguration, browserRequestInit, browserRouteUrl } from "./browser-api";
 
 export const loadAndroidRelease = () => catalogRequest<import("@open-triage/contracts").AndroidReleaseAvailability>("android/release");
@@ -41,6 +41,8 @@ export const loadAuditUsers = (cursor?: string) => catalogRequest<AuditUserPage>
   `audit/users${cursor ? `?${new URLSearchParams({ cursor })}` : ""}`, undefined, { cache: "no-store" });
 export const loadCatalogVersions = () => catalogRequest<AuthoringVersionOption[]>("catalog-versions");
 export const loadCatalogVersion = (id: string) => catalogRequest<CatalogDefinitionView>(`catalog-versions/${id}`);
+export const loadCatalogDecisionSupportElements = () =>
+  catalogRequest<DecisionSupportCatalogElement[]>("catalog-decision-support-elements");
 export const loadActiveCatalogDefinition = () => catalogRequest<CatalogDefinitionView | null>("catalog-definition", undefined, undefined, { value: null });
 export const cloneCatalogDraft = (csrfToken: string, displayName: string, sourceVersionId?: string) => catalogRequest<CatalogDraft>("catalog-drafts", csrfToken, {
   method: "POST", body: JSON.stringify({ displayName, sourceVersionId })
