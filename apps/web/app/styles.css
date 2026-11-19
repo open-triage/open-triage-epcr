@@ -1541,3 +1541,18 @@ a.button-link { display: inline-flex; align-items: center; justify-content: cent
 .vital-decision-support-indicator[data-colour="orange"] { background: #c96212; }
 .vital-decision-support-indicator[data-colour="red"] { background: #c12b36; }
 .vital-decision-support p { margin: 6px 0 0; color: var(--validation-error, #a11824); }
+
+.vital-west-findings { display: grid; gap: 8px; margin-block: 8px 12px; }
+.vital-west-findings > label { margin: 0; }
+.vital-west-findings select { display: block; width: 100%; margin-top: 4px; }
+.vital-west-choices, .vital-west-documented, .vital-west-documented ul { list-style: none; padding: 0; margin: 4px 0 0; }
+.vital-west-choices { max-height: 200px; overflow: auto; border: 1px solid var(--green); border-radius: 6px; }
+.vital-west-choices button { display: grid; grid-template-columns: minmax(0, 1fr); width: 100%; text-align: left; padding: 8px; gap: 2px; border: 0; border-radius: 0; }
+.vital-west-choices button:hover { background: var(--inactive-button); }
+.vital-west-choices button:focus-visible { outline-offset: -3px; }
+.vital-west-severity { display: flex; align-items: center; gap: 5px; font-size: var(--text-caption); }
+.vital-west-documented > li + li { margin-top: 6px; }
+.vital-west-documented li li { display: grid; grid-template-columns: minmax(0, 1fr) 44px; align-items: center; gap: 4px; }
+.vital-west-documented li li button { padding: 0; }
+.note-dialog .vital-west-no-warning { display: flex; min-height: 44px; align-items: center; gap: 8px; }
+.note-dialog .vital-west-no-warning input { width: 18px; height: 18px; min-height: 0; padding: 0; }

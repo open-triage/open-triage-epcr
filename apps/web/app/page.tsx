@@ -22,8 +22,8 @@ import {EpsSigningCheckbox,EpsDeliveryStatus,useEpsSigningActivation,useSigningE
 import { MedicationDialog } from "../components/medication-dialog";
 import { resolveCatalogElementText } from "./catalog-localization";
 import { VitalDecisionSupport } from "../components/vital-decision-support";
-import { UNASSESSED_VITAL } from "./vital-decision-support";
-import { effectiveDecisionSupportColour } from "@open-triage/contracts";
+import { VitalDecisionSupportFindings } from "../components/vital-decision-support-findings";
+import { effectiveDecisionSupportColour, EMPTY_DECISION_SUPPORT_FINDINGS } from "@open-triage/contracts";
 import { ProcedureDialog } from "../components/procedure-dialog";
 import { QuickActionIcon } from "../components/quick-action-icon";
 import { StationaryRecord } from "../components/stationary-record";
@@ -43,6 +43,7 @@ import {
   MISSING_VITALS_FINDING_ID,
   reviewEncounter,
   standardEncounterReducer,
+  vitalDraftDecisionSupport,
   type EncounterEvent,
   type ReviewFinding,
   type ShellView,
@@ -272,7 +273,7 @@ function EncounterWorkspace({ session, report, presentationMode, language, onSav
   const decisionSupport = report?.clinicalForm?.decisionSupport;
   const westOverrideRef = useRef<HTMLSelectElement>(null);
   const [westMissingColour, setWestMissingColour] = useState(false);
-  const westDraft = shell.vitalDraft?.decisionSupport ?? UNASSESSED_VITAL;
+  const westDraft = vitalDraftDecisionSupport(shell.vitalDraft, decisionSupport);
   const westEffectiveColour = effectiveDecisionSupportColour(westDraft.calculation, westDraft.override?.colour);
   const vitalDefinition = mobileDisplayDefinition(bundledEncounterDefinition, language, report?.clinicalForm).events.vitals;
   const displayDefinition = { ...bundledEncounterDefinition, events: { ...bundledEncounterDefinition.events,
@@ -1309,10 +1310,14 @@ function EncounterWorkspace({ session, report, presentationMode, language, onSav
               language={language} overrideRef={westOverrideRef} missingColour={westMissingColour && !westEffectiveColour}
               onOverride={(colour) => {
                 setWestMissingColour(false);
-                dispatch({ type: "vitals-override-changed", colour, enteredBy: session.user.id, enteredAt: new Date().toISOString() });
+                dispatch({ type: "vitals-override-changed", decisionSupport, colour, enteredBy: session.user.id, enteredAt: new Date().toISOString() });
               }} />}
             <TimePicker language={language} className={vitalFindingActive && editingFinding && !editingVitalField ? `finding-frame ${editingFinding.severity}` : undefined} initialFocus label={vitalDefinition.labels.time} date={shell.vitalDraft.date} onDateChange={(value) => dispatch({ type: "vitals-date-changed", value })} value={shell.vitalDraft.time} selectedInstant={shell.vitalDraft.dateTime} onDateTimeChange={(date, time, dateTime) => dispatch({ type: "clinical-time-selected", kind: "vitals", date, time, dateTime })} onChange={(value) => dispatch({ type: "vitals-time-changed", value })} />
             <DialogValidationMessage finding={vitalFindingActive && !editingVitalField ? editingActionableFinding : undefined} />
+            {decisionSupport && <VitalDecisionSupportFindings key={shell.vitalDraft.id}
+              definition={decisionSupport.definition} findings={westDraft.findings ?? EMPTY_DECISION_SUPPORT_FINDINGS}
+              localTime={shell.vitalDraft.recordedLocalTime ?? shell.vitalDraft.time} language={language}
+              onChange={(findings) => dispatch({ type: "vitals-findings-changed", findings })} />}
             <div className="vital-grid">
               {vitalDefinition.fields.map((configuredField) => {
                 const field = configuredField.id;

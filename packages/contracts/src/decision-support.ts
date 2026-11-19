@@ -80,6 +80,7 @@ export interface DecisionSupportDefinition {
     optionSemantics: { time_window: { windows: Record<string, { startInclusive: string; endExclusive: string }> } };
     result: {
       overrideAllowed: TriageColour[];
+      redIsDefinitiveWithIncompleteInputs: boolean;
       unsupportedDraft: { indicatorColour: string; label: LocalizedLabel };
       provisionalLabel: LocalizedLabel;
       finalization: { requiredElement: string; onMissing: string; message: LocalizedLabel };
@@ -129,7 +130,7 @@ export function isSelectableDecisionSupportCriterion(criterion: DecisionSupportC
 
 export type DecisionSupportCalculation =
   | { readonly status: "unassessed"; readonly colour: null }
-  | { readonly status: "provisional" | "definitive"; readonly colour: TriageColour };
+  | { readonly status: "provisional" | "definitive"; readonly colour: TriageColour; readonly criterionCode?: string };
 
 export type FinalizedDecisionSupportCalculation = DecisionSupportCalculation & {
   readonly systemKey: DecisionSupportSystemKey;
@@ -147,6 +148,7 @@ export interface DecisionSupportOverride {
 export interface DraftDecisionSupportAssessment {
   readonly calculation: DecisionSupportCalculation;
   readonly override: DecisionSupportOverride | null;
+  readonly findings?: DecisionSupportFindings;
 }
 
 export const UNASSESSED_DECISION_SUPPORT: DecisionSupportCalculation = { status: "unassessed", colour: null };
@@ -163,4 +165,75 @@ export function effectiveDecisionSupportColour(
 
 export function decisionSupportElementKey(field: Pick<DecisionSupportCatalogElement, "namespace" | "slug">): string {
   return `${field.namespace}.${field.slug}`;
+}
+
+export interface DecisionSupportFindings {
+  readonly criteria: readonly string[];
+  readonly noWarningCriteria: boolean;
+}
+
+export const EMPTY_DECISION_SUPPORT_FINDINGS: DecisionSupportFindings = { criteria: [], noWarningCriteria: false };
+
+export function decisionSupportNegativeCode(definition: DecisionSupportDefinition, categoryId: string): string {
+  return `${categoryId}.${definition.assessment.elements.criteria.noneOption.code}`;
+}
+
+export function decisionSupportCriterionLabel(criterion: DecisionSupportCriterion, suffix?: LocalizedLabel,
+  language: keyof LocalizedLabel = "en"): string {
+  const label = criterion.displayLabel ?? criterion.text;
+  return suffix ? `${label} · ${suffix[language]}` : label;
+}
+
+export function decisionSupportCriterionAvailable(definition: DecisionSupportDefinition, criterion: DecisionSupportCriterion,
+  localTime: string): boolean {
+  if (criterion.population === "paediatric") return false;
+  if (!criterion.time_window) return true;
+  const window = definition.assessment.optionSemantics.time_window.windows[criterion.time_window];
+  return !!window && /^([01]\d|2[0-3]):[0-5]\d$/.test(localTime) &&
+    localTime >= window.startInclusive && localTime < window.endExclusive;
+}
+
+/** Use the offset recorded with the measurement on both sides of synchronization. */
+export function decisionSupportMeasurementLocalTime(instant: string | Date, utcOffsetMinutes = 0): string {
+  const time = new Date(instant).getTime();
+  return Number.isFinite(time) ? new Date(time + utcOffsetMinutes * 60_000).toISOString().slice(11, 16) : "";
+}
+
+export function decisionSupportFindingCategories(definition: DecisionSupportDefinition, selectedCodes: readonly string[]) {
+  const selected = new Set(selectedCodes);
+  return decisionSupportPickerCategories(definition.categories).map((category) => ({
+    category,
+    negative: selected.has(decisionSupportNegativeCode(definition, category.id)),
+    criteria: decisionSupportCategoryCriteria(category).filter(({ criterion }) =>
+      isSelectableDecisionSupportCriterion(criterion) && selected.has(criterion.id)),
+  })).filter(({ negative, criteria }) => negative || criteria.length);
+}
+
+export function decisionSupportFindingResult(definition: DecisionSupportDefinition, findings: DecisionSupportFindings,
+  localTime: string) {
+  const categories = decisionSupportFindingCategories(definition, findings.criteria);
+  const represented = categories.reduce((total, category) => total + category.criteria.length + Number(category.negative), 0);
+  const available = categories.flatMap(({ criteria }) => criteria)
+    .filter(({ criterion }) => decisionSupportCriterionAvailable(definition, criterion, localTime));
+  const priority = definition.assessment.colourPriority;
+  const highest = available.reduce<typeof available[number] | undefined>((best, item) =>
+    !best || priority.indexOf(item.criterion.triage_color) > priority.indexOf(best.criterion.triage_color) ? item : best, undefined);
+  const explicitNoWarningCriteria = findings.noWarningCriteria || (categories.length > 0 && categories.every(({ negative }) => negative));
+  return {
+    valid: findings.criteria.length === represented && !categories.some(({ negative, criteria }) => negative && criteria.length) &&
+      !(findings.noWarningCriteria && highest && highest.criterion.triage_color !== "green"),
+    categoryCodes: categories.map(({ category }) => category.id),
+    highest,
+    explicitNoWarningCriteria,
+  };
+}
+
+/** Incomplete physiology can support yellow or orange provisionally, and red definitively. */
+export function calculateDecisionSupportFindings(definition: DecisionSupportDefinition,
+  result: ReturnType<typeof decisionSupportFindingResult>): DecisionSupportCalculation {
+  const criterion = result.highest?.criterion;
+  if (!result.valid || !criterion || criterion.triage_color === "green") return UNASSESSED_DECISION_SUPPORT;
+  const definitive = criterion.triage_color === "red" && definition.assessment.result.redIsDefinitiveWithIncompleteInputs;
+  return { status: definitive ? "definitive" : "provisional", colour: criterion.triage_color,
+    criterionCode: criterion.id };
 }

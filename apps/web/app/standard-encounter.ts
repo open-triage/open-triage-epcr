@@ -8,7 +8,7 @@ import type { ConfiguredEventType, EncounterDefinition, MedicationFieldId, Vital
 import type { CustomDataSet } from "./custom-data-elements";
 import { effectiveDecisionSupportColour, type ClinicalDecisionSupportConfiguration, type DraftDecisionSupportAssessment,
   type EncounterDocument, type TriageColour } from "@open-triage/contracts";
-import { chooseVitalOverride, UNASSESSED_VITAL, vitalDecisionSupport, withVitalDecisionSupport } from "./vital-decision-support";
+import { chooseVitalOverride, UNASSESSED_VITAL, vitalAssessmentWithFindings, vitalDecisionSupport, vitalRecordedLocalTime, withVitalDecisionSupport, withVitalMeasurementOffset } from "./vital-decision-support";
 import syntheticEncounterDocument from "./data/synthetic-encounter-document.json";
 import { loadEncounterDocument } from "./encounter-document";
 import { encounterEvents, removeCanonicalEvent, saveCanonicalEvent } from "./canonical-events";
@@ -37,7 +37,7 @@ export type EncounterEvent = {
 export type VitalField = ConfiguredVitalField;
 export type NullValue = "" | VitalNullValue;
 export type VitalValues = Record<VitalField, string> & { readonly nullValues: Partial<Record<VitalField, NullValue>> };
-export type VitalDraft = { readonly id: string; readonly date: string; readonly time: string; readonly dateTime?: string; readonly values: VitalValues; readonly isNew: boolean; readonly decisionSupport?: DraftDecisionSupportAssessment };
+export type VitalDraft = { readonly id: string; readonly date: string; readonly time: string; readonly dateTime?: string; readonly values: VitalValues; readonly isNew: boolean; readonly decisionSupport?: DraftDecisionSupportAssessment; readonly recordedLocalTime?: string };
 
 export type Encounter = {
   readonly definitionId: string;
@@ -133,7 +133,8 @@ export type ShellAction =
   | { readonly type: "vitals-cancelled" }
   | { readonly type: "vitals-removed" }
   | { readonly type: "vitals-saved"; readonly decisionSupport?: ClinicalDecisionSupportConfiguration }
-  | { readonly type: "vitals-override-changed"; readonly colour: TriageColour | null; readonly enteredBy: string; readonly enteredAt: string }
+  | { readonly type: "vitals-findings-changed"; readonly findings: import("@open-triage/contracts").DecisionSupportFindings }
+  | { readonly type: "vitals-override-changed"; readonly decisionSupport?: ClinicalDecisionSupportConfiguration; readonly colour: TriageColour | null; readonly enteredBy: string; readonly enteredAt: string }
   | { readonly type: "state-restored"; readonly state: ShellState };
 
 export const EMPTY_VITALS: VitalValues = { systolic: "", diastolic: "", heartRate: "", spo2: "", respiratoryRate: "", gcs: "", pain: "", nullValues: {} };
@@ -373,7 +374,7 @@ export function transitionShell(state: ShellState, action: ShellAction, definiti
     case "clinical-time-selected": {
       const field = action.kind === "vitals" ? "vitalDraft" : action.kind === "procedure" ? "procedureDraft" : "medicationDraft";
       const draft = state[field];
-      return draft ? { ...state, [field]: { ...draft, date: action.date, time: action.time, dateTime: action.dateTime } } : state;
+      return draft ? { ...state, [field]: { ...draft, date: action.date, time: action.time, dateTime: action.dateTime, ...(field === "vitalDraft" ? { recordedLocalTime: undefined } : {}) } } : state;
     }
     case "time-zone-loaded":
       return { ...state, timeZone: action.timeZone };
@@ -606,19 +607,23 @@ export function transitionShell(state: ShellState, action: ShellAction, definiti
         ?.instances.find(({ instanceId }) => instanceId === event.id);
       return { ...state, vitalDraft: { id: event.id, date: event.date ?? DEMO_FALLBACK_DATE, time: event.time,
         dateTime: event.dateTime, values: { ...EMPTY_VITALS, ...event.vitals, nullValues: event.vitals.nullValues ?? {} },
-        isNew: false, ...(config ? { decisionSupport: vitalDecisionSupport(instance, config) } : {}) } };
+        isNew: false, ...(config ? { decisionSupport: vitalDecisionSupport(instance, config), recordedLocalTime: vitalRecordedLocalTime(instance) } : {}) } };
     }
     case "vitals-time-changed":
-      return state.vitalDraft ? { ...state, vitalDraft: { ...state.vitalDraft, time: action.value, dateTime: undefined } } : state;
+      return state.vitalDraft ? { ...state, vitalDraft: { ...state.vitalDraft, time: action.value, dateTime: undefined, recordedLocalTime: undefined } } : state;
     case "vitals-date-changed":
-      return state.vitalDraft ? { ...state, vitalDraft: { ...state.vitalDraft, date: action.value, dateTime: undefined } } : state;
+      return state.vitalDraft ? { ...state, vitalDraft: { ...state.vitalDraft, date: action.value, dateTime: undefined, recordedLocalTime: undefined } } : state;
     case "vitals-value-changed":
       return state.vitalDraft ? { ...state, vitalDraft: { ...state.vitalDraft, values: { ...state.vitalDraft.values, [action.field]: action.value, nullValues: { ...state.vitalDraft.values.nullValues, [action.field]: "" } } } } : state;
     case "vitals-null-changed":
       return state.vitalDraft ? { ...state, vitalDraft: { ...state.vitalDraft, values: { ...state.vitalDraft.values, [action.field]: "", nullValues: { ...state.vitalDraft.values.nullValues, [action.field]: action.value } } } } : state;
+    case "vitals-findings-changed":
+      return state.vitalDraft ? { ...state, vitalDraft: { ...state.vitalDraft, decisionSupport: {
+        ...(state.vitalDraft.decisionSupport ?? UNASSESSED_VITAL), findings: action.findings,
+      } } } : state;
     case "vitals-override-changed": {
       if (!state.vitalDraft) return state;
-      const assessment = state.vitalDraft.decisionSupport ?? UNASSESSED_VITAL;
+      const assessment = vitalDraftDecisionSupport(state.vitalDraft, action.decisionSupport);
       const selected = chooseVitalOverride(assessment, action.colour, action.enteredBy, action.enteredAt);
       return selected === assessment ? state : { ...state, vitalDraft: { ...state.vitalDraft, decisionSupport: selected } };
     }
@@ -632,13 +637,14 @@ export function transitionShell(state: ShellState, action: ShellAction, definiti
       const vitalDefinition = definition.events.vitals;
       const event: EncounterEvent = { id: draft.id, date: draft.date, time: draft.time, dateTime: draft.dateTime, kind: "care", title: vitalDefinition.labels.timelineTitle, detail: vitalSummary(draft.values, definition), reference: vitalDefinition.references.group, visitorEntered: true, vitals: draft.values };
       const configuration = action.decisionSupport;
-      const assessment = draft.decisionSupport ?? UNASSESSED_VITAL;
+      const assessment = vitalDraftDecisionSupport(draft, configuration);
       if (configuration && !effectiveDecisionSupportColour(assessment.calculation, assessment.override?.colour)) return state;
       let document = saveCanonicalEvent(state.encounter.document, event, definition, state.timeZone ?? null);
       if (configuration) {
         document = { ...document, groups: document.groups.map((group) => group.id === configuration.definition.assessment.group
           ? { ...group, instances: group.instances.map((instance) => instance.instanceId === draft.id
-            ? withVitalDecisionSupport(instance, configuration, assessment) : instance) } : group) };
+            ? withVitalDecisionSupport(withVitalMeasurementOffset(instance, state.timeZone ?? null,
+              !draft.recordedLocalTime), configuration, assessment) : instance) } : group) };
       }
       return { ...state, view: "timeline", vitalDraft: null, encounter: { ...state.encounter, document } };
     }
@@ -653,4 +659,9 @@ export function transitionShell(state: ShellState, action: ShellAction, definiti
 
 export function standardEncounterReducer(state: ShellState, action: ShellAction): ShellState {
   return transitionShell(state, action, bundledEncounterDefinition);
+}
+
+export function vitalDraftDecisionSupport(draft: VitalDraft | null, configuration?: ClinicalDecisionSupportConfiguration): DraftDecisionSupportAssessment {
+  const assessment = draft?.decisionSupport ?? UNASSESSED_VITAL;
+  return draft && configuration ? vitalAssessmentWithFindings(assessment, configuration.definition, draft.recordedLocalTime ?? draft.time) : assessment;
 }
