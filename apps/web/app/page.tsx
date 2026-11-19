@@ -89,7 +89,8 @@ import { completeReportTimeline, noteReadinessBlockers, REPORT_TEXT_NOTE_MAX_CHA
   type NoteReadinessBlocker } from "./report-text-notes";
 import { ListRowAction } from "../components/list-row-action";
 import { EncounterTimeline } from "../components/encounter-timeline";
-import { latestFinalizedVitalDecisionSupport } from "./finalized-vital-decision-support";
+import { compareVitalMeasurements, latestFinalizedVitalDecisionSupport } from "./finalized-vital-decision-support";
+import { vitalDraftMeasurementInstant } from "./vital-measurement";
 import { WestLevel } from "../components/west-level";
 import { WorkspaceSidebar } from "../components/workspace-sidebar";
 import { loadStationaryTimelineOpen, storeStationaryTimelineOpen } from "./stationary-timeline-preference";
@@ -281,6 +282,17 @@ function EncounterWorkspace({ session, report, presentationMode, language, onSav
   const [westMissingColour, setWestMissingColour] = useState(false);
   const westDraft = vitalDraftDecisionSupport(shell.vitalDraft, decisionSupport);
   const westEffectiveColour = effectiveDecisionSupportColour(westDraft.calculation, westDraft.override?.colour);
+  const mobileWestEnabled = presentationMode === "mobile" && Boolean(decisionSupport);
+  const { id: draftVitalId, date: draftVitalDate, time: draftVitalTime, dateTime: draftVitalDateTime } =
+    (mobileWestEnabled ? shell.vitalDraft : null) ?? {};
+  const draftVitalInstant = useMemo(() => draftVitalDate && draftVitalTime
+    ? vitalDraftMeasurementInstant({ date: draftVitalDate, time: draftVitalTime, dateTime: draftVitalDateTime }, zone)
+    : undefined, [draftVitalDate, draftVitalTime, draftVitalDateTime, zone]);
+  const previewWestDraft = shell.view !== "review" && draftVitalId && draftVitalInstant &&
+    (!latestWestLevel || compareVitalMeasurements({ instanceId: draftVitalId, measurementInstant: draftVitalInstant }, latestWestLevel) >= 0);
+  const westFrameColour = mobileWestEnabled
+    ? (previewWestDraft ? westEffectiveColour ?? "gray" : latestWestLevel?.colour)
+    : undefined;
   const vitalDefinition = mobileDisplayDefinition(bundledEncounterDefinition, language, report?.clinicalForm).events.vitals;
   const displayDefinition = { ...bundledEncounterDefinition, events: { ...bundledEncounterDefinition.events,
     procedure: procedureDefinition, medication: medicationDefinition, vitals: vitalDefinition } };
@@ -1026,6 +1038,7 @@ function EncounterWorkspace({ session, report, presentationMode, language, onSav
     <main className={`app-shell ${presentationMode}-presentation${presentationMode === "stationary" && stationaryTimelineOpen ? " stationary-timeline-open" : ""}`} data-presentation-mode={presentationMode}
       data-editing-blocked={editingBlocked || signing || cosBusy || undefined} onClickCapture={blockProtectedEdit}
       onBeforeInputCapture={blockProtectedEdit} onKeyDownCapture={blockProtectedEdit}>
+      {westFrameColour && <div className="west-encounter-frame" data-colour={westFrameColour} aria-hidden="true" />}
       {closeError && <p className="safety-notice" role="alert" data-feedback-source="close">{t("mobile.protectedBeforeClose")}</p>}
       {recoveryNotice && !bestEffortNoticeInDemoBanner && <aside className="safety-notice" role="status" data-feedback-source="protected-storage"><strong>{recoveryNoticeHeading}</strong><span>{recoveryNotice}</span></aside>}
       {cosBusy&&<aside className="safety-notice" role="status">{t(epsBusy?"epsSubmission.signingPending":"cosSigning.pending")}</aside>}

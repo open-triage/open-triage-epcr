@@ -7,7 +7,7 @@ import productionSettings from "@open-triage/contracts/config/installation.produ
 import demoAssignedCalls from "../public/demo-assigned-calls.json";
 import demoOpenAssignment from "../public/demo-open-assignment.json";
 import westDefinition from "../../../defines/decision_support/west-a-2025.json";
-import type { ClinicalDecisionSupportConfiguration, ClinicalFormConfiguration, EncounterDocument, EncounterGroupInstance, FinalizedDecisionSupportCalculation } from "@open-triage/contracts";
+import type { ClinicalDecisionSupportConfiguration, ClinicalFormConfiguration, EncounterDocument, EncounterGroupInstance, FinalizedDecisionSupportCalculation, TriageColour } from "@open-triage/contracts";
 
 const serverBacked = process.env.OPEN_TRIAGE_E2E_SERVER_MODE === "true";
 const assignedCall = demoAssignedCalls.assignedCalls[0]!;
@@ -1669,4 +1669,119 @@ test("the initial stale server poll cannot reverse a recovered queued edit alrea
     await expect(firstName).toHaveValue("RECOVERED DURABLE");
     expect(writes, "acknowledging recovered work must not enqueue an old-shell reverse edit").toEqual([true]);
   } finally { releasePoll(); releaseSave(); }
+});
+
+for (const { width, language, openCall, addVitals, overrideLabel, cancelLabel, unassessed, latest, manual,
+  olderLevel, useDateTime, checklist, timeline } of [
+  { width: 320, language: "en", openCall: "Open call", addVitals: "Add vital signs", overrideLabel: "WEST override",
+    cancelLabel: "Cancel", unassessed: "Unassessed", latest: "Latest WEST level · Red", manual: "Orange · Manual",
+    olderLevel: "WEST · Yellow", useDateTime: "Use date & time", checklist: "Checklist", timeline: "Timeline" },
+  { width: 390, language: "sv", openCall: "Öppna uppdrag", addVitals: "Lägg till vitalparametrar", overrideLabel: "Manuell WEST-färg",
+    cancelLabel: "Avbryt", unassessed: "Ej bedömd", latest: "Senaste WEST-nivå · Röd", manual: "Orange · Manuell",
+    olderLevel: "WEST · Gul", useDateTime: "Använd datum och tid", checklist: "Checklista", timeline: "Tidslinje" },
+]) {
+  test(`mobile WEST frame follows the current assessment while scrolling at ${width}px`, async ({ page }) => {
+    test.skip(!serverBacked, "requires OPEN_TRIAGE_E2E_SERVER_MODE=true");
+    await page.setViewportSize({ width, height: 620 });
+    await page.clock.setFixedTime(new Date("2026-10-20T08:00:00Z"));
+    const vital = (instanceId: string, measuredAt: string, colour: TriageColour): EncounterGroupInstance => ({
+      instanceId,
+      attributes: { "x-open-triage-owner": "clinician", documentedTime: measuredAt },
+      elements: [{ id: "eVitals.01", values: [{ occurrenceId: `${instanceId}:time`, kind: "scalar", value: measuredAt }] }],
+      decisionSupportCalculation: {
+        systemKey: westDecisionSupport.definition.key, version: westDefinition.version, status: "definitive", colour,
+      },
+    });
+    const earlierVital = vital("42000000-0000-4000-8000-000000000021", "2026-10-18T08:00:00Z", "yellow");
+    const latestVital = vital("42000000-0000-4000-8000-000000000020", "2026-10-19T08:00:00Z", "red");
+    const baseDocument = openedAssignment.report.document as EncounterDocument;
+    const encounterDocument = { ...baseDocument, groups: [...baseDocument.groups.filter(({ id }) => id !== "eVitals.VitalGroup"),
+      { id: "eVitals.VitalGroup", instances: [earlierVital, latestVital] }] };
+    await installRoutes(page, true, undefined,
+      { definition: { schemaVersion: 1, sections: [] }, catalogFields: {}, decisionSupport: westDecisionSupport },
+      () => ({ document: encounterDocument, revision: openedAssignment.report.revision }));
+    await page.route("**/api/installation", (route) => route.fulfill({ json: {
+      settings: { ...productionSettings, language, timeZone: "Europe/Stockholm" },
+    } }));
+    await page.goto("/");
+    await page.getByRole("button", { name: openCall, exact: true }).click();
+
+    const frame = page.locator(".west-encounter-frame");
+    const reportLevel = page.locator(".encounter-west-level").getByRole("status");
+    const expectFrame = async (colour: string, cssColour: string) => {
+      await expect(frame).toHaveAttribute("data-colour", colour);
+      await expect(frame).toHaveCSS("position", "fixed");
+      await expect(frame).toHaveCSS("pointer-events", "none");
+      for (const edge of ["top", "right", "bottom", "left"]) {
+        await expect(frame).toHaveCSS(`border-${edge}-width`, "2px");
+        await expect(frame).toHaveCSS(`border-${edge}-color`, cssColour);
+      }
+      await expect.poll(() => frame.evaluate((element) => {
+        const { top, right, bottom, left } = element.getBoundingClientRect();
+        const root = element.ownerDocument.documentElement;
+        return [top, right - root.clientWidth, bottom - root.clientHeight, left];
+      })).toEqual([0, 0, 0, 0]);
+    };
+    await expect(reportLevel).toHaveText(latest);
+    await expectFrame("red", "rgb(193, 43, 54)");
+    await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
+    await expect.poll(() => page.evaluate(() => window.scrollY)).toBeGreaterThan(0);
+    await expectFrame("red", "rgb(193, 43, 54)");
+
+    const trigger = page.getByRole("button", { name: addVitals, exact: true });
+    await trigger.click();
+    const dialog = page.locator(".vital-dialog");
+    const override = dialog.getByRole("combobox", { name: overrideLabel });
+    const liveResult = dialog.getByRole("status");
+    await expect(liveResult).toHaveText(unassessed);
+    await expectFrame("gray", "rgb(112, 119, 121)");
+    await override.selectOption("orange");
+    await expect(liveResult).toContainText(manual);
+    await expect(reportLevel).toHaveText(latest);
+    await dialog.evaluate((element) => element.scrollTo(0, element.scrollHeight));
+    await expect.poll(() => dialog.evaluate((element) => element.scrollTop)).toBeGreaterThan(0);
+    await expect(override).toBeInViewport();
+    await expectFrame("orange", "rgb(201, 98, 18)");
+
+    await dialog.locator(".time-picker-trigger").click();
+    const calendar = dialog.locator(".time-picker-popover");
+    await calendar.locator(".date-wheel").press("ArrowDown");
+    await calendar.locator(".date-wheel").press("ArrowDown");
+    await calendar.getByRole("button", { name: useDateTime }).click();
+    await expect(liveResult).toContainText(manual);
+    await expectFrame("red", "rgb(193, 43, 54)");
+    await dialog.getByRole("button", { name: cancelLabel, exact: true }).click();
+    await expect(trigger).toBeFocused();
+    await expectFrame("red", "rgb(193, 43, 54)");
+
+    const earlierRowAction = page.getByRole("region", { name: timeline, exact: true })
+      .locator("li").filter({ hasText: olderLevel }).getByRole("button");
+    await earlierRowAction.click();
+    await override.selectOption("orange");
+    await expect(liveResult).toContainText(manual);
+    await expect(reportLevel).toHaveText(latest);
+    await expectFrame("red", "rgb(193, 43, 54)");
+    await dialog.getByRole("button", { name: cancelLabel, exact: true }).click();
+    await expect(earlierRowAction).toBeFocused();
+
+    const navigation = page.locator(".view-switcher");
+    await navigation.getByRole("button", { name: new RegExp(checklist) }).click();
+    await expect(page.getByRole("heading", { name: checklist, exact: true })).toBeVisible();
+    await expectFrame("red", "rgb(193, 43, 54)");
+    await navigation.getByRole("button", { name: timeline, exact: true }).click();
+    await expect(page.getByRole("region", { name: timeline, exact: true })).toBeVisible();
+    await expect(reportLevel).toHaveText(latest);
+    await expectFrame("red", "rgb(193, 43, 54)");
+  });
+}
+
+test("ordinary Mobile Vitals without WEST has no assessment frame", async ({ page }) => {
+  test.skip(!serverBacked, "requires OPEN_TRIAGE_E2E_SERVER_MODE=true");
+  await installRoutes(page);
+  await page.goto("/");
+  await page.getByRole("button", { name: "Open call", exact: true }).click();
+  await page.getByRole("button", { name: "Add vital signs", exact: true }).click();
+  await expect(page.getByRole("dialog", { name: "Vital signs", exact: true })).toBeVisible();
+  await expect(page.locator(".west-encounter-frame")).toHaveCount(0);
+  await expect(page.getByRole("combobox", { name: "WEST override" })).toHaveCount(0);
 });
