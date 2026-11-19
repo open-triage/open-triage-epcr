@@ -8,7 +8,7 @@ import { APPLICATION_FOREGROUND_EVENT, applicationVisible, foregroundNetworkAllo
 import {useMeasuredParentHeight} from './use-measured-parent-height';
 import { UnsavedChangesContext, confirmDiscardChanges } from "./unsaved-changes";
 import { authenticationInstallationGeneration, assertAuthenticationInstallationGeneration, INSTALLATION_GENERATION_KEY } from "../app/installation-transition-generation";
-import { participateInInstallationTransition,transitionInstallation, INSTALLATION_TRANSITION_KEY,INSTALLATION_TRANSITION_EVENT,INSTALLATION_TRANSITION_COMPLETE_EVENT } from "../app/installation-transition";
+import { participateInInstallationTransition, resumeBrowserLogout, transitionInstallation, INSTALLATION_TRANSITION_KEY, INSTALLATION_TRANSITION_EVENT, INSTALLATION_TRANSITION_COMPLETE_EVENT } from "../app/installation-transition";
 import { PlatformRequestError } from "../app/platform-errors";
 
 import type { AssignedCall, ClinicianSession, AuthenticatedSession, PublicInstallationConfiguration, ReviewAttentionResponse } from "@open-triage/contracts";
@@ -254,12 +254,14 @@ export function ClinicianSessionGate({ children }: {
     let resolved = false;
     let inFlight = false;
     deleteLegacyClinicalStorage(window.localStorage);
-    const loadedSession = loadClinicianSession(window.localStorage);
-    const serverRestart = !!loadedSession && browserRequestConfiguration().mode === "server";
     const load = async () => {
       if (inFlight || resolved || !foregroundNetworkAllowed()) return;
       inFlight = true;
       try {
+        const marker = window.localStorage.getItem(INSTALLATION_TRANSITION_KEY);
+        if (!isAndroidRuntime() && marker?.startsWith("logout:")) {
+          if (!await resumeBrowserLogout(marker) || !current) return;
+        }
         const handoff=await resumeAgencyHandoff();
         try {
           const savedLanguage = window.localStorage.getItem("open-triage:ui-language");
@@ -269,6 +271,8 @@ export function ClinicianSessionGate({ children }: {
         // Both requests are independent. Keep protected content gated until
         // authentication and configuration have both completed successfully.
         const startupGeneration = authenticationInstallationGeneration();
+        const loadedSession = loadClinicianSession(window.localStorage);
+        const serverRestart = !!loadedSession && browserRequestConfiguration().mode === "server";
         const personalResult=new URLSearchParams(window.location.search).get("authentication");
         const [loaded, assessed,organizationAuthentication] = await Promise.all([
           loadInstallationConfiguration(),
@@ -276,8 +280,8 @@ export function ClinicianSessionGate({ children }: {
           organizationLoginAvailable().catch(()=>false),
         ]);
         if (!current) return;
-        let authenticated = assessed;
-        try { assertAuthenticationInstallationGeneration(startupGeneration); } catch { authenticated = null; }
+        try { assertAuthenticationInstallationGeneration(startupGeneration); } catch { return; }
+        const authenticated = assessed;
         if (serverRestart && !authenticated) clearClinicianSession(window.localStorage);
         setInstallation(loaded);
         setOrganizationLogin(organizationAuthentication);
@@ -305,12 +309,19 @@ export function ClinicianSessionGate({ children }: {
     const retry = window.setInterval(reconnect, 5_000);
     window.addEventListener("online", reconnect);
     window.addEventListener(APPLICATION_FOREGROUND_EVENT, reconnect);
+    window.addEventListener(INSTALLATION_TRANSITION_COMPLETE_EVENT, reconnect);
+    const onStorage = (event: StorageEvent) => {
+      if (event.key === INSTALLATION_TRANSITION_KEY && !event.newValue) reconnect();
+    };
+    window.addEventListener("storage", onStorage);
     return () => {
       current = false;
       if(retrySessionStartup.current===retryStartup)retrySessionStartup.current=()=>{};
       window.clearInterval(retry);
       window.removeEventListener("online", reconnect);
       window.removeEventListener(APPLICATION_FOREGROUND_EVENT, reconnect);
+      window.removeEventListener(INSTALLATION_TRANSITION_COMPLETE_EVENT, reconnect);
+      window.removeEventListener("storage", onStorage);
     };
   }, []);
 
@@ -466,13 +477,18 @@ export function ClinicianSessionGate({ children }: {
   async function logOut() {
     const csrfToken = authenticatedSession ? sessionRequestToken(authenticatedSession) : "";
     setLockingSession(true);
+    const releaseUpdate = blockUiUpdates();
     // Settle local writers/keys first, then finish the server's cookie response
     // before exposing the next login. A delayed logout must not clear that new
     // person's cookie after their authentication has completed.
-    await transitionInstallation(async()=>{
-      if (csrfToken) await endClinicianSession(csrfToken).catch(() => undefined);
-    },"logout");
-    await lockAndEndLocalSession(t("login.loggedOut"));
+    try {
+      await transitionInstallation(async () => {
+        if (csrfToken) await endClinicianSession(csrfToken).catch(() => undefined);
+        await lockAndEndLocalSession(t("login.loggedOut"));
+      }, "logout");
+    } finally {
+      releaseUpdate();
+    }
   }
 
   async function changeAgency(id: string) {
