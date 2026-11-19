@@ -28,16 +28,64 @@ export async function loadReportDecisionSupport(
   return loadPinnedDecisionSupport(manager, report.organization_id, report.decision_support_definition_id);
 }
 
-export function assertNewOverrideProvenance(occurrence: DraftOccurrenceMutation, authorId: string): void {
-  const { enteredBy, enteredAt, calculatedColourWhenSelected, inheritedFromMeasurement } = occurrence.sourceAttributes ?? {};
-  if (occurrence.value?.kind !== "coded" || !isTriageColour(occurrence.value.code) ||
-      enteredBy !== authorId || typeof enteredAt !== "string" ||
-      !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/.test(enteredAt) ||
-      !Number.isFinite(Date.parse(enteredAt)) ||
-      (calculatedColourWhenSelected !== null && !isTriageColour(calculatedColourWhenSelected)) ||
-      inheritedFromMeasurement !== undefined) {
-    throw new UnprocessableEntityException("The manual decision requires its authorized author, selection time, and original calculation");
+type RecordedOverride = {
+  groupInstanceId: string;
+  elementId: string;
+  code: string;
+  provenance: { enteredBy: string; enteredAt: string; calculatedColourWhenSelected: string | null };
+};
+
+export async function validateVitalOverrideProvenance(
+  manager: EntityManager, reportId: string, occurrences: readonly DraftOccurrenceMutation[], authorId: string,
+): Promise<RecordedOverride[]> {
+  const inheritance: Array<RecordedOverride & { source: string }> = [];
+  const accepted = occurrences.map((occurrence): RecordedOverride => {
+    const { enteredBy, enteredAt, calculatedColourWhenSelected, inheritedFromMeasurement } = occurrence.sourceAttributes ?? {};
+    if (!occurrence.groupInstanceId || occurrence.value?.kind !== "coded" || !isTriageColour(occurrence.value.code) ||
+        typeof enteredBy !== "string" || typeof enteredAt !== "string" ||
+        !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/.test(enteredAt) ||
+        !Number.isFinite(Date.parse(enteredAt)) ||
+        (calculatedColourWhenSelected !== null && !isTriageColour(calculatedColourWhenSelected))) {
+      throw new UnprocessableEntityException("The manual decision requires its authorized author, selection time, and original calculation");
+    }
+    const selection = { groupInstanceId: occurrence.groupInstanceId, elementId: occurrence.elementId,
+      code: occurrence.value.code, provenance: { enteredBy, enteredAt, calculatedColourWhenSelected } };
+    if (inheritedFromMeasurement === undefined) {
+      if (enteredBy !== authorId) throw new UnprocessableEntityException("The manual decision requires its authorized author");
+    } else {
+      if (typeof inheritedFromMeasurement !== "string" ||
+          !/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(inheritedFromMeasurement) ||
+          inheritedFromMeasurement.toLowerCase() === occurrence.groupInstanceId.toLowerCase()) {
+        throw new UnprocessableEntityException("The inherited override requires a different source measurement in this report");
+      }
+      inheritance.push({ ...selection, source: inheritedFromMeasurement.toLowerCase() });
+    }
+    return selection;
+  });
+  if (!inheritance.length) return accepted;
+
+  // The report lock protects this read. Earlier accepted decisions survive a
+  // source edit or removal, so an offline repeat can sync its original snapshot.
+  const invalid = await manager.query<Array<{ source: string }>>(`
+    select incoming.source::text
+    from jsonb_to_recordset($2::jsonb) as incoming(source uuid, "elementId" text, code text, provenance jsonb)
+    where not exists (
+      select 1 from clinical.element_occurrence saved
+      where saved.report_id = $1 and saved.group_instance_id = incoming.source
+        and saved.element_id = incoming."elementId" and saved.code = incoming.code
+        and saved.source_attributes @> incoming.provenance
+    ) and not exists (
+      select 1 from clinical.report_change change
+      where change.report_id = $1 and change.changes->'acceptedVitalOverrides' @> jsonb_build_array(jsonb_build_object(
+        'groupInstanceId', incoming.source::text, 'elementId', incoming."elementId", 'code', incoming.code, 'provenance', incoming.provenance
+      ))
+    )
+    limit 1
+  `, [reportId, JSON.stringify(inheritance)]);
+  if (invalid.length) {
+    throw new UnprocessableEntityException("The inherited override does not match an accepted decision on its source measurement");
   }
+  return accepted;
 }
 
 /** Older vital groups may predate mandatory WEST finalization on this installation. */

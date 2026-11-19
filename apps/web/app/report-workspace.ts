@@ -29,7 +29,7 @@ import {
   acceptDraftChange,
   cacheLocalReportDocument,
   discardQueuedDraftChanges,
-  expectedRevisionForNextChange,
+  nextDraftChangeMetadata,
   markDraftChangeAttempted,
   nextDraftChange,
   rebaseQueuedDraftChanges,
@@ -325,17 +325,16 @@ export function useReportWorkspace({
       return;
     }
     for (const mutations of changes) {
-      const last = queuedDraftChanges(window.localStorage, report.id).at(-1);
-      const existing = last && !last.attempted && last.command.demoAction === mutations.demoAction ? last : undefined;
+      const { existing, expectedRevision } = nextDraftChangeMetadata(window.localStorage, report.id, revision.current, mutations);
       queueDraftChange(window.localStorage, report.id, {
-        commandId: existing && !existing.attempted ? existing.command.commandId : crypto.randomUUID(),
-        expectedRevision: expectedRevisionForNextChange(window.localStorage, report.id, revision.current, mutations.demoAction),
+        commandId: existing?.commandId ?? crypto.randomUUID(),
+        expectedRevision,
         authorId: session.user.id,
         // Presentation is a view choice, not a synchronization identity. Keeping
         // this stable prevents mobile/stationary switches from looking like a new
         // target writer while the report remains open.
         deviceId: `web:${report.id}`,
-        clientTime: existing && !existing.attempted ? existing.command.clientTime : new Date().toISOString(),
+        clientTime: existing ? existing.clientTime : new Date().toISOString(),
         ...mutations,
       });
     }

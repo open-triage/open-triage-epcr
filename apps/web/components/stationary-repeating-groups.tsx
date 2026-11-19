@@ -3,7 +3,7 @@ import { useLocalDateTime } from "./local-date-time";
 
 import { resolveCatalogElementText, resolveCatalogGroupText } from "../app/catalog-localization";
 import { resolveMessage } from "../app/localization";
-import { useAgencyTimeZone } from "../app/agency-time-zone";
+import { clinicalInstantParts, useAgencyTimeZone } from "../app/agency-time-zone";
 import type { FormLanguage } from "../app/form-localization";
 import { effectiveDecisionSupportColour, type ClinicalFormConfiguration, type EncounterDocument, type EncounterGroupInstance, type EncounterValue } from "@open-triage/contracts";
 import React, { createContext, useContext, useEffect, useEffectEvent, useId, useMemo, useRef, useState } from "react";
@@ -31,6 +31,7 @@ import { StationaryValidationMessages, stationaryFindingSeverity } from "./stati
 import { actionableStationaryFindings, stationaryReviewFindings, validateStationaryRecord } from "../app/stationary-validation";
 import { bundledEncounterDefinition, INITIAL_SHELL_STATE, reviewEncounter } from "../app/standard-encounter";
 import { withoutDemoProvenance } from "../app/demo-provenance";
+import { vitalDecisionSnapshot, withCarriedVitalDecisions, type VitalDecisionEdits } from "../app/vital-carry-forward";
 import { chooseVitalOverride, UNASSESSED_VITAL, vitalAssessmentWithFindings, vitalDecisionSupport, vitalRecordedLocalTime, withVitalDecisionSupport, withVitalMeasurementOffset } from "../app/vital-decision-support";
 import { VitalDecisionSupport } from "./vital-decision-support";
 import { VitalDecisionSupportScale, VitalDecisionSupportObservations } from "./vital-decision-support-scoring";
@@ -211,11 +212,21 @@ function RepeatingGroupDialog({ placement, draft, instanceId, isNew, returnFocus
   const assessVitals = configuration && clinicianId && placement.mode !== "read-only" &&
     placement.id === configuration.definition.assessment.group && (isNew || instance?.decisionSupportCalculation);
   const [assessment, setAssessment] = useState(() => configuration ? vitalDecisionSupport(instance, configuration) : UNASSESSED_VITAL);
+  const [snapshot] = useState(() => isNew && assessVitals ? vitalDecisionSnapshot(draft, configuration) : undefined);
+  const [decisionEdits, setDecisionEdits] = useState<VitalDecisionEdits>({});
+  const [defaultMeasurement] = useState(() => snapshot
+    ? stationaryDateTimeDefault(draft, { groupId: placement.id, groupInstanceId: instanceId }) : undefined);
+  const enteredMeasurement = measurementValue(instance);
+  const measurementInstant = enteredMeasurement?.kind === "scalar" && typeof enteredMeasurement.value === "string"
+    ? enteredMeasurement.value : defaultMeasurement;
+  const decisions = snapshot
+    ? withCarriedVitalDecisions(assessment, snapshot, instanceId, measurementInstant, decisionEdits) : assessment;
   const timedInstance = assessVitals && instance ? withVitalMeasurementOffset(instance, timeZone, timeChanged) : instance;
   const measurements = configuration && instance ? vitalMeasurementValues(draft, instance,
     Object.values(configuration.definition.inputs).flatMap((input) => "element" in input ? [input.element] : [])) : {};
   const liveAssessment = configuration
-    ? vitalAssessmentWithFindings(assessment, configuration.definition, vitalRecordedLocalTime(timedInstance) ?? "", measurements) : assessment;
+    ? vitalAssessmentWithFindings(decisions, configuration.definition, vitalRecordedLocalTime(timedInstance)
+      ?? (measurementInstant ? clinicalInstantParts(measurementInstant, timeZone)?.time : undefined) ?? "", measurements) : decisions;
   const [missingColour, setMissingColour] = useState(false);
   const overrideRef = useRef<HTMLSelectElement>(null);
   const liveFindings = useMemo(() => placement.mode === "read-only" ? [] : stationaryDialogFindings(draft, clinicalForm), [clinicalForm, draft, placement.mode]);
@@ -268,7 +279,7 @@ function RepeatingGroupDialog({ placement, draft, instanceId, isNew, returnFocus
     if (!instance.elements.some((element) => element.id === "eVitals.01")) {
       const addedTime = editScalarOccurrence(draft, {
         groupId: placement.id, groupInstanceId: instance.instanceId, elementId: "eVitals.01",
-        input: stationaryDateTimeDefault(draft, { groupId: placement.id, groupInstanceId: instance.instanceId }),
+        input: defaultMeasurement ?? stationaryDateTimeDefault(draft, { groupId: placement.id, groupInstanceId: instance.instanceId }),
       });
       if (!addedTime.ok) return;
       next = addedTime.document;
@@ -290,11 +301,17 @@ function RepeatingGroupDialog({ placement, draft, instanceId, isNew, returnFocus
         onOverride={(colour) => {
           setMissingColour(false);
           const enteredAt = new Date().toISOString();
-          setAssessment((previous) => chooseVitalOverride({ ...previous, calculation: liveAssessment.calculation }, colour, clinicianId, enteredAt));
+          const next = chooseVitalOverride(liveAssessment, colour, clinicianId, enteredAt);
+          if (next === liveAssessment) return;
+          setDecisionEdits((previous) => ({ ...previous, override: true }));
+          setAssessment((previous) => ({ ...previous, override: next.override }));
         }} />}
       {assessVitals && configuration && editable && <>
         <VitalDecisionSupportScale definition={configuration.definition} assessment={liveAssessment} language={language}
-          onScale={(scale) => setAssessment((previous) => ({ ...previous, scale }))} />
+          onScale={(scale) => {
+            setDecisionEdits((previous) => ({ ...previous, scale: true }));
+            setAssessment((previous) => ({ ...previous, scale }));
+          }} />
         <VitalDecisionSupportObservations definition={configuration.definition} assessment={liveAssessment} language={language}
           onObservation={(key, value) => setAssessment((previous) => ({
             ...previous, observations: { ...previous.observations, [key]: value },
