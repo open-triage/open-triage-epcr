@@ -29,6 +29,7 @@ authority for delivered behavior.
 | Document | Repository status | Boundaries and follow-up |
 | --- | --- | --- |
 | [Mobile call flow](flow-mobile.md) | Assigned/open calls, autosaved drafts, and synchronization implemented | Login prefill and automatic replacement demo calls were superseded by Users and Roles. Signing remains Stationary-only. |
+| [WEST triage decision support](west-triage-decision-support.md) | Planned with a draft WEST-A definition and mobile mockup | JSON-defined scoring, installation-level selection, per-entry overrides, and mobile triage history. Rule editing and autofill outside WEST are future work. |
 | [Stationary workflow MVP](stationary-workflow-mvp.md) | Full-form editing and signing implemented | Later authoring PRDs replace the source-only layout boundary; Review provides signed-report follow-up. |
 | [Dispatch payload](dispatch-payload.md) | Payload ingestion, revisions, provenance, and assignment projection implemented | See [vendor integration](../vendor-dispatch-integration.md). Live vendor adapters and quarantine-management UI are separate work. |
 | [Protected offline clinical storage](protected-offline-clinical-storage.md) | Encrypted persistence and online recovery implemented | Supersedes plaintext/offline-restart assumptions. Device enrollment and vehicle linking remain deferred; see the [operating boundary](../protected-offline-clinical-storage.md). |
