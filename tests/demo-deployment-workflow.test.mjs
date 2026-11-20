@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
+import { load } from "js-yaml";
 
 import { deploymentValues } from "../scripts/demo-deployment-values.mjs";
 
@@ -121,4 +122,14 @@ test("the demo web image is built with only its public API location", async () =
   const workflow = await readFile(workflowPath, "utf8");
   assert.match(workflow, /NEXT_PUBLIC_API_URL=same-origin/);
   assert.doesNotMatch(workflow, /INSTALLATION_SETTINGS_BASELINE/);
+});
+
+test("live browser journeys use the deployed revision and agency origin after successful rollout", async () => {
+  const job = load(await readFile(workflowPath, "utf8")).jobs["public-demo-workflows"];
+  assert.deepEqual(job.needs, ["deploy-demo", "installation-config"]);
+  assert.equal(job.steps[0].with.ref, "${{ inputs.deployment_revision || github.sha }}");
+  const run = job.steps.find(step => step.run === "npm run test:public-demo -w @open-triage/web");
+  assert.equal(run.env.DEMO_WEB_URL, "${{ needs.installation-config.outputs.web-url }}");
+  assert.equal(job["continue-on-error"], undefined);
+  assert.equal(run["continue-on-error"], undefined);
 });

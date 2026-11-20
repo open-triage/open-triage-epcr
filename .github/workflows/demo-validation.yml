@@ -512,3 +512,23 @@ jobs:
           DEMO_WEB_URL: ${{ needs.installation-config.outputs.web-url }}
           DEMO_API_URL: ${{ needs.installation-config.outputs.api-url }}
         run: node scripts/demo-smoke-test.mjs
+
+  public-demo-workflows:
+    name: Verify / Deployed demo user workflows
+    needs: [deploy-demo, installation-config]
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.deployment_revision || github.sha }}
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci --ignore-scripts -w @open-triage/web
+      - run: npx playwright install --with-deps chromium
+      - name: Exercise the public demo in Chromium
+        env:
+          DEMO_WEB_URL: ${{ needs.installation-config.outputs.web-url }}
+        run: npm run test:public-demo -w @open-triage/web

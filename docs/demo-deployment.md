@@ -13,6 +13,20 @@ public Ingress routes, API health, synthetic login, and an authenticated
 assigned-calls read. A failed smoke check fails the workflow. Smoke verification
 is after Helm, however, so it does not itself activate Helm's atomic rollback.
 
+A separate Chromium job then exercises the deployed agency URL. It signs in with
+the shared synthetic demo account, saves and reopens a new synthetic patient,
+filters the review queue, and opens and cancels a unit form. The clinician test
+deletes the draft created by its own New patient request. Each workflow ends by
+logging out and reloading the sign-in screen. A failed browser test marks the
+deployment workflow as failed.
+
+To repeat the browser checks against the public demo from the repository root, run the following commands.
+
+```sh
+npx playwright install chromium
+DEMO_WEB_URL=https://demo.opentriage.org npm run test:public-demo -w @open-triage/web
+```
+
 ## Prerequisites and deployment targets
 
 On 9 October 2026, a read-only query of the demo cluster reported Kubernetes

@@ -1,6 +1,6 @@
 {
   "name": "@open-triage/web",
-  "version": "0.1.8",
+  "version": "0.1.9",
   "license": "AGPL-3.0-only",
   "private": true,
   "scripts": {
@@ -22,10 +22,11 @@
     "test:development": "OPEN_TRIAGE_E2E_SERVER_MODE=true playwright test --config playwright.config.ts --workers=1 native-development-startup.spec.ts",
     "pretest:deployment": "npm run build -w @open-triage/api",
     "test:deployment": "OPEN_TRIAGE_E2E_SERVER_MODE=true playwright test --config playwright.deployment.config.ts",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test:public-demo": "playwright test --config playwright.public-demo.config.ts"
   },
   "dependencies": {
-    "@open-triage/contracts": "0.1.8",
+    "@open-triage/contracts": "0.1.9",
     "next": "^16.3.3",
     "qrcode": "1.5.4",
     "react": "^19.2.0",
