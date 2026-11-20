@@ -157,8 +157,7 @@ public class OidcJourneyTest extends PairingJourneyTest {
                 waitFor(ORGANIZATION_LOGIN + " || document.querySelector('.session-identity')");
                 if ("true".equals(evaluate("Boolean(document.querySelector('.session-identity'))"))) click("Log out");
                 if (phase.equals("prepare")) {
-                    // Hold the real exclusive barrier past the durable native browser launch.
-                    evaluate("(()=>{const request=navigator.locks.request.bind(navigator.locks);navigator.locks.request=(...args)=>{const [name,options,work]=args;return name==='open-triage.installation-clinical-context'&&options?.mode==='exclusive'?request(name,options,async lock=>{await work(lock);await new Promise(()=>{});}):request(...args);};})()");
+                    evaluate(HeldNativeReply.install("beginAuthentication"));
                 }
                 click("Sign in with your organization");
                 provider(false);
@@ -175,6 +174,7 @@ public class OidcJourneyTest extends PairingJourneyTest {
                 return;
             }
             if (phase.equals("prepare")) {
+                waitFor("window.__heldNativeReply === 'beginAuthentication'");
                 var pending = new ConnectionVault(InstrumentationRegistry.getInstrumentation().getTargetContext()).pendingAuthentication();
                 assertNotNull("The launched browser must have a durable native return", pending);
                 assertEquals("The pending native return must own the unfinished JS transition",

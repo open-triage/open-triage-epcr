@@ -180,8 +180,8 @@ public class AgencyHandoffJourneyTest {
                 waitFor("document.querySelector('.session-identity')");
                 // Hold only delivery of the real native result. The real UI owns
                 // its Web Lock/marker, and the actual server/Keystore promotion runs.
-                evaluate("(()=>{const cap=window.Capacitor,send=cap.nativePromise.bind(cap);cap.nativePromise=(plugin,method,options)=>{const reply=send(plugin,method,options);if(plugin==='OpenTriageConnection'&&method==='confirmAgencyHandoff')return reply.then(value=>new Promise(()=>{window.__completedHandoffHeld=true}));return reply;};})()");
-                select(args.getString("targetAgency"));waitFor("window.__completedHandoffHeld===true");
+                evaluate(HeldNativeReply.install("confirmAgencyHandoff"));
+                select(args.getString("targetAgency"));waitFor("window.__heldNativeReply === 'confirmAgencyHandoff'");
                 assertEquals("completed",vault().pendingHandoff().getString("phase"));assertEquals("https://127.0.0.1",vault().read().origin);
                 assertEquals("true",evaluate("localStorage.getItem('open-triage.installation-transition.v1')?.startsWith('handoff:')"));
                 assertEquals("null",evaluate(session()));status("retained_sha256",records());status("agency_handoff_live","1");

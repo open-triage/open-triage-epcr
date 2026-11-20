@@ -1,3 +1,4 @@
+import {readFile} from "node:fs/promises";
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {build} from 'esbuild';
@@ -37,3 +38,26 @@ test('unmount after ending never starts another authentication cleanup or premat
 test('ordinary unmount settles keys without ending the valid personal session',async()=>{
  const f=environment();let calls=0;f.values.set('open-triage.clinician-session.v1','valid-login');const unmount=f.participateInInstallationTransition(async()=>{calls++;});unmount();await flush();assert.equal(calls,0);assert.equal(f.values.get('open-triage.clinician-session.v1'),'valid-login');
 });
+
+for (const [purpose, method] of [['authentication', 'beginAuthentication'], ['handoff', 'confirmAgencyHandoff']]) {
+ test(`process loss during ${method} keeps the live transition until native reply delivery`, async () => {
+  const f = environment();
+  let complete;
+  f.window.Capacitor = {nativePromise: (_plugin, name) => name === method
+   ? new Promise(resolve => { complete = resolve; })
+   : Promise.resolve('ordinary reply')};
+  const hook = await readFile(new URL('../android/app/src/test/resources/hold-native-reply.js', import.meta.url), 'utf8');
+  vm.runInNewContext(hook, {window: f.window})(method);
+  const send = name => f.window.Capacitor.nativePromise('OpenTriageConnection', name, {});
+  void f.transitionInstallation(() => send(method), purpose);
+  await flush();
+  const generation = f.values.get('open-triage.installation-generation.v1');
+  assert(generation.startsWith(purpose + ':'));
+  assert.equal(f.window.__heldNativeReply, undefined);
+  complete();
+  await flush();
+  assert.equal(f.window.__heldNativeReply, method);
+  assert.equal(f.values.get('open-triage.installation-transition.v1'), generation);
+  assert.equal(await send('state'), 'ordinary reply');
+ });
+}
