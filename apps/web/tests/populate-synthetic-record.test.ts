@@ -2,12 +2,13 @@ import { applyDestinationSelection } from "../app/destination-selection";
 import assert from "node:assert/strict";
 import test from "node:test";
 import { compileValidationRule, compiledValidationBundleSha256, type ClinicalFormConfiguration } from "@open-triage/contracts";
-import { validationProblems } from "@open-triage/contracts/synthetic-record-generator";
+import { shippedWestDefinition } from "../../../defines/decision_support/west-localization.mjs";
+import { finalizeSyntheticVitals, validationProblems } from "@open-triage/contracts/synthetic-record-generator";
 import { populateSyntheticRecord } from "../app/populate-synthetic-record";
 import { syntheticEncounter } from "../app/standard-encounter";
 import { clearStationaryDemoData } from "../app/stationary-demo-data";
 import { hasDemoProvenance } from "../app/demo-provenance";
-import { encounterDocumentToDraftMutations, recoveryMutationBatches } from "../app/draft-report";
+import { encounterDocumentToDraftMutations, recoveryMutationBatches, stableDraftId } from "../app/draft-report";
 import { validateStationaryRecord } from "../app/stationary-validation";
 
 const now = new Date("2026-10-04T12:00:00Z");
@@ -94,7 +95,7 @@ function repeatedVitalsFixture() {
   configuration.catalogGroups!["eVitals.HeartRateGroup"] = { name: "Pulse", parentId: "eVitals.VitalGroup" };
   configuration.catalogGroups!["eVitals.BloodPressureGroup"] = { name: "Pressure", parentId: "eVitals.VitalGroup" };
   configuration.catalogFields["eVitals.10"]!.generation!.path = ["eVitals.HeartRateGroup"];
-  for (const [id, path] of [["eVitals.12", "eVitals.VitalGroup"], ["eVitals.06", "eVitals.BloodPressureGroup"]]) {
+  for (const [id, path] of [["eVitals.12", "eVitals.VitalGroup"], ["eVitals.06", "eVitals.BloodPressureGroup"], ["eVitals.14", "eVitals.VitalGroup"]]) {
     configuration.definition.sections[0]!.fields.push({ key: id!, source: { kind: "nemsis", elementId: id! } });
     configuration.catalogFields[id!] = { ...configuration.catalogFields["eVitals.10"]!, generation: {
       ...configuration.catalogFields["eVitals.10"]!.generation!, id: id!, path: [path!],
@@ -131,6 +132,68 @@ test("Populate repairs every vital set and its nested groups while preserving cl
     assert.deepEqual(occurrence(populated), occurrence(original));
   }
   assert.deepEqual(populateSyntheticRecord(populated, configuration, now), populated);
+});
+
+function westConfiguration() {
+  const definition = shippedWestDefinition();
+  const fields = Object.fromEntries(Object.keys(definition.assessment.elements).map(key => [key, {
+    id: key, namespace: "west.opentriage.org", slug: key, choices: [], codeSystem: "urn:demo:" + key,
+    datatype: key === "physiologyScore" ? "number" : key === "noWarningCriteria" ? "boolean" : "coded",
+    correlatesTo: "eVitals.VitalGroup", constraints: {},
+  }])) as unknown as NonNullable<ClinicalFormConfiguration["decisionSupport"]>["fields"];
+  return { definition, fields };
+}
+
+test("Populate fills finalized vital sets from their own readings and Clear restores their previous WEST results", () => {
+  const { document, configuration } = repeatedVitalsFixture();
+  configuration.decisionSupport = westConfiguration();
+  const west = configuration.decisionSupport;
+  const ids = ["eVitals.06", "eVitals.07", "eVitals.10", "eVitals.12", "eVitals.14", "eVitals.24"];
+  for (const [id, original] of [["eVitals.07", "eVitals.06"], ["eVitals.24", "eVitals.14"]] as const) {
+    configuration.catalogFields[id] = structuredClone(configuration.catalogFields[original]!);
+    configuration.catalogFields[id]!.generation!.id = id;
+    configuration.definition.sections[0]!.fields.push({ key: id, source: { kind: "nemsis", elementId: id } });
+  }
+  configuration.validation!.bundle.rules[0]!.assertion = { operator: "minimum-occurrences", elementId: "eVitals.10", count: 1 };
+  configuration.validation!.compiledSha256 = compiledValidationBundleSha256(configuration.validation!.bundle);
+  const roots = document.groups.find(group => group.id === "eVitals.VitalGroup")!.instances;
+  for (const root of roots.slice(1)) {
+    const time = { id: "eVitals.01", values: [{ kind: "scalar" as const, occurrenceId: root.instanceId + "-time",
+      value: now.toISOString(), utcOffsetMinutes: 0, attributes: { "decisionSupportObservation:oxygen": "air", "decisionSupportObservation:consciousness": "A" } }] };
+    const coded = (key: "newsScale" | "criteria" | "categories", code: string) => ({ id: "west.opentriage.org." + key,
+      values: [{ kind: "coded" as const, occurrenceId: root.instanceId + key, code, system: "urn:demo:" + key }] });
+    Object.assign(root, { decisionSupportCalculation: { systemKey: west.definition.key, version: west.definition.version },
+      elements: [...root.elements, time, coded("newsScale", "standard"), coded("criteria", "chest-pain.05"), coded("categories", "chest-pain")] });
+  }
+  const placeholder = { kind: "null" as const, occurrenceId: "generated-absence", notValue: { code: "7701003" },
+    attributes: { "x-open-triage-demo": "stationary-populate-v1" } };
+  const unavailable = { kind: "null" as const, occurrenceId: "manual-absence", notValue: { code: "7701003" } };
+  Object.assign(roots[1]!, { elements: [...roots[1]!.elements, { id: "eVitals.14", values: [placeholder] }] });
+  Object.assign(roots[2]!, { elements: [...roots[2]!.elements, { id: "eVitals.14", values: [unavailable] }] });
+  const saved = finalizeSyntheticVitals(document, configuration, key => key);
+  const populated = populateSyntheticRecord(saved, configuration, now);
+  assert.deepEqual(validationProblems(configuration.validation!.bundle, populated, now.toISOString()), []);
+  const observedRoots = populated.groups.find(group => group.id === "eVitals.VitalGroup")!.instances.slice(1);
+  for (const root of observedRoots) {
+    const rows = [root, ...populated.groups.flatMap(group => group.instances.filter(row => row.parentInstanceId === root.instanceId))];
+    for (const id of ids) {
+      const value = rows.flatMap(row => row.elements).find(element => element.id === id)!.values[0]!;
+      if (root.instanceId === "vitals-3" && id === "eVitals.14") { assert.deepEqual(value, unavailable); continue; }
+      assert.equal(value.kind, "scalar", id);
+      if (root.instanceId === "vitals-2" && id === "eVitals.14") assert.equal(value.occurrenceId, placeholder.occurrenceId);
+    }
+  }
+  const score = observedRoots[0]!.decisionSupportCalculation!.physiology!.total;
+  assert.equal(typeof score, "number");
+  assert.equal(observedRoots[0]!.elements.find(e => e.id === "west.opentriage.org.physiologyScore")!.values[0]!.kind, "scalar");
+  assert.equal(observedRoots[1]!.decisionSupportCalculation!.physiology!.total, null);
+  const again = populateSyntheticRecord(populated, configuration, now);
+  assert.deepEqual(again, populated);
+  const cleared = clearStationaryDemoData(populated, configuration);
+  const savedRoots = saved.groups.find(g => g.id === "eVitals.VitalGroup")!.instances;
+  for (const row of cleared.groups.find(g => g.id === "eVitals.VitalGroup")!.instances.slice(1)) {
+    assert.deepEqual(row.decisionSupportCalculation, savedRoots.find(original => original.instanceId === row.instanceId)!.decisionSupportCalculation);
+  }
 });
 
 test("Populate fails without changing any set when a clinician value contradicts a scoped rule", () => {
@@ -333,4 +396,25 @@ test("Populate leaves COS destination unanswered, removes old demo values, and p
   const chosen=applyDestinationSelection(empty,choice,groupId);
   assert.deepEqual(pair(populateSyntheticRecord(chosen,configuration,now)),pair(chosen));
  }
+});
+
+
+test("Populate and recovery finalize generator-owned WEST sets with the same stable demo mutations", () => {
+  const { document, configuration } = fixture();
+  const { definition, fields } = westConfiguration();
+  const legacy = populateSyntheticRecord(document, configuration, now);
+  configuration.decisionSupport = { definition, fields };
+  const populated = populateSyntheticRecord(document, configuration, now);
+  const restored = finalizeSyntheticVitals(legacy, configuration, key => stableDraftId(document.encounter.id, "synthetic-populate:" + key));
+  assert.deepEqual(restored, populated);
+  const row = populated.groups.find(group => group.id === "eVitals.VitalGroup")!.instances[0]!;
+  assert.equal(row.decisionSupportCalculation?.version, definition.version);
+  assert.equal(row.decisionSupportCalculation?.colour, "orange");
+  assert.equal(row.decisionSupportCalculation?.physiology?.points.heartRate, 0);
+  assert.deepEqual(populateSyntheticRecord(populated, configuration, now), populated);
+  const saved = encounterDocumentToDraftMutations(document.encounter.id, populated);
+  const root = saved.groups.find(group => group.groupId === "eVitals.VitalGroup")!;
+  assert.ok(root.documentedTime && root.decisionSupportCalculation);
+  assert.ok(saved.occurrences.filter(value => value.elementId.startsWith("west.opentriage.org."))
+    .every(value => value.provenanceKind === "demo" && value.groupInstanceId === root.id));
 });

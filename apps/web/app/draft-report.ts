@@ -3,6 +3,7 @@ import type { ActiveReportResource, ClinicalFormConfiguration, CreateReportTextN
 import type { ShellState } from "./standard-encounter";
 import { getNemsisDataElement, getNemsisGroup } from "./nemsis-data-model";
 import { DEMO_GROUP_CORRELATION_PREFIX, DEMO_PROVENANCE_VALUE, hasDemoProvenance } from "./demo-provenance";
+import { sameJsonValue } from "./json-values";
 import {
   apiRequestUrl,
   browserRequestConfiguration,
@@ -250,36 +251,47 @@ export function draftMutationDelta(
   const baselineGroups = new Map(baseline.groups.map((group) => [group.id, group]));
   const baselineOccurrences = new Map(baseline.occurrences.map((occurrence) => [occurrence.id, occurrence]));
   return {
-    groups: current.groups.filter((group) => JSON.stringify(group) !== JSON.stringify(baselineGroups.get(group.id))),
+    groups: current.groups.filter((group) => !sameJsonValue(group, baselineGroups.get(group.id))),
     occurrences: current.occurrences.filter((occurrence) => JSON.stringify(occurrence) !== JSON.stringify(baselineOccurrences.get(occurrence.id))),
   };
 }
 
-/** Keeps privileged demo commands ownership-pure at the browser/API boundary. */
+/** Include a saved vital's derived result in the same command as its changed readings. */
 export function demoActionMutationDelta(
   action: "populate" | "clear",
   mutations: Pick<SaveDraftReportCommand, "groups" | "occurrences">,
   persisted: Pick<SaveDraftReportCommand, "groups" | "occurrences">,
 ): Pick<SaveDraftReportCommand, "groups" | "occurrences"> {
-  if (action === "populate") {
-    return {
-      groups: mutations.groups.filter((group) => !group.tombstone && group.correlationId?.startsWith(DEMO_GROUP_CORRELATION_PREFIX)),
-      occurrences: mutations.occurrences.filter((occurrence) => !occurrence.tombstone &&
-        occurrence.provenanceKind === "demo" &&
-        occurrence.provenanceDetail?.generator === DEMO_PROVENANCE_VALUE &&
-        occurrence.sourceAttributes?.["x-open-triage-demo"] === DEMO_PROVENANCE_VALUE),
-    };
-  }
   const demoGroupIds = new Set(persisted.groups
     .filter((group) => group.correlationId?.startsWith(DEMO_GROUP_CORRELATION_PREFIX))
     .map(({ id }) => id));
   const demoOccurrenceIds = new Set(persisted.occurrences
     .filter((occurrence) => occurrence.provenanceKind === "demo" && occurrence.provenanceDetail?.generator === DEMO_PROVENANCE_VALUE)
     .map(({ id }) => id));
-  return {
-    groups: mutations.groups.filter((group) => group.tombstone && demoGroupIds.has(group.id)),
-    occurrences: mutations.occurrences.filter((occurrence) => occurrence.tombstone && demoOccurrenceIds.has(occurrence.id)),
-  };
+  const occurrences = mutations.occurrences.filter(occurrence => action === "clear"
+    ? occurrence.tombstone && demoOccurrenceIds.has(occurrence.id)
+    : !occurrence.tombstone && occurrence.provenanceKind === "demo" &&
+      occurrence.provenanceDetail?.generator === DEMO_PROVENANCE_VALUE &&
+      occurrence.sourceAttributes?.["x-open-triage-demo"] === DEMO_PROVENANCE_VALUE);
+  const baseline = new Map(persisted.groups.map(group => [group.id, group]));
+  const groupsById = new Map([...persisted.groups, ...mutations.groups].map(group => [group.id, group]));
+  const affected = new Set<string>();
+  for (const occurrence of occurrences) {
+    let id: string | undefined = occurrence.groupInstanceId;
+    while (id && !affected.has(id)) {
+      affected.add(id);
+      id = groupsById.get(id)?.parentGroupInstanceId ?? undefined;
+    }
+  }
+  const groups = mutations.groups.filter(group => {
+    if (group.tombstone) return action === "clear" && demoGroupIds.has(group.id);
+    if (action === "populate" && group.correlationId?.startsWith(DEMO_GROUP_CORRELATION_PREFIX)) return true;
+    const previous = baseline.get(group.id);
+    return group.groupId === "eVitals.VitalGroup" && affected.has(group.id) && !!previous?.decisionSupportCalculation &&
+      !!group.decisionSupportCalculation && !sameJsonValue(previous.decisionSupportCalculation, group.decisionSupportCalculation) &&
+      sameJsonValue(previous, { ...group, decisionSupportCalculation: previous.decisionSupportCalculation });
+  });
+  return { groups, occurrences };
 }
 
 /** Partition saves and recovery by ownership without relabeling clinician work as demo data. */

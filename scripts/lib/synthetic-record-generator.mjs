@@ -25,6 +25,10 @@ export function documentMutations(document, source, model) {
     groups.push({ id: instance.instanceId, groupId: group.id, ordinal,
       ...(instance.parentInstanceId ? { parentGroupInstanceId: instance.parentInstanceId } : {}),
       ...(groupMetadata.get(group.id)?.customId ? { customGroupDefinitionId: groupMetadata.get(group.id).customId } : {}),
+      ...(instance.decisionSupportCalculation ? {
+        decisionSupportCalculation: instance.decisionSupportCalculation,
+        documentedTime: instance.elements.find(element => element.id === 'eVitals.01').values[0].value,
+      } : {}),
       correlationId: `demo:${PROVENANCE}:${instance.instanceId}` });
     for (const element of instance.elements) for (const [valueOrdinal, value] of element.values.entries()) {
       previous.delete(value.occurrenceId);

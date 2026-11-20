@@ -1,4 +1,5 @@
 import type { ClinicalFormConfiguration, EncounterDocument, EncounterGroup, EncounterGroupInstance, EncounterValue } from "@open-triage/contracts";
+import { finalizeSyntheticVitals } from "@open-triage/contracts/synthetic-record-generator";
 import { stableDraftId } from "./draft-report";
 import { demoAttributes, DEMO_FALLBACK_DATE, hasDemoProvenance, withoutDemoProvenance } from "./demo-provenance";
 import { NEMSIS_DATA_MODEL, resolveNemsisElementValues, type NemsisDataElement } from "./nemsis-data-model";
@@ -230,7 +231,7 @@ export function populateStationaryDemoData(document: EncounterDocument,
 }
 
 /** Removes exactly demo-owned values and empty demo-created group subtrees. */
-export function clearStationaryDemoData(document: EncounterDocument): EncounterDocument {
+export function clearStationaryDemoData(document: EncounterDocument, configuration?: ClinicalFormConfiguration): EncounterDocument {
   const demoInstances = new Set(document.groups.flatMap((group) => group.instances.filter((instance) => hasDemoProvenance(instance.attributes)).map(({ instanceId }) => instanceId)));
   const hasDemoValues = document.groups.some((group) => group.instances.some((instance) => instance.elements.some((element) => element.values.some((value) => hasDemoProvenance(value.attributes)))));
   if (!demoInstances.size && !hasDemoValues) return document;
@@ -258,5 +259,7 @@ export function clearStationaryDemoData(document: EncounterDocument): EncounterD
       : instance);
     return retained.length ? [{ ...group, instances: retained }] : [];
   });
-  return { ...document, encounter: { ...document.encounter, updatedAt: new Date().toISOString() }, groups };
+  const cleared = { ...document, encounter: { ...document.encounter, updatedAt: new Date().toISOString() }, groups };
+  return finalizeSyntheticVitals(cleared, configuration, key => stableDraftId(document.encounter.id, "synthetic-populate:" + key),
+    document.encounter.createdAt, false);
 }

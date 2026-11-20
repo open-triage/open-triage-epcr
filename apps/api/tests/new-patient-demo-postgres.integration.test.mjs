@@ -5,7 +5,8 @@ import { readFile } from "node:fs/promises";
 import test from "node:test";
 import pg from "pg";
 import { ConflictException, NotFoundException, UnauthorizedException } from "@nestjs/common";
-import { decisionSupportElementKey, SYNTHETIC_DEMO_FIXTURE, WEST_A_DECISION_SUPPORT_KEY } from "@open-triage/contracts";
+import { calculateDecisionSupportFindings, decisionSupportElementKey, decisionSupportFindingResult, decisionSupportPhysiology,
+  SYNTHETIC_DEMO_FIXTURE, WEST_A_DECISION_SUPPORT_KEY } from "@open-triage/contracts";
 import { AgencySettingsService } from "../dist/admin/agency-settings.service.js";
 import { CatalogAuthoringService } from "../dist/admin/catalog-authoring.service.js";
 import { DraftReportService } from "../dist/reports/draft-report.service.js";
@@ -169,7 +170,7 @@ integration("new demo patients support the generated-report lifecycle without a 
     const westOpened = await service.reopen("demo", westReport.reportId);
     const west = westOpened.report.clinicalForm.decisionSupport;
     assert.equal(west.definition.key, WEST_A_DECISION_SUPPORT_KEY);
-    assert.equal(west.definition.version, "1.0.0-draft.4");
+    assert.equal(west.definition.version, "1.0.0-draft.6");
     assert.deepEqual(Object.keys(west.definition.assessment.elements.newsScale.values), ["standard", "obstetric", "copd"]);
     assert.equal(west.fields.overrideColour.id, registered.find(({ decisionSupportField }) =>
       decisionSupportField === "overrideColour").id);
@@ -266,12 +267,12 @@ integration("new demo patients support the generated-report lifecycle without a 
     const observation = {
       ...measurement, sourceAttributes: {
         "decisionSupportObservation:oxygen": "air", "decisionSupportObservation:consciousness": "A",
-        "decisionSupportObservation:pulse": "70",
       },
     };
     const childGroup = (groupId) => ({ id: randomUUID(), groupId, ordinal: 0, parentGroupInstanceId: vitalGroupId });
     const pressure = childGroup("eVitals.BloodPressureGroup");
     const temperature = childGroup("eVitals.TemperatureGroup");
+    const heart = childGroup("eVitals.HeartRateGroup");
     const numeric = (elementId, groupInstanceId, value, kind = "integer") => ({
       id: randomUUID(), elementId, groupInstanceId, value: { kind, value },
     });
@@ -285,11 +286,11 @@ integration("new demo patients support the generated-report lifecycle without a 
     const complete = { ...assessment, decisionSupportCalculation: { ...assessment.decisionSupportCalculation, status: "definitive",
       physiology: { total: 1, colour: "yellow", points: { respiratoryRate: 0, spo2: 0, oxygen: 0, systolic: 0,
         diastolic: 1, heartRate: 0, consciousness: 0, temperature: 0 } } } };
-    const measured = [observation, obstetric, sbp, dbp, temp, spo2, respiration];
-    await assert.rejects(saveVital(findingsSaved.revision, [complete, pressure, temperature], [...measured,
+    const measured = [observation, obstetric, sbp, dbp, temp, spo2, respiration, numeric("eVitals.10", heart.id, 70)];
+    await assert.rejects(saveVital(findingsSaved.revision, [complete, pressure, temperature, heart], [...measured,
       { ...score, value: { ...score.value, value: 2 } },
     ]), /NEWS score does not match/);
-    const completeSaved = await saveVital(findingsSaved.revision, [complete, pressure, temperature], [...measured, score]);
+    const completeSaved = await saveVital(findingsSaved.revision, [complete, pressure, temperature, heart], [...measured, score]);
     const scored = (await service.reopen("demo", westReport.reportId)).report.document.groups
       .find(({ id }) => id === "eVitals.VitalGroup").instances.find(({ instanceId }) => instanceId === vitalGroupId);
     assert.deepEqual(scored.decisionSupportCalculation, complete.decisionSupportCalculation);
@@ -328,12 +329,30 @@ integration("new demo patients support the generated-report lifecycle without a 
     await assert.rejects(saveVital(partialSaved.revision, [repeatGroup], [repeatMeasurement, repeatScale, {
       ...inherited, sourceAttributes: { ...inherited.sourceAttributes, inheritedFromMeasurement: repeatId },
     }]), /different source measurement/);
-    await saveVital(partialSaved.revision, [repeatGroup], [repeatMeasurement, repeatScale, inherited]);
+    const repeated = await saveVital(partialSaved.revision, [repeatGroup], [repeatMeasurement, repeatScale, inherited]);
     const repeat = (await service.reopen("demo", westReport.reportId)).report.document.groups
       .find(({ id }) => id === "eVitals.VitalGroup").instances.find(({ instanceId }) => instanceId === repeatId);
     const reopenedOverride = repeat.elements.find(({ id }) => id === inherited.elementId).values[0];
     assert.equal(reopenedOverride.code, "red");
     assert.deepEqual(reopenedOverride.attributes, { ...inherited.sourceAttributes, "x-open-triage-owner": "clinician" });
+
+    const generatedRespiration = { ...numeric("eVitals.14", repeatId, 18), provenanceKind: "demo",
+      provenanceDetail: { generator: "stationary-populate-v1" }, sourceAttributes: { "x-open-triage-demo": "stationary-populate-v1" } };
+    const findings = decisionSupportFindingResult(west.definition, { criteria: [], noWarningCriteria: false }, "12:15");
+    const rescored = { ...repeatGroup, decisionSupportCalculation: { ...calculation, ...calculateDecisionSupportFindings(west.definition,
+      findings, decisionSupportPhysiology(west.definition, "standard", { "eVitals.14": 18 })) } };
+    const demoSave = (demoAction, expectedRevision, group, occurrence) => service.save("demo", westReport.reportId, {
+      commandId: randomUUID(), authorId: userId, expectedRevision, demoAction, groups: [group], occurrences: [occurrence],
+    }, "proof");
+    await assert.rejects(demoSave("populate", repeated.revision, { ...rescored, ordinal: 7 }, generatedRespiration),
+      /unchanged vital group/);
+    const filled = await demoSave("populate", repeated.revision, rescored, generatedRespiration);
+    await demoSave("clear", filled.revision, repeatGroup, { id: generatedRespiration.id, groupInstanceId: repeatId,
+      elementId: "eVitals.14", tombstone: true });
+    const restored = (await service.reopen("demo", westReport.reportId)).report.document.groups
+      .find(({ id }) => id === "eVitals.VitalGroup").instances.find(({ instanceId }) => instanceId === repeatId);
+    assert.deepEqual(restored.decisionSupportCalculation, repeat.decisionSupportCalculation);
+    assert.deepEqual(restored.elements, repeat.elements);
 
     // Simulate an encounter pinned before deployment of the current shipped version.
     const previousDefinition = { ...west.definition, version: `1.0.0-test.${randomUUID()}`, name: "WEST-A previous version" };

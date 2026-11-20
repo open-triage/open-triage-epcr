@@ -1,6 +1,7 @@
 "use client";
 
 import type { ClinicianSession, DispatchCancellation, DispatchConflict, DispatchConflictDisposition, ReportMediaPolicy, ReportNote } from "@open-triage/contracts";
+import { finalizeSyntheticVitals } from "@open-triage/contracts/synthetic-record-generator";
 import { sessionRequestToken } from "./clinician-session-storage";
 import { sameJsonValue } from "./json-values";
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore, type Dispatch, type MutableRefObject } from "react";
@@ -19,6 +20,7 @@ import {
   encounterDocumentToDraftMutations,
   fetchActiveReport,
   saveDraftReport,
+  stableDraftId,
   shellStateToDraftMutations,
   type ActiveDraftReport,
   type DraftSaveFailureCategory,
@@ -273,6 +275,18 @@ export function useReportWorkspace({
     setReconciliationRequest((request) => request + 1);
   }, [report]);
 
+  // Recover a pre-WEST Populate command once, including a draft already showing the retry button.
+  const recoveredPopulate = useRef<string | undefined>(undefined);
+  useEffect(() => {
+    if (!canUseClinicalDemoDraftActions(report) || !report.clinicalForm?.decisionSupport ||
+        syncStatus !== "Conflict" || syncFailure !== "validation-rejected") return;
+    const queued = nextDraftChange(window.localStorage, report.id)?.command;
+    if (queued?.demoAction !== "populate" || recoveredPopulate.current === report.id ||
+        !queued.groups?.some(group => group.groupId === "eVitals.VitalGroup" && !group.tombstone && !group.decisionSupportCalculation)) return;
+    recoveredPopulate.current = report.id;
+    retryFailedSave();
+  }, [report, retryFailedSave, syncFailure, syncStatus]);
+
   useEffect(() => {
     if (!report?.expiresAt) return;
     const remaining = Date.parse(report.expiresAt) - Date.now();
@@ -419,6 +433,11 @@ export function useReportWorkspace({
           if (recoverConflictingQueue.current) {
             merged = repairRecreatedCanonicalEvents(merged, response.resource.document, bundledEncounterDefinition,
               shellRef.current.timeZone ?? null);
+            const demoAction = pending.findLast(change => change.command.demoAction)?.command.demoAction;
+            if (canUseClinicalDemoDraftActions(report) && demoAction) {
+              merged = finalizeSyntheticVitals(merged, report.clinicalForm, key => stableDraftId(report.id, "synthetic-populate:" + key),
+                merged.encounter.createdAt, demoAction === "populate");
+            }
             const recoveredDraft = encounterDocumentToDraftMutations(report.id, merged, serverDraft, report.clinicalForm?.customFields, report.clinicalForm?.customGroups);
             const retryDelta = draftMutationDelta(recoveredDraft, serverDraft);
             discardQueuedDraftChanges(window.localStorage, report.id, response.resource.reportRevision, new Date().toISOString());

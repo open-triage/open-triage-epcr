@@ -6,9 +6,9 @@ import { standardEncounterDefinition } from "./encounter-form-profile";
 import { createBundledDefinitionProvider } from "./encounter-definition";
 import type { ConfiguredEventType, EncounterDefinition, MedicationFieldId, VitalField as ConfiguredVitalField, VitalNullValue } from "./encounter-definition";
 import type { CustomDataSet } from "./custom-data-elements";
-import { effectiveDecisionSupportColour, type ClinicalDecisionSupportConfiguration, type DraftDecisionSupportAssessment,
+import { effectiveDecisionSupportColour, type ClinicalDecisionSupportConfiguration, type ClinicalFormConfiguration, type DraftDecisionSupportAssessment,
   type EncounterDocument, type TriageColour } from "@open-triage/contracts";
-import { chooseVitalOverride, UNASSESSED_VITAL, vitalAssessmentWithFindings, vitalDecisionSupport, vitalRecordedLocalTime, withVitalDecisionSupport, withVitalMeasurementOffset } from "./vital-decision-support";
+import { chooseVitalOverride, legacyPulseRate, UNASSESSED_VITAL, vitalAssessmentWithFindings, vitalDecisionSupport, vitalRecordedLocalTime, withVitalDecisionSupport, withVitalMeasurementOffset } from "./vital-decision-support";
 import syntheticEncounterDocument from "./data/synthetic-encounter-document.json";
 import { loadEncounterDocument } from "./encounter-document";
 import { encounterEvents, removeCanonicalEvent, saveCanonicalEvent, vitalMeasurementValues } from "./canonical-events";
@@ -115,7 +115,7 @@ export type ShellAction =
   | { readonly type: "view-selected"; readonly view: ShellView }
   | { readonly type: "document-opened"; readonly document: EncounterDocument }
   | { readonly type: "demo-populated"; readonly document: EncounterDocument }
-  | { readonly type: "demo-cleared" }
+  | { readonly type: "demo-cleared"; readonly configuration?: ClinicalFormConfiguration }
   | { readonly type: "note-started"; readonly id: string; readonly date?: string; readonly time: string }
   | { readonly type: "note-opened"; readonly id: string }
   | { readonly type: "note-draft-changed"; readonly field: "date" | "time" | "summary"; readonly value: string }
@@ -404,7 +404,7 @@ export function transitionShell(state: ShellState, action: ShellAction, definiti
     case "demo-populated":
       return { ...state, encounter: { ...state.encounter, document: action.document } };
     case "demo-cleared":
-      return { ...state, encounter: { ...state.encounter, document: clearStationaryDemoData(state.encounter.document) } };
+      return { ...state, encounter: { ...state.encounter, document: clearStationaryDemoData(state.encounter.document, action.configuration) } };
     case "view-selected":
       return { ...state, view: action.view };
     case "review-opened":

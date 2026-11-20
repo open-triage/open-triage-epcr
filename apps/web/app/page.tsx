@@ -535,7 +535,7 @@ function EncounterWorkspace({ session, report, presentationMode, language, onSav
         setPopulateError(reason instanceof Error ? reason.message : "Unable to populate the synthetic record.");
       }
     };
-    const clear = () => { if (authorized()) { setPopulateError(null); dispatch({ type: "demo-cleared" }); } };
+    const clear = () => { if (authorized()) { setPopulateError(null); dispatch({ type: "demo-cleared", configuration: report?.clinicalForm }); } };
     window.addEventListener(DEMO_POPULATE_EVENT, populate);
     window.addEventListener(DEMO_CLEAR_EVENT, clear);
     return () => {

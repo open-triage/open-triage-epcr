@@ -1112,8 +1112,30 @@ export class DraftReportService {
     if (report.status !== "draft" || report.synthetic !== true || report.demo_mutable !== true) {
       throw new ConflictException("Demo actions require an open generated synthetic draft");
     }
+    // A synthetic reading may complete a clinician's saved assessment. Permit only
+    // a derived calculation change on that group; the persisted winners are rescored below.
+    const recalculated = groups.filter(group => !group.tombstone && group.groupId === "eVitals.VitalGroup" &&
+      group.decisionSupportCalculation && (command.demoAction === "clear" || !group.correlationId?.startsWith(DEMO_GROUP_PREFIX)));
+    if (recalculated.length) {
+      const matching = await manager.query<Array<{ id: string }>>(`
+        select g.id from clinical.group_instance g
+        join jsonb_to_recordset($2::jsonb) as v(id uuid, ordinal integer, "parentGroupInstanceId" uuid,
+          "correlationId" text, "documentedTime" timestamptz, "documentedUtcOffsetMinutes" smallint,
+          "customGroupDefinitionId" uuid) on v.id = g.id
+        where g.report_id = $1 and g.tombstoned_at is null and g.group_id = 'eVitals.VitalGroup'
+          and g.decision_support_calculation is not null and g.source_kind = 'nemsis'
+          and g.custom_group_definition_id is null and v."customGroupDefinitionId" is null
+          and g.ordinal = v.ordinal and g.parent_group_instance_id is not distinct from v."parentGroupInstanceId"
+          and g.correlation_id is not distinct from v."correlationId"
+          and g.documented_time is not distinct from v."documentedTime"
+          and g.documented_utc_offset_minutes is not distinct from v."documentedUtcOffsetMinutes"
+      `, [report.id, JSON.stringify(recalculated)]);
+      if (matching.length !== recalculated.length) throw new ConflictException("Demo recalculation requires an existing, unchanged vital group");
+    }
+    const calculationIds = new Set(recalculated.map(group => group.id));
+    const ownedGroups = groups.filter(group => !calculationIds.has(group.id));
     if (command.demoAction === "populate") {
-      const validGroups = groups.every((group) => !group.tombstone && group.correlationId?.startsWith(DEMO_GROUP_PREFIX));
+      const validGroups = ownedGroups.every((group) => !group.tombstone && group.correlationId?.startsWith(DEMO_GROUP_PREFIX));
       const validOccurrences = occurrences.every((occurrence) => !occurrence.tombstone && occurrence.provenanceKind === "demo" &&
         occurrence.provenanceDetail?.generator === DEMO_GENERATOR &&
         occurrence.sourceAttributes?.["x-open-triage-demo"] === DEMO_GENERATOR);
@@ -1122,7 +1144,7 @@ export class DraftReportService {
       }
       return;
     }
-    if (!groups.every(({ tombstone }) => tombstone) || !occurrences.every(({ tombstone }) => tombstone)) {
+    if (!ownedGroups.every(({ tombstone }) => tombstone) || !occurrences.every(({ tombstone }) => tombstone)) {
       throw new ConflictException("Clear accepts only demo-owned removals");
     }
     const rows = await manager.query<Array<{ group_count: string | number; occurrence_count: string | number }>>(`
@@ -1133,8 +1155,8 @@ export class DraftReportService {
         (select count(*) from clinical.element_occurrence eo
           where eo.report_id = $1 and eo.id = any($3::uuid[]) and eo.tombstoned_at is null
             and eo.provenance_detail->>'generator' = $5) as occurrence_count
-    `, [report.id, groups.map(({ id }) => id), occurrences.map(({ id }) => id), `${DEMO_GROUP_PREFIX}%`, DEMO_GENERATOR]);
-    if (Number(rows[0]?.group_count ?? 0) !== groups.length ||
+    `, [report.id, ownedGroups.map(({ id }) => id), occurrences.map(({ id }) => id), `${DEMO_GROUP_PREFIX}%`, DEMO_GENERATOR]);
+    if (Number(rows[0]?.group_count ?? 0) !== ownedGroups.length ||
         Number(rows[0]?.occurrence_count ?? 0) !== occurrences.length) {
       throw new ConflictException("Clear accepts only demo-owned removals");
     }

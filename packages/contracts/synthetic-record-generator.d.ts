@@ -22,6 +22,8 @@ export interface GenerationModel {
 }
 
 export function withCustomGenerationModel(configuration: ClinicalFormConfiguration, model: GenerationModel): GenerationModel;
+export function finalizeSyntheticVitals(document: EncounterDocument, configuration: ClinicalFormConfiguration | undefined,
+  createId: (identity: string) => string, fallbackTime?: string, initialize?: boolean): EncounterDocument;
 export function generateDocument(input: {
   source: EncounterDocument;
   configuration: ClinicalFormConfiguration;

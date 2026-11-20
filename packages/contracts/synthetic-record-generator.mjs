@@ -1,4 +1,4 @@
-import { evaluateValidationBundleSafely, validationRuleScope, COS_ELEMENT_MAPPINGS, cosMedicationUnitIsRate } from './dist/index.js';
+import { calculateDecisionSupportFindings, decisionSupportElementKey, decisionSupportFindingResult, decisionSupportMeasurementLocalTime, decisionSupportObservationAttribute, decisionSupportPhysiology, evaluateValidationBundleSafely, validationRuleScope, COS_ELEMENT_MAPPINGS, cosMedicationUnitIsRate } from './dist/index.js';
 
 const PROVENANCE = 'stationary-populate-v1';
 const attributes = () => ({ 'x-open-triage-demo': PROVENANCE });
@@ -17,12 +17,16 @@ export function withCustomGenerationModel(configuration, { elements, groups }) {
       customId: group.id, minimum: 0, maximum: group.recurrence === 'single' ? 1 : null });
   }
   const fields = configuration.definition.sections.flatMap(section => section.fields);
-  for (const field of fields.filter(field => field.source.kind === 'custom')) {
-    const custom = configuration.customFields?.[field.source.elementDefinitionId];
-    if (!custom || custom.retired) throw new Error(`Active custom field ${field.key} is unavailable`);
-    const group = configuration.customGroups?.[field.source.groupDefinitionId ?? custom.groupDefinitionId];
+  const customSources = new Map(fields.filter(field => field.source.kind === 'custom').map(field => [field.source.elementDefinitionId, field.source]));
+  for (const field of Object.values(configuration.decisionSupport?.fields ?? {})) {
+    if (!customSources.has(field.id)) customSources.set(field.id, { elementDefinitionId: field.id });
+  }
+  for (const source of customSources.values()) {
+    const custom = configuration.customFields?.[source.elementDefinitionId] ?? Object.values(configuration.decisionSupport?.fields ?? {}).find(field => field.id === source.elementDefinitionId);
+    if (!custom || custom.retired) throw new Error(`Active custom field ${source.elementDefinitionId} is unavailable`);
+    const group = configuration.customGroups?.[source.groupDefinitionId ?? custom.groupDefinitionId];
     elements.push({ id: `${custom.namespace}.${custom.slug}`, customId: custom.id,
-      base: ({ number: 'decimal', coded: 'string', other: 'string' })[custom.datatype] ?? custom.datatype,
+      base: custom.integer ? 'integer' : ({ number: 'decimal', coded: 'string', other: 'string' })[custom.datatype] ?? custom.datatype,
       path: [group ? `${group.namespace}.${group.slug}` : custom.correlatesTo ?? 'PatientCareReportGroup'],
       minimum: ['Mandatory', 'Required'].includes(custom.usage) ? 1 : 0,
       maximum: custom.recurrence === 'single' ? 1 : null,
@@ -32,6 +36,82 @@ export function withCustomGenerationModel(configuration, { elements, groups }) {
   }
   return { elements, groups };
 }
+/** Refresh derived WEST results from each measurement's own readings and saved assessment. */
+export function finalizeSyntheticVitals(document, configuration, createId, fallbackTime = document.encounter.createdAt, initialize = true) {
+  const west = configuration?.decisionSupport;
+  if (!west) return document;
+  const { definition, fields } = west;
+  const roots = document.groups.find(group => group.id === definition.assessment.group);
+  if (!roots?.instances.length) return document;
+  const managed = new Set(Object.values(fields).map(decisionSupportElementKey));
+  const children = new Map();
+  for (const group of document.groups) for (const row of group.instances) {
+    if (!children.has(row.parentInstanceId)) children.set(row.parentInstanceId, []);
+    children.get(row.parentInstanceId).push(row);
+  }
+  const instances = roots.instances.map(root => {
+    const saved = root.decisionSupportCalculation;
+    if (saved) {
+      if (saved.systemKey !== definition.key || saved.version !== definition.version) return root;
+    } else if (!initialize || root.attributes?.['x-open-triage-demo'] !== PROVENANCE ||
+      root.elements.some(e => managed.has(e.id) && e.values.some(v => v.attributes?.['x-open-triage-demo'] !== PROVENANCE))) return root;
+
+    const readings = {};
+    const pending = [root];
+    const seen = new Set();
+    for (const row of pending) {
+      if (seen.has(row.instanceId)) continue;
+      seen.add(row.instanceId);
+      for (const el of row.elements) readings[el.id] ??= ordinary(el.values[0]);
+      pending.push(...(children.get(row.instanceId) ?? []));
+    }
+    const values = field => root.elements.find(e => e.id === decisionSupportElementKey(fields[field]))?.values ?? [];
+    const scale = saved ? ordinary(values('newsScale')[0]) : definition.assessment.elements.newsScale.defaultValue;
+    const originalTime = root.elements.find(e => e.id === 'eVitals.01')?.values[0];
+    if (saved && (!scale || originalTime?.kind !== 'scalar')) return root;
+    const time = originalTime?.kind === 'scalar' ? originalTime : { kind: 'scalar', value: fallbackTime,
+      occurrenceId: createId('west-time:' + root.instanceId), attributes: attributes() };
+    const observations = {};
+    const timeAttributes = { ...time.attributes };
+    for (const [key, fixtureValue] of Object.entries({ oxygen: 'air', consciousness: 'A' })) {
+      const attr = decisionSupportObservationAttribute(key);
+      const value = timeAttributes[attr] ?? (!saved && timeAttributes['x-open-triage-demo'] === PROVENANCE ? fixtureValue : undefined);
+      if (value !== undefined) timeAttributes[attr] = observations[key] = value;
+    }
+    const localTime = decisionSupportMeasurementLocalTime(time.value, time.utcOffsetMinutes ?? 0);
+    const findings = saved ? { criteria: values('criteria').map(ordinary), noWarningCriteria: ordinary(values('noWarningCriteria')[0]) === true }
+      : { criteria: ['chest-pain.05'], noWarningCriteria: false };
+    const result = decisionSupportFindingResult(definition, findings, localTime);
+    const physiology = decisionSupportPhysiology(definition, scale, readings, observations);
+    const calculation = calculateDecisionSupportFindings(definition, result, physiology);
+    if (!saved && !calculation.colour) throw new Error('Pinned WEST definition does not support the synthetic chest-pain scenario');
+
+    const scoreKey = decisionSupportElementKey(fields.physiologyScore);
+    const elements = saved ? [...root.elements] : root.elements.filter(e => !managed.has(e.id) && e.id !== 'eVitals.01');
+    function generated(field, value) {
+      const occurrenceId = createId('west:' + root.instanceId + ':' + field);
+      return { id: decisionSupportElementKey(fields[field]), values: [{ ...value, occurrenceId, attributes: attributes() }] };
+    }
+    if (!saved) {
+      elements.push({ id: 'eVitals.01', values: [{ ...time, attributes: timeAttributes }] });
+      for (const [field, code] of [['newsScale', scale], ['categories', result.categoryCodes[0]], ['criteria', findings.criteria[0]]]) {
+        elements.push(generated(field, { kind: 'coded', code, system: fields[field].codeSystem }));
+      }
+    }
+    const scoreIndex = elements.findIndex(e => e.id === scoreKey);
+    if (physiology.total != null && scoreIndex < 0) elements.push(generated('physiologyScore', { kind: 'scalar', value: physiology.total }));
+    if (scoreIndex >= 0 && ordinary(elements[scoreIndex].values[0]) !== physiology.total) {
+      if (physiology.total == null) elements.splice(scoreIndex, 1);
+      else {
+        const score = elements[scoreIndex];
+        elements[scoreIndex] = { ...score, values: [{ ...score.values[0], value: physiology.total }] };
+      }
+    }
+    return { ...root, elements, decisionSupportCalculation: { ...calculation, systemKey: definition.key, version: definition.version } };
+  });
+  return { ...document, groups: document.groups.map(group => group === roots ? { ...group, instances } : group) };
+}
+
 function scalarValid(metadata, value) {
   const limits = metadata.definition.datatype?.constraints ?? {};
   const text = String(value);
@@ -131,7 +211,23 @@ export function generateDocument({ source, configuration, model, bundle, dispatc
         && (choice.codeSystem ?? '') === (value.system ?? ''));
     }))
       .map(element => element.id))])) : []);
-  const globallyProtected = new Set();
+  const globallyProtected = new Set(Object.values(configuration.decisionSupport?.fields ?? {}).map(decisionSupportElementKey));
+  // Preserve existing readings of a finalized assessment; generated absences can be filled.
+  const fixedVitalInputs = new Set(['eVitals.01', ...Object.values(configuration.decisionSupport?.definition.inputs ?? {})
+    .map(input => input.element).filter(Boolean)]);
+  const originalRows = new Map(source.groups.flatMap(group => group.instances.map(row => [row.instanceId, row])));
+  function recordedFinalizedInput(id, instance) {
+    if (!fixedVitalInputs.has(id)) return false;
+    let original = originalRows.get(instance.instanceId);
+    if (!original?.elements.find(e => e.id === id)?.values.some(v => ordinary(v) !== undefined)) return false;
+    const visited = new Set();
+    while (original && !visited.has(original.instanceId)) {
+      if (original.decisionSupportCalculation) return true;
+      visited.add(original.instanceId);
+      original = originalRows.get(original.parentInstanceId);
+    }
+    return false;
+  }
   const protectedElements = {
     add: id => globallyProtected.add(id),
     has: id => globallyProtected.has(id) || (metadata.has(id) && protectedByInstance.get(group(metadata.get(id).path.at(-1)).instanceId)?.has(id)),
@@ -159,16 +255,16 @@ export function generateDocument({ source, configuration, model, bundle, dispatc
     }
     return false;
   }
-  function scopedGroup(id) {
-    if (!repairRoot) return false;
+  function groupWithin(id, ancestorId) {
     const visited = new Set();
     while (id && !visited.has(id)) {
-      if (id === repairRoot.groupId) return true;
+      if (id === ancestorId) return true;
       visited.add(id);
       id = groupMetadata.get(id)?.parent;
     }
     return false;
   }
+  const scopedGroup = id => repairRoot && groupWithin(id, repairRoot.groupId);
   const values = id => document.groups.flatMap(group => group.instances.filter(instance =>
     !scopedGroup(group.id) || insideRepairScope(instance)).flatMap(instance =>
     instance.elements.filter(element => element.id === id).flatMap(element => element.values)));
@@ -208,7 +304,7 @@ export function generateDocument({ source, configuration, model, bundle, dispatc
     if(id===COS_ELEMENT_MAPPINGS.medication.unit.source)candidates=candidates.filter(choice=>!cosMedicationUnitIsRate(choice.label));
     return candidates;
   }
-  function makeValue(id, literal) {
+  function makeValue(id, literal, draw) {
     const spec = metadata.get(id);
     if (!spec) throw new Error(`Cannot generate ${id}: not in the clinical catalog`);
     if (patientField(id)) {
@@ -220,20 +316,20 @@ export function generateDocument({ source, configuration, model, bundle, dispatc
     const candidates = choices(id);
     const coded = spec.definition.valueSource?.kind !== 'scalar' || spec.choices !== undefined;
     if (coded) {
-      const selected = literal === undefined ? pick(candidates, random) : candidates.find(choice => String(choice.code) === String(literal));
+      const selected = literal === undefined ? pick(candidates, draw) : candidates.find(choice => String(choice.code) === String(literal));
       if (selected) return { kind: 'coded', occurrenceId: createId(), code: selected.code,
         ...(selected.codeSystem ? { system: selected.codeSystem } : {}), display: selected.label, attributes: attributes() };
       const policy = fieldsById.get(id)?.choicePolicy;
       const absent = policy ? policy.filter(choice => choice.kind === 'not-value') : spec.definition.permittedNotValues;
       if (literal === undefined && absent?.length) return { kind: 'null', occurrenceId: createId(),
-        notValue: { code: pick(absent, random).code }, attributes: attributes() };
+        notValue: { code: pick(absent, draw).code }, attributes: attributes() };
       if (literal === undefined && !policy && spec.definition.permittedPertinentNegatives?.length) return {
-        kind: 'pertinent-negative', occurrenceId: createId(), code: pick(spec.definition.permittedPertinentNegatives, random).code,
+        kind: 'pertinent-negative', occurrenceId: createId(), code: pick(spec.definition.permittedPertinentNegatives, draw).code,
         attributes: attributes(),
       };
       throw new Error(`Cannot generate ${id}: no enabled code${literal === undefined ? '' : ` matching ${literal}`}`);
     }
-    let value = literal ?? scalar(spec, random, timeline);
+    let value = literal ?? scalar(spec, draw, timeline);
     if (spec.base === 'dateTime') value = String(value).replace(/(?:\.\d+)?Z$/, '+00:00');
     if (['string', 'anyURI', 'date', 'time', 'duration', 'binary'].includes(spec.base)) value = String(value);
     if (!scalarValid(spec, value)) throw new Error(`Cannot generate ${id}: value does not satisfy catalog constraints`);
@@ -247,7 +343,7 @@ export function generateDocument({ source, configuration, model, bundle, dispatc
   const patientIdentity = values('ePatient.01').some(value => ordinary(value));
   const patientField = id => patientIdentity
     && id.startsWith('ePatient.') && !['ePatient.15', 'ePatient.16'].includes(id);
-  function set(id, literal, count = 1) {
+  function set(id, literal, count = 1, draw = random) {
     if (patientField(id) && values(id).length) return;
     if (id === 'eRecord.01' || protectedElements.has(id)) return;
     if (patientIdentity && ['ePatient.15', 'ePatient.16'].includes(id)) {
@@ -265,39 +361,66 @@ export function generateDocument({ source, configuration, model, bundle, dispatc
     if (count > 100 || spec.maximum !== null && count > spec.maximum) throw new Error(`Impossible occurrence count for ${id}: ${count}`);
     const instance = group(spec.path.at(-1));
     let element = instance.elements.find(element => element.id === id);
+    // Keep recorded inputs stable. A scoped fill may replace a legacy demo absence
+    // or supply a missing value while retaining the original occurrence identity.
+    if (recordedFinalizedInput(id, instance)) return;
     if (!element) { element = { id, values: [] }; instance.elements.push(element); }
-    element.values = Array.from({ length: count }, (_, index) => ({ ...makeValue(id, literal),
+    element.values = Array.from({ length: count }, (_, index) => ({ ...makeValue(id, literal, draw),
       occurrenceId: element.values[index]?.occurrenceId ?? createId(`occurrence:${id}:${instance.instanceId}:${index}`) }));
   }
   function remove(id) {
     if (patientField(id)) return;
     if (id === 'eRecord.01' || globallyProtected.has(id)) return;
     for (const group of document.groups) for (const instance of group.instances) {
-      if (scopedGroup(group.id) && !insideRepairScope(instance) || protectedByInstance.get(instance.instanceId)?.has(id)) continue;
+      if (recordedFinalizedInput(id, instance) || scopedGroup(group.id) && !insideRepairScope(instance) || protectedByInstance.get(instance.instanceId)?.has(id)) continue;
       instance.elements = instance.elements.filter(element => element.id !== id);
     }
   }
   // Dispatch identity remains recognizable; date/times and clinical values are
   // regenerated from current configuration, rather than copying a canned record.
   const identity = new Set(['eRecord.01', 'eResponse.03', 'eResponse.04']);
-  for (const field of fields) {
+  function fillField(field, draw) {
     const id = fieldId(field);
-    if (!metadata.has(id) || identity.has(id)) continue;
+    if (!metadata.has(id) || identity.has(id)) return;
     const spec = metadata.get(id);
-    if (patientField(id) && !values(id).length && !spec.definition.permittedNotValues?.length) continue;
+    if (patientField(id) && !values(id).length && !spec.definition.permittedNotValues?.length) return;
     if (spec.definition.valueSource?.kind !== 'scalar' && !choices(id).length &&
       !spec.definition.permittedNotValues?.length && !spec.definition.permittedPertinentNegatives?.length &&
-      !field.required && !spec.minimum) { remove(id); continue; }
-    set(id, undefined, Math.max(1, spec.minimum ?? 0));
+      !field.required && !spec.minimum) { remove(id); return; }
+    set(id, undefined, Math.max(1, spec.minimum ?? 0), draw);
+  }
+  const vitalFields = [];
+  const vitalGroupId = 'eVitals.VitalGroup';
+  for (const field of fields) {
+    if (groupWithin(metadata.get(fieldId(field))?.path.at(-1), vitalGroupId)) vitalFields.push(field);
+    else fillField(field);
   }
   for (const element of model.elements) {
     if (element.id.startsWith('eTimes.') && values(element.id).length) set(element.id, timeline[element.id]);
   }
-  // GCS and blood-pressure components describe one coherent observation.
-  const systolic = Number(ordinary(values('eVitals.06')[0]));
-  if (values('eVitals.07').length && Number.isFinite(systolic)) set('eVitals.07', Math.round(systolic * (0.55 + random() * 0.15)));
-  const components = ['eVitals.19', 'eVitals.20', 'eVitals.21'].map(id => Number(ordinary(values(id)[0])));
-  if (values('eVitals.23').length && components.every(Number.isFinite)) set('eVitals.23', components.reduce((a, b) => a + b, 0));
+  // Fill every configured field within its own measurement, including optional nested groups.
+  if (vitalFields.length) {
+    group(vitalGroupId);
+    // A missing reading must not change the random choices for unrelated validation repairs.
+    const draw = randomFromSeed(Math.floor(random() * 2 ** 32));
+    for (const root of document.groups.find(g => g.id === vitalGroupId).instances) {
+      repairRoot = { groupId: vitalGroupId, instanceId: root.instanceId };
+      const missing = new Set();
+      for (const field of vitalFields) {
+        const id = fieldId(field);
+        const current = values(id);
+        if (current.length && !(fixedVitalInputs.has(id) && current.every(v =>
+          v.attributes?.['x-open-triage-demo'] === PROVENANCE && ordinary(v) === undefined))) continue;
+        missing.add(id);
+        fillField(field, draw);
+      }
+      const systolic = Number(ordinary(values('eVitals.06')[0]));
+      if (missing.has('eVitals.07') && Number.isFinite(systolic)) set('eVitals.07', Math.round(systolic * (0.55 + draw() * 0.15)));
+      const components = ['eVitals.19', 'eVitals.20', 'eVitals.21'].map(id => Number(ordinary(values(id)[0])));
+      if (missing.has('eVitals.23') && components.every(Number.isFinite)) set('eVitals.23', components.reduce((a, b) => a + b, 0));
+    }
+    repairRoot = undefined;
+  }
 
   function repair(expression, want = true) {
     if (expression.operator === 'not') return repair(expression.operand, !want);
@@ -310,7 +433,7 @@ export function generateDocument({ source, configuration, model, bundle, dispatc
     switch (expression.operator) {
       case 'present': if (want) { if (!values(id).length) set(id); } else remove(id); break;
       case 'undocumented': if (want) remove(id); else set(id); break;
-      case 'minimum-occurrences': if (want) set(id, undefined, Math.max(expression.count, values(id).length)); else remove(id); break;
+      case 'minimum-occurrences': if (want) { if (values(id).length < expression.count) set(id, undefined, expression.count); } else remove(id); break;
       case 'maximum-occurrences': if (want) {
         if (!expression.count) remove(id); else if (values(id).length > expression.count) set(id, undefined, expression.count);
       } else set(id, undefined, expression.count + 1); break;
@@ -374,7 +497,7 @@ export function generateDocument({ source, configuration, model, bundle, dispatc
       }
       case 'attribute': if (want && !globallyProtected.has(id)) {
         for (const group of document.groups) for (const instance of group.instances) {
-          if (scopedGroup(group.id) && !insideRepairScope(instance) || protectedByInstance.get(instance.instanceId)?.has(id)) continue;
+          if (recordedFinalizedInput(id, instance) || scopedGroup(group.id) && !insideRepairScope(instance) || protectedByInstance.get(instance.instanceId)?.has(id)) continue;
           for (const value of instance.elements.filter(element => element.id === id).flatMap(element => element.values)) {
             value.attributes = { ...value.attributes, [expression.name]: expression.value ?? '1' };
           }
@@ -400,7 +523,13 @@ export function generateDocument({ source, configuration, model, bundle, dispatc
       if (rule.kind === 'requiredness' && formCondition(rule.expression) && !values(fieldId(field)).length) set(fieldId(field));
     }
     findings = validationProblems(bundle, document, now.toISOString());
-    if (!findings.length) return { document, timeline };
+    if (!findings.length) {
+      const finalized = finalizeSyntheticVitals(document, configuration, createId, timeline['eTimes.07']);
+      if (finalized !== document && validationProblems(bundle, finalized, now.toISOString()).length) {
+        throw new Error('The generated WEST assessment conflicts with active validation rules');
+      }
+      return { document: finalized, timeline };
+    }
     for (const finding of findings) {
       const rule = bundle.rules.find(rule => rule.ruleId === finding.ruleId);
       if (!rule) continue;
