@@ -6,8 +6,10 @@ import { readFile } from "node:fs/promises";
 import productionSettings from "@open-triage/contracts/config/installation.production.json";
 import demoAssignedCalls from "../public/demo-assigned-calls.json";
 import demoOpenAssignment from "../public/demo-open-assignment.json";
-import westDefinition from "../../../defines/decision_support/west-a-2025.sv.json";
+import { shippedWestDefinition } from "../../../defines/decision_support/west-localization.mjs";
 import type { ClinicalDecisionSupportConfiguration, ClinicalFormConfiguration, EncounterDocument, EncounterGroupInstance, FinalizedDecisionSupportCalculation, TriageColour } from "@open-triage/contracts";
+
+const westDefinition = shippedWestDefinition();
 
 const serverBacked = process.env.OPEN_TRIAGE_E2E_SERVER_MODE === "true";
 const assignedCall = demoAssignedCalls.assignedCalls[0]!;

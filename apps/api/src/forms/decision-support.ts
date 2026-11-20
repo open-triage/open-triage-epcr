@@ -1,11 +1,9 @@
 import { createHash } from "node:crypto";
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
+import { localizedWestDefinition, shippedWestDefinition, westCatalogText, westColourLabels } from "../../../../defines/decision_support/west-localization.mjs";
 import { ConflictException, Logger } from "@nestjs/common";
 import {
   WEST_A_DECISION_SUPPORT_KEY,
   decisionSupportCategoryCriteria,
-  decisionSupportDefinitionForLanguage,
   decisionSupportPickerCategories,
   isSelectableDecisionSupportCriterion,
   type CatalogDraftCustomCodedElement,
@@ -21,13 +19,8 @@ import { validateDecisionSupportDefinition } from "./decision-support-definition
 export const DECISION_SUPPORT_NAMESPACE = "west.opentriage.org";
 
 type Manager = Pick<EntityManager, "query">;
-type CatalogLabels = Record<DecisionSupportFieldName, {
-  title: { en: string; sv: string };
-  description: { en: string; sv: string };
-}>;
 type CodeChoice = CatalogDraftCustomCodedElement["choices"][number];
 
-const definitionsDirectory = join(__dirname, "../../../../defines/decision_support");
 const logger = new Logger("DecisionSupport");
 const slugByField = {
   categories: "Categories",
@@ -39,19 +32,17 @@ const slugByField = {
 } satisfies Record<DecisionSupportFieldName, string>;
 const supportedNumericTypes = new Set(["integer", "decimal"]);
 
-const shippedWest: Partial<Record<"sv" | "en", DecisionSupportDefinition>> = {};
-let labels: CatalogLabels | undefined;
+let shippedWest: DecisionSupportDefinition | undefined;
 
 function invalidConfiguration(reason: string): ConflictException {
   logger.error(reason);
   return new ConflictException({ code: "clinical.decisionSupportInvalid" });
 }
 
-function shippedDefinition(key: string, language: "sv" | "en" = "sv"): DecisionSupportDefinition {
+function shippedDefinition(key: string): DecisionSupportDefinition {
   if (key !== WEST_A_DECISION_SUPPORT_KEY) throw invalidConfiguration(`Unsupported decision support system ${key}`);
   try {
-    const file = `${key}.${language}.json`;
-    return shippedWest[language] ??= validateDecisionSupportDefinition(JSON.parse(readFileSync(join(definitionsDirectory, file), "utf8")));
+    return shippedWest ??= validateDecisionSupportDefinition(shippedWestDefinition());
   } catch (error) {
     throw invalidConfiguration(`Unable to load the shipped decision support definition: ${String(error)}`);
   }
@@ -78,8 +69,7 @@ function findingLabels(definition: DecisionSupportDefinition, language: "en" | "
 }
 
 function catalogFindingLabels(pinned: DecisionSupportDefinition) {
-  const translated = decisionSupportDefinitionForLanguage(pinned, "en", shippedDefinition(pinned.key, "en"));
-  return { english: findingLabels(translated, "en"), swedish: findingLabels(pinned, "sv") };
+  return { english: findingLabels(localizedWestDefinition(pinned, "en"), "en"), swedish: findingLabels(pinned, "sv") };
 }
 
 /** The catalog identity depends on the installation and field, not the currently shipped version. */
@@ -94,25 +84,22 @@ function elementIdentity(namespace: string, slug: string): string {
 
 export function decisionSupportCatalogFields(definition: DecisionSupportDefinition, organizationId: string):
 ClinicalDecisionSupportConfiguration["fields"] {
-  labels ??= JSON.parse(readFileSync(join(definitionsDirectory, "localization/catalog-labels.json"), "utf8")) as CatalogLabels;
-  const labelByField = labels;
   function base(field: DecisionSupportFieldName, recurrence: "single" | "multiple") {
     const slug = `Org${organizationId.replaceAll("-", "")}_${slugByField[field]}`;
-    const { title, description } = labelByField[field];
+    const english = westCatalogText(field, "en");
+    const swedish = westCatalogText(field, "sv");
     return {
       id: elementIdentity(DECISION_SUPPORT_NAMESPACE, slug),
       namespace: DECISION_SUPPORT_NAMESPACE,
       slug,
-      title: title.en,
-      definition: description.en,
+      title: english.label,
+      definition: english.description,
       recurrence,
       correlatesTo: definition.assessment.group,
       usage: "Optional" as const,
       identifying: false,
       decisionSupportField: field,
-      localization: { schemaVersion: 1 as const, sv: {
-        label: title.sv, description: description.sv, reviewedSource: { label: title.en, description: description.en },
-      } },
+      localization: { schemaVersion: 1 as const, sv: { ...swedish, reviewedSource: english } },
     };
   }
   function coded(field: DecisionSupportFieldName, recurrence: "single" | "multiple", choices: CodeChoice[]) {
@@ -138,7 +125,7 @@ ClinicalDecisionSupportConfiguration["fields"] {
     newsScale: coded("newsScale", "single", Object.entries(scale.values).map(([code, value]) =>
       choice(code, value.label.en, value.label.sv))),
     overrideColour: coded("overrideColour", "single", definition.assessment.result.overrideAllowed.map((colour) =>
-      choice(colour, colour.charAt(0).toUpperCase() + colour.slice(1), definition.triage_colors[colour]))),
+      choice(colour, westColourLabels[colour].en, definition.triage_colors[colour]))),
     physiologyScore: { ...base("physiologyScore", "single"), datatype: "number", constraints: { minimum: 0 },
       integer: true, readOnly: true },
   };

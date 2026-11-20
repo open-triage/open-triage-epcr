@@ -1,9 +1,11 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import definition from "../../../defines/decision_support/west-a-2025.sv.json" with { type: "json" };
+import { shippedWestDefinition } from "../../../defines/decision_support/west-localization.mjs";
 import { calculateDecisionSupportFindings, decisionSupportFindingResult, decisionSupportPhysiology, decisionSupportScale } from "@open-triage/contracts";
 import { validateDecisionSupportDefinition } from "../dist/forms/decision-support-definition.js";
 import { decisionSupportCatalogFields, registeredDecisionSupportElements } from "../dist/forms/decision-support.js";
+
+const definition = shippedWestDefinition();
 
 test("validates the complete shipped WEST artifact and its provenance", () => {
   assert.equal(validateDecisionSupportDefinition(definition), definition);

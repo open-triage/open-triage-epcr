@@ -1,0 +1,3931 @@
+{
+  "schemaVersion": 1,
+  "key": "west-a-2025",
+  "name": "WEST-A",
+  "version": "1.0.0-draft.4",
+  "catalogKey": "nemsis-3.5.1",
+  "sources": {
+    "criteria": {
+      "filename": "WEST A 2025 Östra.pdf",
+      "title": "WEST - A, Adult Östra/SU",
+      "version": "2025:02:01",
+      "language": "sv",
+      "attachment": "west_a_2025_triage.json",
+      "url": "https://mellanarkiv-offentlig.vgregion.se/alfresco/s/archive/stream/public/v1/source/available/sofia/su1226-506079272-668/surrogate/WEST%20A%202025%20%C3%96stra.pdf"
+    },
+    "scores": {
+      "title": "WEST samt hänvisningsstöd SkaS",
+      "edition": "VGR 2025:1",
+      "url": "https://mellanarkiv-offentlig.vgregion.se/alfresco/s/archive/stream/public/v1/source/available/sofia/skas13221-468498705-9/surrogate/WEST%20samt%20h%C3%A4nvisningsst%C3%B6d%20SkaS.pdf",
+      "news2PdfPage": 10,
+      "onews2PdfPage": 24
+    },
+    "scale2": {
+      "url": "https://www.rcp.ac.uk/media/eczf5mvm/news2-chart-3_news-observation-chart_2022_0_0.pdf",
+      "page": 1
+    },
+    "obstetricBands": {
+      "title": "Swedish obstetric NEWS2 chart by Hein, Lindroos and Åmark, reproduced in the 2025 SFOG course",
+      "scope": "Resolve the four overlapping endpoints in the 2025 WEST ONEWS2 table. WEST defines pathway eligibility and colour thresholds.",
+      "url": "https://www.sfog.se/wp-content/uploads/2025/04/5-riskbedoemning-news-o-joanna-frykman-st-kurs-komplicerad-graviditet-25.pdf",
+      "authorChartUrl": "https://sfai.se/wp-content/uploads/2019/05/6.Hein-Obstetrisk-NEWS.pdf"
+    }
+  },
+  "activation": {
+    "adminSetting": "decisionSupportSystem",
+    "value": "west-a-2025",
+    "scope": "installation",
+    "activeByDefault": false,
+    "pinVersionOnEncounter": true
+  },
+  "assessment": {
+    "group": "eVitals.VitalGroup",
+    "orderBy": "measurementInstant",
+    "scope": "WEST-A adult pathway",
+    "colourPriority": [
+      "green",
+      "yellow",
+      "orange",
+      "red"
+    ],
+    "elements": {
+      "categories": {
+        "kind": "custom",
+        "multiple": true,
+        "pickerLayout": "flat",
+        "documentWhen": "atLeastOneCriterionOrNoneOptionSelected"
+      },
+      "criteria": {
+        "kind": "custom",
+        "multiple": true,
+        "filterOptionsBy": "categories",
+        "selectedBy": "clinician",
+        "retainSelectionsAcrossCategories": true,
+        "orderBy": "descendingSeverity",
+        "displaySeverity": true,
+        "noneOption": {
+          "code": "none",
+          "label": {
+            "en": "No criteria met",
+            "sv": "Inga kriterier uppfyllda"
+          },
+          "scope": "category",
+          "exclusiveWithinCategory": true,
+          "triageColour": null
+        }
+      },
+      "noWarningCriteria": {
+        "kind": "custom",
+        "type": "explicitBoolean"
+      },
+      "newsScale": {
+        "kind": "custom",
+        "type": "singleSelect",
+        "label": {
+          "en": "NEWS scale",
+          "sv": "NEWS-skala"
+        },
+        "defaultValue": "standard",
+        "selectedBy": "clinician",
+        "values": {
+          "standard": {
+            "label": {
+              "en": "Standard",
+              "sv": "Standard"
+            },
+            "scoreName": "NEWS2",
+            "tablesByInput": {
+              "respiratoryRate": "respirations",
+              "spo2": "saturation1",
+              "oxygen": "oxygen",
+              "systolic": "systolic",
+              "heartRate": "pulse",
+              "consciousness": "acvpu",
+              "temperature": "temperature"
+            },
+            "colourRules": "adult"
+          },
+          "obstetric": {
+            "label": {
+              "en": "Obstetric",
+              "sv": "Obstetrisk"
+            },
+            "scoreName": "ONEWS2",
+            "tablesByInput": {
+              "respiratoryRate": "obRespirations",
+              "spo2": "obSaturation",
+              "oxygen": "obOxygen",
+              "systolic": "obSystolic",
+              "diastolic": "obDiastolic",
+              "heartRate": "obPulse",
+              "consciousness": "acvpu",
+              "temperature": "obTemperature"
+            },
+            "colourRules": "obstetric"
+          },
+          "copd": {
+            "label": {
+              "en": "COPD",
+              "sv": "KOL"
+            },
+            "scoreName": "NEWS2",
+            "tablesByInput": {
+              "respiratoryRate": "respirations",
+              "spo2": "saturation2",
+              "oxygen": "oxygen",
+              "systolic": "systolic",
+              "heartRate": "pulse",
+              "consciousness": "acvpu",
+              "temperature": "temperature"
+            },
+            "colourRules": "adult",
+            "indication": "prescribed NEWS2 SpO2 Scale 2"
+          }
+        }
+      },
+      "physiologyScore": {
+        "kind": "calculated",
+        "catalog": "custom",
+        "type": "integer",
+        "label": {
+          "en": "{scale} score",
+          "sv": "{scale}-poäng"
+        },
+        "readOnly": true,
+        "visibleWhen": "allScaleComponentsScored",
+        "scaleElement": "newsScale"
+      },
+      "calculatedColour": {
+        "kind": "calculated",
+        "type": "triageColour"
+      },
+      "calculationStatus": {
+        "kind": "calculated",
+        "options": [
+          "established",
+          "provisional",
+          "unassessed"
+        ]
+      },
+      "overrideColour": {
+        "kind": "custom",
+        "selectedBy": "clinician",
+        "type": "triageColour"
+      },
+      "effectiveColour": {
+        "kind": "calculated",
+        "firstAvailable": [
+          "overrideColour",
+          "calculatedColour"
+        ]
+      }
+    },
+    "carryFromPrecedingMeasurement": [
+      "categories",
+      "criteria",
+      "overrideColour",
+      "newsScale"
+    ],
+    "keepSourceMeasurementId": true,
+    "snapshotOnCreation": true,
+    "editingHistoryPropagates": false,
+    "carryObservations": false,
+    "result": {
+      "combine": "mostUrgent",
+      "inputs": [
+        "selectedClinicalCriteria",
+        "physiologyColour"
+      ],
+      "numericTotalRequiresEveryComponent": true,
+      "partialScoreColour": "lowerBoundFromKnownPointsAndConfirmedCriteria",
+      "provisionalLabel": {
+        "en": "Provisional",
+        "sv": "Preliminär"
+      },
+      "unsupportedDraft": {
+        "indicatorColour": "gray",
+        "label": {
+          "en": "Unassessed",
+          "sv": "Ej bedömd"
+        }
+      },
+      "finalization": {
+        "requiredElement": "effectiveColour",
+        "onMissing": "keepDraft",
+        "message": {
+          "en": "Enter a supporting finding or measurement, or choose a WEST color to save.",
+          "sv": "Ange fynd eller mätvärden som ger en triagefärg eller välj en WEST-färg för att spara."
+        }
+      },
+      "greenRequires": [
+        "completePhysiology",
+        "explicitNoWarningCriteria"
+      ],
+      "redIsDefinitiveWithIncompleteInputs": true,
+      "overrideAllowed": [
+        "green",
+        "yellow",
+        "orange",
+        "red"
+      ],
+      "overridePersistsWhenCalculationChanges": true,
+      "flagChangedCalculationUnderOverride": true,
+      "report": "effectiveColourAndStatusOfLatestSavedMeasurement",
+      "overrideProvenance": [
+        "enteredBy",
+        "enteredAt",
+        "inheritedFromMeasurement",
+        "calculatedColourWhenSelected"
+      ],
+      "explicitNoWarningCriteria": "An explicit entry-wide assessment or a category-specific No criteria met selection for every documented category.",
+      "mobileIndicators": {
+        "encounterBorder": {
+          "source": "latestMeasurementEffectiveColour",
+          "previewLatestDraft": true
+        },
+        "vitalTimelineRow": {
+          "source": "measurementEffectiveColour",
+          "showStatusLabel": true
+        }
+      }
+    },
+    "optionSemantics": {
+      "cross_reference": "navigateToCategoryWithoutApplyingRowColour",
+      "time_window": {
+        "clock": "measurementLocalTime",
+        "windows": {
+          "07-16": {
+            "startInclusive": "07:00",
+            "endExclusive": "16:00"
+          }
+        }
+      },
+      "paediatricRows": "retain source rows, omit from adult choices",
+      "emptyCategory": "Keep an unanswered category in the picker only. Document a category when it has a selected finding or its explicit No criteria met option.",
+      "greenCriterion": "also document absence of higher warning criteria before showing calculated green"
+    }
+  },
+  "inputs": {
+    "respiratoryRate": {
+      "unit": "/min",
+      "precision": 0,
+      "element": "eVitals.14",
+      "minValue": 0,
+      "maxValue": 300
+    },
+    "spo2": {
+      "unit": "%",
+      "precision": 0,
+      "element": "eVitals.12",
+      "minValue": 0,
+      "maxValue": 100
+    },
+    "oxygen": {
+      "values": [
+        "air",
+        "supplemental"
+      ],
+      "explicit": true
+    },
+    "systolic": {
+      "unit": "mmHg",
+      "precision": 0,
+      "element": "eVitals.06",
+      "minValue": 0,
+      "maxValue": 500
+    },
+    "diastolic": {
+      "unit": "mmHg",
+      "precision": 0,
+      "element": "eVitals.07",
+      "minValue": 0,
+      "maxValue": 500,
+      "nonNumericValue": "Palpated pressure does not supply a numeric diastolic component."
+    },
+    "heartRate": {
+      "unit": "/min",
+      "precision": 0,
+      "element": "eVitals.10",
+      "preferMeasuredHeartRateOverPulse": true,
+      "minValue": 0,
+      "maxValue": 500
+    },
+    "consciousness": {
+      "values": [
+        "A",
+        "C",
+        "V",
+        "P",
+        "U"
+      ],
+      "C": "new or worsening confusion",
+      "explicit": true
+    },
+    "temperature": {
+      "unit": "°C",
+      "precision": 1,
+      "element": "eVitals.24",
+      "minValue": 0,
+      "maxValue": 50
+    }
+  },
+  "scoreTables": {
+    "respirations": {
+      "bands": [
+        {
+          "minInclusive": null,
+          "maxInclusive": 8,
+          "points": 3
+        },
+        {
+          "minInclusive": 9,
+          "maxInclusive": 11,
+          "points": 1
+        },
+        {
+          "minInclusive": 12,
+          "maxInclusive": 20,
+          "points": 0
+        },
+        {
+          "minInclusive": 21,
+          "maxInclusive": 24,
+          "points": 2
+        },
+        {
+          "minInclusive": 25,
+          "maxInclusive": null,
+          "points": 3
+        }
+      ]
+    },
+    "saturation1": {
+      "bands": [
+        {
+          "minInclusive": null,
+          "maxInclusive": 91,
+          "points": 3
+        },
+        {
+          "minInclusive": 92,
+          "maxInclusive": 93,
+          "points": 2
+        },
+        {
+          "minInclusive": 94,
+          "maxInclusive": 95,
+          "points": 1
+        },
+        {
+          "minInclusive": 96,
+          "maxInclusive": 100,
+          "points": 0
+        }
+      ]
+    },
+    "saturation2": {
+      "branchOn": "oxygen",
+      "branches": {
+        "air": {
+          "bands": [
+            {
+              "minInclusive": null,
+              "maxInclusive": 83,
+              "points": 3
+            },
+            {
+              "minInclusive": 84,
+              "maxInclusive": 85,
+              "points": 2
+            },
+            {
+              "minInclusive": 86,
+              "maxInclusive": 87,
+              "points": 1
+            },
+            {
+              "minInclusive": 88,
+              "maxInclusive": 92,
+              "points": 0
+            },
+            {
+              "minInclusive": 93,
+              "maxInclusive": 100,
+              "points": 0
+            }
+          ]
+        },
+        "supplemental": {
+          "bands": [
+            {
+              "minInclusive": null,
+              "maxInclusive": 83,
+              "points": 3
+            },
+            {
+              "minInclusive": 84,
+              "maxInclusive": 85,
+              "points": 2
+            },
+            {
+              "minInclusive": 86,
+              "maxInclusive": 87,
+              "points": 1
+            },
+            {
+              "minInclusive": 88,
+              "maxInclusive": 92,
+              "points": 0
+            },
+            {
+              "minInclusive": 93,
+              "maxInclusive": 94,
+              "points": 1
+            },
+            {
+              "minInclusive": 95,
+              "maxInclusive": 96,
+              "points": 2
+            },
+            {
+              "minInclusive": 97,
+              "maxInclusive": 100,
+              "points": 3
+            }
+          ]
+        }
+      }
+    },
+    "oxygen": {
+      "pointsByValue": {
+        "air": 0,
+        "supplemental": 2
+      }
+    },
+    "systolic": {
+      "bands": [
+        {
+          "minInclusive": null,
+          "maxInclusive": 90,
+          "points": 3
+        },
+        {
+          "minInclusive": 91,
+          "maxInclusive": 100,
+          "points": 2
+        },
+        {
+          "minInclusive": 101,
+          "maxInclusive": 110,
+          "points": 1
+        },
+        {
+          "minInclusive": 111,
+          "maxInclusive": 219,
+          "points": 0
+        },
+        {
+          "minInclusive": 220,
+          "maxInclusive": null,
+          "points": 3
+        }
+      ]
+    },
+    "pulse": {
+      "bands": [
+        {
+          "minInclusive": null,
+          "maxInclusive": 40,
+          "points": 3
+        },
+        {
+          "minInclusive": 41,
+          "maxInclusive": 50,
+          "points": 1
+        },
+        {
+          "minInclusive": 51,
+          "maxInclusive": 90,
+          "points": 0
+        },
+        {
+          "minInclusive": 91,
+          "maxInclusive": 110,
+          "points": 1
+        },
+        {
+          "minInclusive": 111,
+          "maxInclusive": 130,
+          "points": 2
+        },
+        {
+          "minInclusive": 131,
+          "maxInclusive": null,
+          "points": 3
+        }
+      ]
+    },
+    "acvpu": {
+      "pointsByValue": {
+        "A": 0,
+        "C": 3,
+        "V": 3,
+        "P": 3,
+        "U": 3
+      }
+    },
+    "temperature": {
+      "bands": [
+        {
+          "minInclusive": null,
+          "maxInclusive": 35,
+          "points": 3
+        },
+        {
+          "minInclusive": 35.1,
+          "maxInclusive": 36,
+          "points": 1
+        },
+        {
+          "minInclusive": 36.1,
+          "maxInclusive": 38,
+          "points": 0
+        },
+        {
+          "minInclusive": 38.1,
+          "maxInclusive": 39,
+          "points": 1
+        },
+        {
+          "minInclusive": 39.1,
+          "maxInclusive": null,
+          "points": 2
+        }
+      ]
+    },
+    "obRespirations": {
+      "bands": [
+        {
+          "minInclusive": null,
+          "maxInclusive": 9,
+          "points": 3
+        },
+        {
+          "minInclusive": 10,
+          "maxInclusive": 20,
+          "points": 0
+        },
+        {
+          "minInclusive": 21,
+          "maxInclusive": 29,
+          "points": 2
+        },
+        {
+          "minInclusive": 30,
+          "maxInclusive": null,
+          "points": 3
+        }
+      ]
+    },
+    "obSaturation": {
+      "bands": [
+        {
+          "minInclusive": null,
+          "maxInclusive": 95,
+          "points": 3
+        },
+        {
+          "minInclusive": 96,
+          "maxInclusive": 100,
+          "points": 0
+        }
+      ]
+    },
+    "obOxygen": {
+      "pointsByValue": {
+        "air": 0,
+        "supplemental": 3
+      }
+    },
+    "obSystolic": {
+      "bands": [
+        {
+          "minInclusive": null,
+          "maxInclusive": 79,
+          "points": 3
+        },
+        {
+          "minInclusive": 80,
+          "maxInclusive": 89,
+          "points": 2
+        },
+        {
+          "minInclusive": 90,
+          "maxInclusive": 139,
+          "points": 0
+        },
+        {
+          "minInclusive": 140,
+          "maxInclusive": 149,
+          "points": 1
+        },
+        {
+          "minInclusive": 150,
+          "maxInclusive": 159,
+          "points": 2
+        },
+        {
+          "minInclusive": 160,
+          "maxInclusive": null,
+          "points": 3
+        }
+      ]
+    },
+    "obDiastolic": {
+      "bands": [
+        {
+          "minInclusive": null,
+          "maxInclusive": 89,
+          "points": 0
+        },
+        {
+          "minInclusive": 90,
+          "maxInclusive": 99,
+          "points": 1
+        },
+        {
+          "minInclusive": 100,
+          "maxInclusive": 109,
+          "points": 2
+        },
+        {
+          "minInclusive": 110,
+          "maxInclusive": null,
+          "points": 3
+        }
+      ]
+    },
+    "obPulse": {
+      "bands": [
+        {
+          "minInclusive": null,
+          "maxInclusive": 59,
+          "points": 3
+        },
+        {
+          "minInclusive": 60,
+          "maxInclusive": 110,
+          "points": 0
+        },
+        {
+          "minInclusive": 111,
+          "maxInclusive": 129,
+          "points": 2
+        },
+        {
+          "minInclusive": 130,
+          "maxInclusive": null,
+          "points": 3
+        }
+      ]
+    },
+    "obTemperature": {
+      "bands": [
+        {
+          "minInclusive": null,
+          "maxInclusive": 35,
+          "points": 3
+        },
+        {
+          "minInclusive": 35.1,
+          "maxInclusive": 36,
+          "points": 1
+        },
+        {
+          "minInclusive": 36.1,
+          "maxInclusive": 37.9,
+          "points": 0
+        },
+        {
+          "minInclusive": 38,
+          "maxInclusive": 38.9,
+          "points": 1
+        },
+        {
+          "minInclusive": 39,
+          "maxInclusive": null,
+          "points": 3
+        }
+      ]
+    }
+  },
+  "colourRules": {
+    "evaluation": "firstMatchingRule",
+    "adult": [
+      {
+        "colour": "red",
+        "minTotal": 7
+      },
+      {
+        "colour": "orange",
+        "minTotal": 5
+      },
+      {
+        "colour": "yellow",
+        "anyComponentAtLeast": 3
+      },
+      {
+        "colour": "green",
+        "minTotal": 0
+      }
+    ],
+    "obstetric": [
+      {
+        "colour": "red",
+        "minTotal": 6
+      },
+      {
+        "colour": "orange",
+        "anyComponentAtLeast": 3
+      },
+      {
+        "colour": "orange",
+        "minTotal": 4
+      },
+      {
+        "colour": "yellow",
+        "minTotal": 1
+      },
+      {
+        "colour": "green",
+        "minTotal": 0
+      }
+    ]
+  },
+  "triage_colors": {
+    "red": {
+      "en": "Red",
+      "sv": "Röd"
+    },
+    "orange": {
+      "en": "Orange",
+      "sv": "Orange"
+    },
+    "yellow": {
+      "en": "Yellow",
+      "sv": "Gul"
+    },
+    "green": {
+      "en": "Green",
+      "sv": "Grön"
+    }
+  },
+  "extraction_notes": [
+    {
+      "en": "Clinical categories and care needs/processes come from pages 10–48. NEWS2, ONEWS2, GCS, mNIHSS, monitoring, orders, and SBAR are supporting materials and are not separate clinical categories.",
+      "sv": "Kliniska kategorier och behov/processer från sidorna 10–48. NEWS2, ONEWS2, GCS, mNIHSS, övervakning, ordinationer och SBAR är stödmaterial och ingår inte som egna kliniska kategorier."
+    },
+    {
+      "en": "The category pages are the source for criteria. The overviews on pages 3–5 sometimes differ from the category pages. Differences are retained unless a resolution is recorded. Trauma alert colors come from page 3.",
+      "sv": "Kategorisidorna används som källa för kriterier. Översiktssidorna 3–5 upprepar och avviker ibland från kategorisidorna; ingen tyst harmonisering har gjorts. Traumalarmsfärger hämtas från sida 3."
+    },
+    {
+      "en": "Line breaks and extra spaces have been normalized. Clinical conditions and thresholds in the findings have not been converted into automated decision rules.",
+      "sv": "Radbrytningar och extra blanksteg har normaliserats. Kliniska villkor och tröskelvärden har inte tolkats om till maskinella beslutsregler."
+    },
+    {
+      "en": "An empty criteria list means that the category has no color-coded criteria of its own or that its criteria appear in subcategories.",
+      "sv": "Tom criteria-lista betyder att inga egna färgsatta kriterier anges, eller att kriterierna ligger i subcategories."
+    }
+  ],
+  "categories": [
+    {
+      "category": {
+        "en": "Allergy",
+        "sv": "ALLERGI"
+      },
+      "source_pages": [
+        10
+      ],
+      "criteria": [
+        {
+          "text": {
+            "en": "Stridor, a threatened or obstructed airway, or an endotracheal tube or laryngeal mask in place",
+            "sv": "Luftväg: stridor, hotad eller ofri luftväg, intub/larynxmask"
+          },
+          "triage_color": "red",
+          "source_page": 10,
+          "id": "allergy.01"
+        },
+        {
+          "text": {
+            "en": "Acute, potentially serious allergic reaction",
+            "sv": "Allergisk reaktion: akut och potentiellt allvarlig"
+          },
+          "triage_color": "orange",
+          "source_page": 10,
+          "id": "allergy.02"
+        },
+        {
+          "text": {
+            "en": "Bite from a venomous animal",
+            "sv": "Bett av giftigt djur"
+          },
+          "triage_color": "yellow",
+          "source_page": 10,
+          "id": "allergy.03"
+        }
+      ],
+      "id": "allergy",
+      "displayLabel": {
+        "en": "Allergy",
+        "sv": "Allergi"
+      }
+    },
+    {
+      "category": {
+        "en": "Blood pressure",
+        "sv": "BLODTRYCK"
+      },
+      "source_pages": [
+        11
+      ],
+      "criteria": [],
+      "notes": {
+        "en": "The color table lists no warning signs specific to this category. Use clinical judgment and the other triage components. An empty list does not imply green priority.",
+        "sv": "Inga egna varningssymtom anges i kategorins färgtabell. Använd klinisk bedömning och övriga triagekomponenter; tom lista innebär inte grön prioritet."
+      },
+      "id": "blood-pressure",
+      "displayLabel": {
+        "en": "Blood pressure",
+        "sv": "Blodtryck"
+      }
+    },
+    {
+      "category": {
+        "en": "Bleeding/anemia",
+        "sv": "BLÖDNING/ANEMI"
+      },
+      "source_pages": [
+        12
+      ],
+      "criteria": [
+        {
+          "text": {
+            "en": "Major uncontrolled bleeding",
+            "sv": "Blödning: stor och okontrollerad"
+          },
+          "triage_color": "red",
+          "source_page": 12,
+          "id": "bleeding.01"
+        },
+        {
+          "text": {
+            "en": "Hematemesis or ongoing melena",
+            "sv": "Hematemeses/pågående melena"
+          },
+          "triage_color": "orange",
+          "source_page": 12,
+          "id": "bleeding.02"
+        },
+        {
+          "text": {
+            "en": "Major bleeding, now controlled",
+            "sv": "Blödning: stor men kontrollerad"
+          },
+          "triage_color": "yellow",
+          "source_page": 12,
+          "id": "bleeding.03"
+        },
+        {
+          "text": {
+            "en": "Hematemesis or ongoing melena with a pulse >120/min",
+            "sv": "Hematemeses/pågående melena med puls >120"
+          },
+          "triage_color": "red",
+          "source_page": 12,
+          "id": "bleeding.04"
+        },
+        {
+          "text": {
+            "en": "Posterior nosebleed or postoperative tonsillar bleeding",
+            "sv": "Bakre näsblödning/postop tonsillblödning"
+          },
+          "triage_color": "orange",
+          "source_page": 12,
+          "id": "bleeding.05"
+        },
+        {
+          "text": {
+            "en": "Hemoglobin <60 g/L without ongoing bleeding",
+            "sv": "Hb < 60 utan pågående blödning"
+          },
+          "triage_color": "yellow",
+          "source_page": 12,
+          "id": "bleeding.06"
+        },
+        {
+          "text": {
+            "en": "Heavy vaginal bleeding soaking through several overnight pads per hour",
+            "sv": "Riklig vaginalblödning: blöder genom flera nattbindor/tim"
+          },
+          "triage_color": "orange",
+          "source_page": 12,
+          "id": "bleeding.07"
+        }
+      ],
+      "id": "bleeding",
+      "displayLabel": {
+        "en": "Bleeding/anemia",
+        "sv": "Blödning/anemi"
+      }
+    },
+    {
+      "category": {
+        "en": "Chest pain",
+        "sv": "BRÖSTSMÄRTA"
+      },
+      "source_pages": [
+        13
+      ],
+      "criteria": [
+        {
+          "text": {
+            "en": "Chest pain with ST elevation or new bundle branch block",
+            "sv": "Bröstsmärta med ST – höjning / nytillkommet grenblock"
+          },
+          "triage_color": "red",
+          "source_page": 13,
+          "id": "chest-pain.01"
+        },
+        {
+          "text": {
+            "en": "Chest pain with new ECG changes",
+            "sv": "Bröstsmärta med nytillkomna EKG-förändringar"
+          },
+          "triage_color": "orange",
+          "source_page": 13,
+          "id": "chest-pain.02"
+        },
+        {
+          "text": {
+            "en": "Ongoing chest pain with low suspicion of a serious cause and no clear tenderness on palpation",
+            "sv": "Bröstsmärta pågående men med låg misstanke om allvarlig orsak och utan tydlig palpömhet"
+          },
+          "triage_color": "yellow",
+          "source_page": 13,
+          "id": "chest-pain.03"
+        },
+        {
+          "text": {
+            "en": "Chest pain with syncope or ongoing autonomic symptoms",
+            "sv": "Bröstsmärta med svimning eller pågående vegetativa symtom"
+          },
+          "triage_color": "red",
+          "source_page": 13,
+          "id": "chest-pain.04"
+        },
+        {
+          "text": {
+            "en": "Ongoing chest pain with suspected acute coronary syndrome or another serious cause",
+            "sv": "Bröstsmärta, pågående med misstanke om AKS eller annan allvarlig orsak"
+          },
+          "triage_color": "orange",
+          "source_page": 13,
+          "id": "chest-pain.05"
+        },
+        {
+          "text": {
+            "en": "Chest pain within the past 24 hours, now resolved, with suspected acute coronary syndrome or another serious cause",
+            "sv": "Bröstsmärta senaste 24 tim, ej pågående men med misstanke om AKS eller annan allvarlig orsak"
+          },
+          "triage_color": "yellow",
+          "source_page": 13,
+          "id": "chest-pain.06"
+        },
+        {
+          "text": {
+            "en": "Chest pain related to breathing, with a suspected serious cause",
+            "sv": "Bröstsmärta andningskorrelerad med misstanke om allvarlig orsak"
+          },
+          "triage_color": "yellow",
+          "source_page": 13,
+          "id": "chest-pain.07"
+        }
+      ],
+      "id": "chest-pain",
+      "displayLabel": {
+        "en": "Chest pain",
+        "sv": "Bröstsmärta"
+      }
+    },
+    {
+      "category": {
+        "en": "Abdominal pain",
+        "sv": "BUKSMÄRTA"
+      },
+      "source_pages": [
+        14
+      ],
+      "criteria": [
+        {
+          "text": {
+            "en": "Sudden, severe (level 3), constant abdominal pain with systolic BP <90 mmHg and/or pulse >120/min",
+            "sv": "Buksmärta: plötsligt påkommen, svår (nivå 3) och konstant med SBT < 90 och/eller puls > 120"
+          },
+          "triage_color": "red",
+          "source_page": 14,
+          "id": "abdominal-pain.01"
+        },
+        {
+          "text": {
+            "en": "Sudden, severe abdominal pain (level 3) or autonomic symptoms",
+            "sv": "Buksmärta: plötsligt påkommen och svår (nivå 3) eller vegetativa symtom"
+          },
+          "triage_color": "orange",
+          "source_page": 14,
+          "id": "abdominal-pain.02"
+        },
+        {
+          "text": {
+            "en": "Ongoing vomiting",
+            "sv": "Kräkningar: pågående"
+          },
+          "triage_color": "yellow",
+          "source_page": 14,
+          "id": "abdominal-pain.03"
+        }
+      ],
+      "id": "abdominal-pain",
+      "displayLabel": {
+        "en": "Abdominal pain",
+        "sv": "Buksmärta"
+      }
+    },
+    {
+      "category": {
+        "en": "Diabetes",
+        "sv": "DIABETES"
+      },
+      "source_pages": [
+        15
+      ],
+      "criteria": [
+        {
+          "text": {
+            "en": "Hypoglycemia with blood glucose <2.5 mmol/L",
+            "sv": "Hypoglykemi: Glc < 2,5"
+          },
+          "triage_color": "red",
+          "source_page": 15,
+          "id": "diabetes.01"
+        },
+        {
+          "text": {
+            "en": "Hyperglycemia with blood glucose >11 mmol/L plus respiratory rate ≥22/min or metabolic acidosis",
+            "sv": "Hyperglykemi: Glc > 11 + AF ≥22 eller metabol acidos"
+          },
+          "triage_color": "orange",
+          "source_page": 15,
+          "id": "diabetes.02"
+        }
+      ],
+      "id": "diabetes",
+      "displayLabel": {
+        "en": "Diabetes",
+        "sv": "Diabetes"
+      }
+    },
+    {
+      "category": {
+        "en": "Diarrhea/vomiting",
+        "sv": "DIARRÉ/KRÄKNINGAR"
+      },
+      "source_pages": [
+        16
+      ],
+      "criteria": [
+        {
+          "text": {
+            "en": "Ongoing vomiting",
+            "sv": "Kräkningar: pågående"
+          },
+          "triage_color": "yellow",
+          "source_page": 16,
+          "id": "diarrhoea.01"
+        }
+      ],
+      "id": "diarrhoea",
+      "displayLabel": {
+        "en": "Diarrhea/vomiting",
+        "sv": "Diarré/kräkningar"
+      }
+    },
+    {
+      "category": {
+        "en": "Shortness of breath",
+        "sv": "DYSPNÉ"
+      },
+      "source_pages": [
+        17
+      ],
+      "criteria": [
+        {
+          "text": {
+            "en": "Shortness of breath with froth at the airway",
+            "sv": "Dyspné med skummande andning"
+          },
+          "triage_color": "red",
+          "source_page": 17,
+          "id": "dyspnoea.01"
+        },
+        {
+          "text": {
+            "en": "Acute severe shortness of breath, visibly labored breathing, cyanosis, or exhaustion",
+            "sv": "Dyspné: akut svår/synligt ansträngd andning/cyanos/utmattad patient"
+          },
+          "triage_color": "orange",
+          "source_page": 17,
+          "id": "dyspnoea.02"
+        },
+        {
+          "text": {
+            "en": "Severe shortness of breath with ST elevation or new bundle branch block",
+            "sv": "Dyspné: kraftig med ST-höjning/nytillkommet grenblock"
+          },
+          "triage_color": "red",
+          "source_page": 17,
+          "id": "dyspnoea.03"
+        },
+        {
+          "text": {
+            "en": "New shortness of breath with new ECG changes",
+            "sv": "Dyspné: nytillkommen med nytillkomna EKG-förändringar"
+          },
+          "triage_color": "orange",
+          "source_page": 17,
+          "id": "dyspnoea.04"
+        }
+      ],
+      "id": "dyspnoea",
+      "displayLabel": {
+        "en": "Shortness of breath",
+        "sv": "Dyspné"
+      }
+    },
+    {
+      "category": {
+        "en": "Limb problems",
+        "sv": "EXTREMITETSPROBLEM"
+      },
+      "source_pages": [
+        18
+      ],
+      "criteria": [
+        {
+          "text": {
+            "en": "Acute limb ischemia (pale, cold limb)",
+            "sv": "Akut ischemi (blek och kall extremitet"
+          },
+          "triage_color": "orange",
+          "source_page": 18,
+          "id": "extremity.01"
+        },
+        {
+          "text": {
+            "en": "Limb pain or swelling with new shortness of breath",
+            "sv": "Extremitetssmärta/-svullnad med nytillkommen dyspné"
+          },
+          "triage_color": "yellow",
+          "source_page": 18,
+          "id": "extremity.02"
+        },
+        {
+          "text": {
+            "en": "Swelling within a single red joint with fever or suspected infection",
+            "sv": "Interartikulär svullnad, rodnad led (en led) med feber/misstänkt infektion"
+          },
+          "triage_color": "yellow",
+          "source_page": 18,
+          "id": "extremity.03"
+        }
+      ],
+      "id": "extremity",
+      "displayLabel": {
+        "en": "Limb problems",
+        "sv": "Extremitetsproblem"
+      }
+    },
+    {
+      "category": {
+        "en": "Pregnancy from 18 weeks (18+0)/postpartum",
+        "sv": "GRAVIDITET FR.O.M. 18+0 /POST-PARTUM"
+      },
+      "source_pages": [
+        19
+      ],
+      "criteria": [
+        {
+          "text": {
+            "en": "Heavy vaginal bleeding in pregnancy, soaking through several overnight pads per hour",
+            "sv": "Gravid med kraftig vaginal blödning (blöder genom flera nattbindor/tim)"
+          },
+          "triage_color": "red",
+          "source_page": 19,
+          "id": "pregnancy-postpartum.01"
+        },
+        {
+          "text": {
+            "en": "Moderate vaginal bleeding in pregnancy (more than a heavy period)",
+            "sv": "Gravid med måttlig vaginal blödning (mer än kraftig mens)"
+          },
+          "triage_color": "orange",
+          "source_page": 19,
+          "id": "pregnancy-postpartum.02"
+        },
+        {
+          "text": {
+            "en": "Ongoing or previous seizure during pregnancy or up to 2 weeks after delivery",
+            "sv": "Gravid med pågående eller genomgånget krampanfall (t.o.m. 2v efter födsel)"
+          },
+          "triage_color": "red",
+          "source_page": 19,
+          "id": "pregnancy-postpartum.03"
+        },
+        {
+          "text": {
+            "en": "Severe abdominal pain in pregnancy, persistent or intermittent",
+            "sv": "Gravid med kraftig buksmärta, ihållande eller intervallsmärta"
+          },
+          "triage_color": "orange",
+          "source_page": 19,
+          "id": "pregnancy-postpartum.04"
+        },
+        {
+          "text": {
+            "en": "Suspected infection in pregnancy or in association with planned termination or miscarriage. Consult gynecology.",
+            "sv": "Gravid, planerad eller spontan abort med misstänkt infektion gynkonsult"
+          },
+          "triage_color": "yellow",
+          "source_page": 19,
+          "id": "pregnancy-postpartum.05"
+        },
+        {
+          "text": {
+            "en": "Rapid onset of severe abdominal pain in pregnancy",
+            "sv": "Gravid med snabbt insättande starka buksmärtor"
+          },
+          "triage_color": "red",
+          "source_page": 19,
+          "id": "pregnancy-postpartum.06"
+        },
+        {
+          "text": {
+            "en": "Headache, abdominal pain, chest pain, or vomiting in pregnancy with BP >140/90 mmHg (preeclampsia)",
+            "sv": "Gravid + huvudvärk el. buksmärta el. bröstsmärta el. kräkning + BT > 140/90 (preeklampsi)"
+          },
+          "triage_color": "orange",
+          "source_page": 19,
+          "id": "pregnancy-postpartum.07"
+        },
+        {
+          "text": {
+            "en": "Pregnancy with systolic BP >160 mmHg or diastolic BP >110 mmHg",
+            "sv": "Gravid med SBT >160 eller DBT >110"
+          },
+          "triage_color": "red",
+          "source_page": 19,
+          "id": "pregnancy-postpartum.08"
+        },
+        {
+          "text": {
+            "en": "Fever >38 °C within 14 days after delivery",
+            "sv": "Post-partum (inom 14 d) med feber > 38"
+          },
+          "triage_color": "orange",
+          "source_page": 19,
+          "id": "pregnancy-postpartum.09"
+        },
+        {
+          "text": {
+            "en": "Abdominal trauma during pregnancy",
+            "sv": "Gravid och trauma mot buken"
+          },
+          "triage_color": "orange",
+          "source_page": 19,
+          "id": "pregnancy-postpartum.10"
+        }
+      ],
+      "id": "pregnancy-postpartum",
+      "displayLabel": {
+        "en": "Pregnancy from 18 weeks (18+0)/postpartum",
+        "sv": "Graviditet fr.o.m. 18+0/postpartum"
+      }
+    },
+    {
+      "category": {
+        "en": "Gynecologic presentations (age 16 and over)",
+        "sv": "GYNEKOLOGISKA SÖKORSAKER (fr 16 år)"
+      },
+      "source_pages": [
+        21,
+        22
+      ],
+      "criteria": [],
+      "subcategories": [
+        {
+          "category": {
+            "en": "Pregnancy through 17 weeks + 6 days",
+            "sv": "Gravid tom v 17+6"
+          },
+          "source_pages": [
+            21,
+            22
+          ],
+          "criteria": [
+            {
+              "text": {
+                "en": "Sudden lower abdominal pain and shock, with or without heavy vaginal bleeding",
+                "sv": "Plötsligt påkommen lågt sittande buksmärta och chock med/utan större vaginal blödning."
+              },
+              "triage_color": "red",
+              "source_page": 21,
+              "id": "gynaecology.01.01"
+            },
+            {
+              "text": {
+                "en": "Severe lower abdominal pain and pulse >120/min despite analgesia, with or without heavy vaginal bleeding",
+                "sv": "Lågt sittande svår buksmärta och puls >120 trots given smärtlindring (med/utan större vaginal blödning)"
+              },
+              "triage_color": "orange",
+              "source_page": 21,
+              "id": "gynaecology.01.02"
+            },
+            {
+              "text": {
+                "en": "Fever with chills",
+                "sv": "Feber med frossa"
+              },
+              "triage_color": "orange",
+              "source_page": 21,
+              "id": "gynaecology.01.03"
+            },
+            {
+              "text": {
+                "en": "Lower abdominal pain",
+                "sv": "Lågt sittande buksmärta"
+              },
+              "triage_color": "yellow",
+              "source_page": 21,
+              "id": "gynaecology.01.04"
+            },
+            {
+              "text": {
+                "en": "Ongoing miscarriage at >10 weeks by ultrasound",
+                "sv": "Pågående missfall >v10 enl ulj."
+              },
+              "triage_color": "yellow",
+              "source_page": 21,
+              "id": "gynaecology.01.05"
+            },
+            {
+              "text": {
+                "en": "Fever or elevated CRP with lower abdominal pain or bleeding",
+                "sv": "Feber/CRP och lågt sittande buksmärta/blödning"
+              },
+              "triage_color": "yellow",
+              "source_page": 21,
+              "id": "gynaecology.01.06"
+            },
+            {
+              "text": {
+                "en": "Abdominal swelling, abdominal pain, and increased respiratory rate after starting IVF treatment***",
+                "sv": "***Buksvullnad, buksmärta och ökad AF i samband med inledd IVF-beh."
+              },
+              "triage_color": "yellow",
+              "source_page": 21,
+              "id": "gynaecology.01.07"
+            },
+            {
+              "text": {
+                "en": "Referral from a gynecologist for suspected ectopic pregnancy without the symptoms listed above",
+                "sv": "Remisss från gynekolog med misstanke om extrauterin graviditet utan ovanstående symtom"
+              },
+              "triage_color": "green",
+              "source_page": 22,
+              "time_window": "07-16",
+              "id": "gynaecology.01.08"
+            },
+            {
+              "text": {
+                "en": "Lower abdominal discomfort to one side, with or without light vaginal bleeding, when an intrauterine pregnancy has not been confirmed",
+                "sv": "Lågt sittande, sidoförskjutet bukobehag med eller utan mindre vaginal blödning där i.u grav ej konstaterats"
+              },
+              "triage_color": "green",
+              "source_page": 22,
+              "time_window": "07-16",
+              "id": "gynaecology.01.09"
+            },
+            {
+              "text": {
+                "en": "Central lower abdominal discomfort with diminishing pregnancy symptoms at >10 weeks",
+                "sv": "Lågt sittande central bukobehag med avtagande graviditetssymtom >v 10"
+              },
+              "triage_color": "green",
+              "source_page": 22,
+              "time_window": "07-16",
+              "id": "gynaecology.01.10"
+            },
+            {
+              "text": {
+                "en": "Other bleeding in early pregnancy (Barium guideline on bleeding during pregnancy)",
+                "sv": "Övrig blödning i tidig grav. Barium: Blödning under graviditet"
+              },
+              "triage_color": "green",
+              "source_page": 22,
+              "time_window": "07-16",
+              "id": "gynaecology.01.11"
+            }
+          ],
+          "id": "gynaecology.01",
+          "displayLabel": {
+            "en": "Gynecology 16+ · Pregnancy through 17 weeks + 6 days",
+            "sv": "Gyn 16+ · Gravid t.o.m. vecka 17+6"
+          }
+        },
+        {
+          "category": {
+            "en": "Nausea/vomiting of pregnancy",
+            "sv": "Graviditets-illamående/kräkningar"
+          },
+          "source_pages": [
+            21,
+            22
+          ],
+          "criteria": [
+            {
+              "text": {
+                "en": "PUQE score 13–15 despite treatment, with symptoms that cannot wait until the next day",
+                "sv": "PUQE-score 13-15 p trots behandling som ej kan anstå till nästa dag"
+              },
+              "triage_color": "yellow",
+              "source_page": 21,
+              "id": "gynaecology.02.01"
+            },
+            {
+              "text": {
+                "en": "PUQE score <13. Give advice at triage and refer to primary care.",
+                "sv": "PUQE-score <13p. Råd i triage och hänvisning till VC"
+              },
+              "triage_color": "green",
+              "source_page": 22,
+              "time_window": "07-16",
+              "id": "gynaecology.02.02"
+            }
+          ],
+          "id": "gynaecology.02",
+          "displayLabel": {
+            "en": "Gynecology 16+ · Nausea/vomiting of pregnancy",
+            "sv": "Gyn 16+ · Graviditetsillamående/kräkningar"
+          }
+        },
+        {
+          "category": {
+            "en": "Not pregnant, abdominal pain/bleeding",
+            "sv": "EJ Gravid — Buksmärta/Blödning"
+          },
+          "source_pages": [
+            21,
+            22
+          ],
+          "criteria": [
+            {
+              "text": {
+                "en": "Bleeding with shock",
+                "sv": "Blödning och chock"
+              },
+              "triage_color": "red",
+              "source_page": 21,
+              "id": "gynaecology.03.01"
+            },
+            {
+              "text": {
+                "en": "Pulse >120/min or severe pain despite analgesia",
+                "sv": "Puls >120 eller svår smärta trots given smärtlindring"
+              },
+              "triage_color": "orange",
+              "source_page": 21,
+              "id": "gynaecology.03.02"
+            },
+            {
+              "text": {
+                "en": "Fever and lower abdominal symptoms with elevated CRP",
+                "sv": "Feber och lågt sittande bukbesvär med förhöjt CRP"
+              },
+              "triage_color": "yellow",
+              "source_page": 21,
+              "id": "gynaecology.03.03"
+            },
+            {
+              "text": {
+                "en": "Heavy vaginal bleeding soaking through several overnight pads per hour",
+                "sv": "Riklig vaginalblödning: blöder genom flera nattbindor/tim"
+              },
+              "triage_color": "orange",
+              "source_page": 21,
+              "id": "gynaecology.03.04",
+              "sourceTriageColour": "yellow",
+              "resolutionId": "gynaecology"
+            },
+            {
+              "text": {
+                "en": "Known endometriosis or ongoing evaluation for severe dysmenorrhea, with other causes of pain excluded and symptoms uncontrolled by measures available at home",
+                "sv": "Känd endometrios eller under utredning för svår dysmennoré (när andra orsaker till smärtan är uteslutna) som inte klarar sig på åtgärder patienten har hemma"
+              },
+              "triage_color": "yellow",
+              "source_page": 21,
+              "id": "gynaecology.03.05"
+            },
+            {
+              "text": {
+                "en": "Several days of lower abdominal pain with vaginal discharge or bleeding",
+                "sv": "Några dygn anamnes på lågt sittande buksmärta och flytningar/blödningar"
+              },
+              "triage_color": "green",
+              "source_page": 22,
+              "time_window": "07-16",
+              "id": "gynaecology.03.06"
+            },
+            {
+              "text": {
+                "en": "Ring pessary has fallen out, causing disabling prolapse",
+                "sv": "Prolapsring som trillat ut och orsakar handikappande framfall"
+              },
+              "triage_color": "green",
+              "source_page": 22,
+              "time_window": "07-16",
+              "id": "gynaecology.03.07"
+            }
+          ],
+          "id": "gynaecology.03",
+          "displayLabel": {
+            "en": "Gynecology 16+ · Not pregnant, abdominal pain/bleeding",
+            "sv": "Gyn 16+ · Ej gravid – buksmärta/blödning"
+          }
+        },
+        {
+          "category": {
+            "en": "Postoperative problems",
+            "sv": "Postop"
+          },
+          "source_pages": [
+            21,
+            22
+          ],
+          "criteria": [
+            {
+              "text": {
+                "en": "Postoperative infection. See infection.",
+                "sv": "Post-op infektion. Se infektion"
+              },
+              "triage_color": "red",
+              "source_page": 21,
+              "cross_reference": {
+                "en": "Infection/fever/sepsis",
+                "sv": "INFEKTION/FEBER/SEPSIS"
+              },
+              "id": "gynaecology.04.01",
+              "navigateToCategory": "infection"
+            },
+            {
+              "text": {
+                "en": "Postoperative infection. See infection.",
+                "sv": "Post-op infektion. Se infektion"
+              },
+              "triage_color": "orange",
+              "source_page": 21,
+              "cross_reference": {
+                "en": "Infection/fever/sepsis",
+                "sv": "INFEKTION/FEBER/SEPSIS"
+              },
+              "id": "gynaecology.04.02",
+              "navigateToCategory": "infection"
+            },
+            {
+              "text": {
+                "en": "Postoperative infection. See infection.",
+                "sv": "Post-op infektion. Se infektion"
+              },
+              "triage_color": "yellow",
+              "source_page": 21,
+              "cross_reference": {
+                "en": "Infection/fever/sepsis",
+                "sv": "INFEKTION/FEBER/SEPSIS"
+              },
+              "id": "gynaecology.04.03",
+              "navigateToCategory": "infection"
+            },
+            {
+              "text": {
+                "en": "Bleeding from the suture site",
+                "sv": "Blödning från plats för suturer"
+              },
+              "triage_color": "yellow",
+              "source_page": 21,
+              "id": "gynaecology.04.04"
+            },
+            {
+              "text": {
+                "en": "Vaginal cuff dehiscence**",
+                "sv": "**Vaginaltopps-ruptur"
+              },
+              "triage_color": "yellow",
+              "source_page": 21,
+              "id": "gynaecology.04.05"
+            },
+            {
+              "text": {
+                "en": "Pain despite analgesia that cannot wait until the next day",
+                "sv": "Smärta trots smärtlindring som ej kan anstå till nästa dag"
+              },
+              "triage_color": "yellow",
+              "source_page": 21,
+              "id": "gynaecology.04.06"
+            },
+            {
+              "text": {
+                "en": "Postoperative complication with discomfort or mild pain related to surgery",
+                "sv": "Komplikation med obehag, lättare smärta relaterat till operationen"
+              },
+              "triage_color": "green",
+              "source_page": 22,
+              "time_window": "07-16",
+              "id": "gynaecology.04.07"
+            }
+          ],
+          "id": "gynaecology.04",
+          "displayLabel": {
+            "en": "Gynecology 16+ · Postoperative problems",
+            "sv": "Gyn 16+ · Postop"
+          }
+        },
+        {
+          "category": {
+            "en": "Urinary retention",
+            "sv": "Urinstämma"
+          },
+          "source_pages": [
+            21,
+            22
+          ],
+          "criteria": [
+            {
+              "text": {
+                "en": "Severe abdominal pain",
+                "sv": "Svår buksmärta"
+              },
+              "triage_color": "orange",
+              "source_page": 21,
+              "id": "gynaecology.05.01"
+            },
+            {
+              "text": {
+                "en": "Has not urinated for 6 hours",
+                "sv": "Ej kissat på 6 timmar"
+              },
+              "triage_color": "orange",
+              "source_page": 21,
+              "id": "gynaecology.05.02"
+            },
+            {
+              "text": {
+                "en": "Difficulty emptying the bladder, with or without a ring pessary",
+                "sv": "Svårighet att tömma blåsan (med eller utan prolapsring)"
+              },
+              "triage_color": "yellow",
+              "source_page": 21,
+              "id": "gynaecology.05.03"
+            },
+            {
+              "text": {
+                "en": "Ring pessary has fallen out, causing functionally limiting prolapse",
+                "sv": "Ring som trillat ut och orsakar funktionshindrande framfall"
+              },
+              "triage_color": "green",
+              "source_page": 22,
+              "time_window": "07-16",
+              "id": "gynaecology.05.04"
+            }
+          ],
+          "id": "gynaecology.05",
+          "displayLabel": {
+            "en": "Gynecology 16+ · Urinary retention",
+            "sv": "Gyn 16+ · Urinstämma"
+          }
+        },
+        {
+          "category": {
+            "en": "Bartholinitis/vulvar abscess and local infection",
+            "sv": "Bartolinit / vulvaabscess och lokal infektion"
+          },
+          "source_pages": [
+            21,
+            22
+          ],
+          "criteria": [
+            {
+              "text": {
+                "en": "Marked pain, difficulty sitting or moving, and fever",
+                "sv": "Uttalad smärta, svårt att sitta/röra sig, feber"
+              },
+              "triage_color": "yellow",
+              "source_page": 21,
+              "id": "gynaecology.06.01"
+            },
+            {
+              "text": {
+                "en": "Difficulty urinating",
+                "sv": "Svårt att kissa"
+              },
+              "triage_color": "yellow",
+              "source_page": 21,
+              "id": "gynaecology.06.02"
+            },
+            {
+              "text": {
+                "en": "Bartholinitis or vulvar abscess without the marked symptoms above",
+                "sv": "Bartholinit/vulvaabscess utan uttalade besvär enl ovan"
+              },
+              "triage_color": "green",
+              "source_page": 22,
+              "time_window": "07-16",
+              "id": "gynaecology.06.03"
+            },
+            {
+              "text": {
+                "en": "Word catheter fell out <6 hours after insertion",
+                "sv": "Wordkateter trillat ut <6 tim efter insättning"
+              },
+              "triage_color": "green",
+              "source_page": 22,
+              "time_window": "07-16",
+              "id": "gynaecology.06.04"
+            }
+          ],
+          "id": "gynaecology.06",
+          "displayLabel": {
+            "en": "Gynecology 16+ · Bartholinitis/vulvar abscess and local infection",
+            "sv": "Gyn 16+ · Bartolinit/vulvaabscess och lokal infektion"
+          }
+        }
+      ],
+      "notes": [
+        {
+          "en": "The green criteria are headed GREEN 07–16. The separate referral table for antenatal care, primary care, and outpatient gynecology on page 22 has no explicit triage color and is excluded from the color-coded criteria.",
+          "sv": "Gröna kriterier har rubriken GRÖN 07-16. Den separata hänvisningstabellen MVC/VC/ÖV-gyn på sida 22 saknar uttrycklig triagefärg och ingår inte som färgsatta kriterier."
+        },
+        {
+          "en": "Three color rows refer postoperative infection to the infection category. These are cross-references and do not assign all three colors to postoperative infection.",
+          "sv": "Post-op infektion hänvisar till infektion i tre färgrader; dessa är korshänvisningar och innebär inte att all postoperativ infektion har samtliga tre färger."
+        },
+        {
+          "en": "In the original, page 22 is labeled 1/2 although it is the continuation page.",
+          "sv": "Sida 22 är rubricerad 1/2 i originalet trots att den är fortsättningssidan."
+        }
+      ],
+      "definitions": {
+        "**": {
+          "en": "The vaginal cuff is sutured during hysterectomy. It can rupture spontaneously or after vaginal penetration. Bleeding and pain are uncommon, but assessment is needed because of the risk of bowel prolapse or infection.",
+          "sv": "Vid hysterektomi sutureras vaginaltoppen. Kan rupturera t.ex. vid penetration av slidan eller spontant. Ger sällan blödning/smärta men behöver bedömas pga risk för tarmprolaps/infektion."
+        },
+        "***": {
+          "en": "Ovarian hyperstimulation syndrome (OHSS) can develop after starting IVF treatment, before or after embryo transfer. See the Barium guideline on OHSS.",
+          "sv": "OHSS Ovariellt hyperstimuleringssyndrom uppstår i samband med inledd IVF-beh före eller efter embryoöverföring. Se bariumrutin OHSS."
+        }
+      },
+      "id": "gynaecology",
+      "displayLabel": {
+        "en": "Gynecologic presentations (age 16 and over)",
+        "sv": "Gynekologiska sökorsaker (från 16 år)"
+      }
+    },
+    {
+      "category": {
+        "en": "Heart rhythm",
+        "sv": "HJÄRTRYTM"
+      },
+      "source_pages": [
+        23
+      ],
+      "criteria": [
+        {
+          "text": {
+            "en": "Wide-complex tachycardia as the reason for presentation",
+            "sv": "Tackycardi: breddökad (som orsak till vårdtillfället)"
+          },
+          "triage_color": "orange",
+          "source_page": 23,
+          "id": "arrhythmia.01"
+        }
+      ],
+      "id": "arrhythmia",
+      "displayLabel": {
+        "en": "Heart rhythm",
+        "sv": "Hjärtrytm"
+      }
+    },
+    {
+      "category": {
+        "en": "Cardiac arrest/airway obstruction",
+        "sv": "HJÄRTSTOPP/LUFTVÄGSHINDER"
+      },
+      "source_pages": [
+        24
+      ],
+      "criteria": [
+        {
+          "text": {
+            "en": "Cardiac arrest, ongoing or resuscitated",
+            "sv": "Hjärtstopp: pågående / åtgärdat"
+          },
+          "triage_color": "red",
+          "source_page": 24,
+          "id": "cardiac-arrest.01"
+        },
+        {
+          "text": {
+            "en": "Stridor, a threatened or obstructed airway, or an endotracheal tube or laryngeal mask in place",
+            "sv": "Luftväg: stridor, hotad eller ofri luftväg, intuberad / larynxmask"
+          },
+          "triage_color": "red",
+          "source_page": 24,
+          "id": "cardiac-arrest.02"
+        }
+      ],
+      "id": "cardiac-arrest",
+      "displayLabel": {
+        "en": "Cardiac arrest/airway obstruction",
+        "sv": "Hjärtstopp/luftvägshinder"
+      }
+    },
+    {
+      "category": {
+        "en": "Skin",
+        "sv": "HUD"
+      },
+      "source_pages": [
+        25
+      ],
+      "criteria": [],
+      "notes": {
+        "en": "The color table lists no warning signs specific to this category. Use clinical judgment and the other triage components. An empty list does not imply green priority.",
+        "sv": "Inga egna varningssymtom anges i kategorins färgtabell. Använd klinisk bedömning och övriga triagekomponenter; tom lista innebär inte grön prioritet."
+      },
+      "id": "skin",
+      "displayLabel": {
+        "en": "Skin",
+        "sv": "Hud"
+      }
+    },
+    {
+      "category": {
+        "en": "Headache",
+        "sv": "HUVUDVÄRK"
+      },
+      "source_pages": [
+        26
+      ],
+      "criteria": [
+        {
+          "text": {
+            "en": "Abrupt onset of intense headache",
+            "sv": "Huvudvärk: urakut debut och intensiv"
+          },
+          "triage_color": "orange",
+          "source_page": 26,
+          "id": "headache.01"
+        }
+      ],
+      "id": "headache",
+      "displayLabel": {
+        "en": "Headache",
+        "sv": "Huvudvärk"
+      }
+    },
+    {
+      "category": {
+        "en": "Infection/fever/sepsis",
+        "sv": "INFEKTION/FEBER/SEPSIS"
+      },
+      "source_pages": [
+        27
+      ],
+      "criteria": [
+        {
+          "text": {
+            "en": "Suspected infection with NEWS2 ≥7",
+            "sv": "Infektion: misstänkt + NEWS2 ≥7"
+          },
+          "triage_color": "red",
+          "source_page": 27,
+          "id": "infection.01"
+        },
+        {
+          "text": {
+            "en": "Suspected infection with NEWS2 5–6",
+            "sv": "Infektion: misstänkt samt NEWS2 5-6"
+          },
+          "triage_color": "orange",
+          "source_page": 27,
+          "id": "infection.02"
+        },
+        {
+          "text": {
+            "en": "Infection with fever, systemic illness, and neck stiffness, meningism, or petechiae",
+            "sv": "Infektion med feber, påverkad och nackstel / meningism / peteccier"
+          },
+          "triage_color": "red",
+          "source_page": 27,
+          "id": "infection.03"
+        },
+        {
+          "text": {
+            "en": "Suspected infection during chemotherapy or in an immunosuppressed patient",
+            "sv": "Infektion: misstänkt med pågående cytostatikabehandling / immunosupprimerad"
+          },
+          "triage_color": "orange",
+          "source_page": 27,
+          "id": "infection.04"
+        }
+      ],
+      "id": "infection",
+      "displayLabel": {
+        "en": "Infection/fever/sepsis",
+        "sv": "Infektion/feber/sepsis"
+      }
+    },
+    {
+      "category": {
+        "en": "Poisoning",
+        "sv": "INTOX"
+      },
+      "source_pages": [
+        28
+      ],
+      "criteria": [
+        {
+          "text": {
+            "en": "Stridor, a threatened or obstructed airway, or an endotracheal tube or laryngeal mask in place",
+            "sv": "Luftväg: stridor, hotad eller ofri luftväg, intub / laranxmask"
+          },
+          "triage_color": "red",
+          "source_page": 28,
+          "id": "intoxication.01"
+        },
+        {
+          "text": {
+            "en": "Acute severe poisoning or poisoning with suicidal intent",
+            "sv": "Intox: akut och allvarlig eller suicidal."
+          },
+          "triage_color": "orange",
+          "source_page": 28,
+          "id": "intoxication.02"
+        },
+        {
+          "text": {
+            "en": "Venomous snake bite",
+            "sv": "Bett av giftig orm"
+          },
+          "triage_color": "yellow",
+          "source_page": 28,
+          "id": "intoxication.03"
+        },
+        {
+          "text": {
+            "en": "Unconscious",
+            "sv": "Medvetslös"
+          },
+          "triage_color": "red",
+          "source_page": 28,
+          "id": "intoxication.04"
+        },
+        {
+          "text": {
+            "en": "New reduction in level of consciousness",
+            "sv": "Medvetande sänkt nytillkommen"
+          },
+          "triage_color": "orange",
+          "source_page": 28,
+          "id": "intoxication.05"
+        },
+        {
+          "text": {
+            "en": "New confusion",
+            "sv": "Förvirring: nytillkommen"
+          },
+          "triage_color": "orange",
+          "source_page": 28,
+          "id": "intoxication.06"
+        }
+      ],
+      "id": "intoxication",
+      "displayLabel": {
+        "en": "Poisoning",
+        "sv": "Intox"
+      }
+    },
+    {
+      "category": {
+        "en": "Complications of surgery, casts, or other procedures",
+        "sv": "KOMPLIKATION OPERATION/GIPS ETC"
+      },
+      "source_pages": [
+        29
+      ],
+      "criteria": [],
+      "notes": {
+        "en": "The color table lists no warning signs specific to this category. Use clinical judgment and the other triage components. An empty list does not imply green priority.",
+        "sv": "Inga egna varningssymtom anges i kategorins färgtabell. Använd klinisk bedömning och övriga triagekomponenter; tom lista innebär inte grön prioritet."
+      },
+      "id": "postoperative",
+      "displayLabel": {
+        "en": "Complications of surgery, casts, or other procedures",
+        "sv": "Komplikation operation/gips etc"
+      }
+    },
+    {
+      "category": {
+        "en": "Liver disease",
+        "sv": "LEVERSJUKDOM"
+      },
+      "source_pages": [
+        30
+      ],
+      "criteria": [],
+      "notes": {
+        "en": "The color table lists no warning signs specific to this category. Use clinical judgment and the other triage components. An empty list does not imply green priority.",
+        "sv": "Inga egna varningssymtom anges i kategorins färgtabell. Använd klinisk bedömning och övriga triagekomponenter; tom lista innebär inte grön prioritet."
+      },
+      "id": "liver",
+      "displayLabel": {
+        "en": "Liver disease",
+        "sv": "Leversjukdom"
+      }
+    },
+    {
+      "category": {
+        "en": "Groin",
+        "sv": "LJUMSK"
+      },
+      "source_pages": [
+        31
+      ],
+      "criteria": [
+        {
+          "text": {
+            "en": "Incarcerated inguinal hernia",
+            "sv": "Inklämt ljumskbråck"
+          },
+          "triage_color": "orange",
+          "source_page": 31,
+          "id": "groin.01"
+        }
+      ],
+      "id": "groin",
+      "displayLabel": {
+        "en": "Groin",
+        "sv": "Ljumsk"
+      }
+    },
+    {
+      "category": {
+        "en": "Altered level of consciousness",
+        "sv": "MEDVETANDEPÅVERKAN"
+      },
+      "source_pages": [
+        32
+      ],
+      "criteria": [
+        {
+          "text": {
+            "en": "Unconscious",
+            "sv": "Medvetslös"
+          },
+          "triage_color": "red",
+          "source_page": 32,
+          "id": "consciousness.01"
+        },
+        {
+          "text": {
+            "en": "New reduction in level of consciousness",
+            "sv": "Medvetssänkt: nytillkommet"
+          },
+          "triage_color": "orange",
+          "source_page": 32,
+          "id": "consciousness.02"
+        },
+        {
+          "text": {
+            "en": "New confusion",
+            "sv": "Förvirring: nytillkommet"
+          },
+          "triage_color": "orange",
+          "source_page": 32,
+          "id": "consciousness.03"
+        }
+      ],
+      "id": "consciousness",
+      "displayLabel": {
+        "en": "Altered level of consciousness",
+        "sv": "Medvetandepåverkan"
+      }
+    },
+    {
+      "category": {
+        "en": "Neurologic symptoms/dizziness/seizures",
+        "sv": "NEURO/YRSEL/KRAMPER"
+      },
+      "source_pages": [
+        33
+      ],
+      "criteria": [
+        {
+          "text": {
+            "en": "Suspected stroke with symptoms for ≤4.5 hours and mNIHSS ≥1",
+            "sv": "Strokemisstanke med symtom ≤ 4,5 tim och mNIHSS ≥1 p"
+          },
+          "triage_color": "red",
+          "source_page": 33,
+          "id": "neurological.01"
+        },
+        {
+          "text": {
+            "en": "New reduction in level of consciousness",
+            "sv": "Medvetandesänkt; nytillkommet"
+          },
+          "triage_color": "orange",
+          "source_page": 33,
+          "id": "neurological.02"
+        },
+        {
+          "text": {
+            "en": "Suspected stroke with symptoms for >24 hours and mNIHSS ≥2",
+            "sv": "Strokemisstanke med symtom >24 tim och mNIHSS ≥2p"
+          },
+          "triage_color": "yellow",
+          "source_page": 33,
+          "id": "neurological.03"
+        },
+        {
+          "text": {
+            "en": "Suspected stroke with symptoms for 4.5–24 hours or unknown onset, and mNIHSS ≥2",
+            "sv": "Strokemisstanke med symtom 4,5 – 24 tim alt okänd debut och mNIHSS ≥2p"
+          },
+          "triage_color": "red",
+          "source_page": 33,
+          "id": "neurological.04"
+        },
+        {
+          "text": {
+            "en": "Suspected stroke with symptoms for 4.5–24 hours or unknown onset, and mNIHSS of 1",
+            "sv": "Strokemisstanke med symtom 4,5 – 24 tim alt okänd debut och mNIHSS 1p"
+          },
+          "triage_color": "yellow",
+          "source_page": 33,
+          "id": "neurological.05"
+        },
+        {
+          "text": {
+            "en": "Acute-onset dizziness with symptoms for ≤4.5 hours and mNIHSS ≥1",
+            "sv": "Yrsel: akut påkommen med symtom ≤ 4,5 tim och mNIHSS ≥1 p"
+          },
+          "triage_color": "red",
+          "source_page": 33,
+          "id": "neurological.06"
+        },
+        {
+          "text": {
+            "en": "Acute-onset dizziness with symptoms for >24 hours and mNIHSS ≥2",
+            "sv": "Yrsel: akut påkommen med symtom > 24 tim och mNIHSS ≥2p"
+          },
+          "triage_color": "yellow",
+          "source_page": 33,
+          "id": "neurological.07"
+        },
+        {
+          "text": {
+            "en": "Ongoing seizures",
+            "sv": "Kramper: pågående"
+          },
+          "triage_color": "red",
+          "source_page": 33,
+          "id": "neurological.08"
+        },
+        {
+          "text": {
+            "en": "Acute-onset dizziness with symptoms for 4.5–24 hours or unknown onset, and mNIHSS of 1",
+            "sv": "Yrsel: akut påkommen med symtom 4,5 – 24 tim alt okänd debut och mNIHSS 1p"
+          },
+          "triage_color": "yellow",
+          "source_page": 33,
+          "id": "neurological.09"
+        },
+        {
+          "text": {
+            "en": "TIA within the past 24 hours, now symptom-free",
+            "sv": "TIA: senaste 24 tim, nu symtomfri"
+          },
+          "triage_color": "yellow",
+          "source_page": 33,
+          "id": "neurological.10"
+        }
+      ],
+      "id": "neurological",
+      "displayLabel": {
+        "en": "Neurologic symptoms/dizziness/seizures",
+        "sv": "Neuro/yrsel/kramper"
+      }
+    },
+    {
+      "category": {
+        "en": "Nonspecific illness",
+        "sv": "OSPECIFIK SJUKDOM"
+      },
+      "source_pages": [
+        35
+      ],
+      "criteria": [
+        {
+          "text": {
+            "en": "Potassium ≥6.0 mmol/L with ECG changes",
+            "sv": "Kalium ≥6,0 och EKG-förändringar"
+          },
+          "triage_color": "red",
+          "source_page": 35,
+          "id": "nonspecific.01"
+        },
+        {
+          "text": {
+            "en": "Known Addison’s disease or adrenal insufficiency",
+            "sv": "Känd addison eller binjurebarkssvikt"
+          },
+          "triage_color": "orange",
+          "source_page": 35,
+          "id": "nonspecific.02"
+        }
+      ],
+      "id": "nonspecific",
+      "displayLabel": {
+        "en": "Nonspecific illness",
+        "sv": "Ospecifik sjukdom"
+      }
+    },
+    {
+      "category": {
+        "en": "Psychiatric symptoms",
+        "sv": "PSYKISKA BESVÄR"
+      },
+      "source_pages": [
+        36,
+        37
+      ],
+      "criteria": [
+        {
+          "text": {
+            "en": "Ongoing suicide attempt or suspected serious physical harm from injury or substance ingestion. Assess in a medical emergency department.",
+            "sv": "Pågående suicidförsök eller misstänkt allvarlig kropps-skada mekanisk skada eller intag av substanser, ska bedömas på somatisk akutmottagning"
+          },
+          "triage_color": "red",
+          "source_page": 36,
+          "id": "psychiatric.01"
+        },
+        {
+          "text": {
+            "en": "Ongoing violence, acting out, or other behavior requiring physical intervention",
+            "sv": "Pågående våld eller agerande eller annat beteende som kräver fysiskt ingripande"
+          },
+          "triage_color": "red",
+          "source_page": 36,
+          "id": "psychiatric.02"
+        },
+        {
+          "text": {
+            "en": "Delirium tremens",
+            "sv": "Delirum tremens"
+          },
+          "triage_color": "red",
+          "source_page": 36,
+          "id": "psychiatric.03"
+        },
+        {
+          "text": {
+            "en": "Current suicidal intent with imminent risk of acting",
+            "sv": "Överhängande pågående suicidavsikt"
+          },
+          "triage_color": "orange",
+          "source_page": 36,
+          "id": "psychiatric.04"
+        },
+        {
+          "text": {
+            "en": "Physically threatening behavior",
+            "sv": "Fysisk hotfull"
+          },
+          "triage_color": "orange",
+          "source_page": 36,
+          "id": "psychiatric.05"
+        },
+        {
+          "text": {
+            "en": "Eating disorder with metabolic disturbance confirmed by blood gas pH, base excess, or lactate, or declining consciousness within the past 12 hours",
+            "sv": "Ätstörning i verifierat metabolt tillstånd (blodgas pH, BE eller laktat) eller sjunkande medvetande inom de sista 12 timmarna"
+          },
+          "triage_color": "orange",
+          "source_page": 36,
+          "id": "psychiatric.06"
+        },
+        {
+          "text": {
+            "en": "Catatonia",
+            "sv": "Katatoni"
+          },
+          "triage_color": "orange",
+          "source_page": 36,
+          "id": "psychiatric.07"
+        },
+        {
+          "text": {
+            "en": "Withdrawal with physical signs and risk of seizures and delirium tremens",
+            "sv": "Abstinens med risk för EP och DT (somatisk påverkan)"
+          },
+          "triage_color": "orange",
+          "source_page": 36,
+          "id": "psychiatric.08"
+        },
+        {
+          "text": {
+            "en": "Ongoing self-harm",
+            "sv": "Pågående självskada."
+          },
+          "triage_color": "yellow",
+          "source_page": 36,
+          "id": "psychiatric.09"
+        },
+        {
+          "text": {
+            "en": "Other suicidality at step 5 or higher on the suicide ladder (suicidstegen)",
+            "sv": "Övrig suicidalitet bedöms enl suicidstegen, steg 5 eller mer"
+          },
+          "triage_color": "yellow",
+          "source_page": 36,
+          "id": "psychiatric.10"
+        },
+        {
+          "text": {
+            "en": "Verbally threatening behavior",
+            "sv": "Verbalt hotfull"
+          },
+          "triage_color": "yellow",
+          "source_page": 36,
+          "id": "psychiatric.11"
+        },
+        {
+          "text": {
+            "en": "New or worsening eating disorder with inability to care for oneself",
+            "sv": "Ätstörning, nytt eller försämrat, och inte i stånd att kunna ta hand om sig själv"
+          },
+          "triage_color": "yellow",
+          "source_page": 36,
+          "id": "psychiatric.12"
+        },
+        {
+          "text": {
+            "en": "Person in custody or detention",
+            "sv": "Frihetsberövade"
+          },
+          "triage_color": "yellow",
+          "source_page": 36,
+          "id": "psychiatric.13"
+        },
+        {
+          "text": {
+            "en": "New disturbance of reality perception or behavior",
+            "sv": "Nytillkommet avvikande verklighetsuppfattning/beteende"
+          },
+          "triage_color": "yellow",
+          "source_page": 36,
+          "id": "psychiatric.14"
+        },
+        {
+          "text": {
+            "en": "Marked inhibition",
+            "sv": "Påtagliga hämningar"
+          },
+          "triage_color": "yellow",
+          "source_page": 36,
+          "id": "psychiatric.15"
+        },
+        {
+          "text": {
+            "en": "Confusion or dissociation",
+            "sv": "Konfusion/ Dissociation"
+          },
+          "triage_color": "yellow",
+          "source_page": 36,
+          "id": "psychiatric.16"
+        }
+      ],
+      "notes": [
+        {
+          "en": "A patient with medication poisoning that can cause organ damage should be assessed in a medical emergency department.",
+          "sv": "Vid läkemedelsförgiftning som kan ge organskador ska bedömas på somatisk akutmottagning."
+        },
+        {
+          "en": "Page 37 clarifies the warning signs. The explanations are retained separately.",
+          "sv": "Sida 37 förtydligar varningssymtomen; definitionerna bevaras separat."
+        }
+      ],
+      "clarifications": [
+        {
+          "triage_color": "red",
+          "text": {
+            "en": "Suicide attempt. Assess the level of observation required and assess using NEWS2.",
+            "sv": "Suicidförsök Bedöm tillsynsgrad! Bedöm enligt NEWS2."
+          },
+          "source_page": 37
+        },
+        {
+          "triage_color": "orange",
+          "text": {
+            "en": "Self-harm with a strong wish to die now, or a threat of a suicide attempt in progress. Inform the nurse in charge immediately. Assess the level of observation required. Do not leave the patient alone. Are means of suicide available?",
+            "sv": "Självskada med uttalad suicidönskan Här och nu perspektiv. Hot om pågående suicidförsök. Informera omedelbart ledningssjuksköterska. Bedöm tillsynsgrad! Lämna inte patienten ensam. Finns självmordsredskap tillgängligt?"
+          },
+          "source_page": 37
+        },
+        {
+          "triage_color": "yellow",
+          "text": {
+            "en": "Self-harm. The patient intentionally injures themselves in the emergency department.",
+            "sv": "Självskada Patient utsätter avsiktligt sin kropp för skada på akutmottagning"
+          },
+          "source_page": 37
+        },
+        {
+          "triage_color": "red",
+          "text": {
+            "en": "Ongoing violence. The patient attacks people or objects, for example by kicking, hitting, throwing or knocking things down, or smashing windows. Contact a physician immediately. Consider compulsory measures.",
+            "sv": "Pågående våld Attackerar person eller föremål. Sparka, slå, kasta saker, slå ner saker eller krossa fönster Direkt kontakt med läkare. Överväg tvångsåtgärder"
+          },
+          "source_page": 37
+        },
+        {
+          "triage_color": "orange",
+          "text": {
+            "en": "Physically threatening behavior. Clear intent to threaten another person physically, for example through an aggressive stance, grabbing their clothes, or raising a hand threateningly. Contact a physician. Offer sedative medication and assess the level of observation required.",
+            "sv": "Fysisk hotfull En tydlig avsikt att kroppsligen hota en annan person, tex en aggressiv kroppshållning, ta tag i någon annan persons kläder, hotande höja handen. Kontakt med läkare. Erbjud lugnande läkemedel. Bedöm tillsynsgrad."
+          },
+          "source_page": 37
+        },
+        {
+          "triage_color": "yellow",
+          "text": {
+            "en": "Verbally threatening behavior. An outburst that goes beyond raising the voice and is intended to humiliate or frighten another person. Offer sedative medication and assess the level of observation required.",
+            "sv": "Verbalt hotfull Ett verbalt utbrott som mer än att höja rösten och har för avsikt att förödmjuka eller skrämma annan person Erbjud lugnande läkemedel. Bedöm tillsynsgrad"
+          },
+          "source_page": 37
+        },
+        {
+          "triage_color": "red",
+          "text": {
+            "en": "Delirium tremens is a serious medical condition requiring treatment. Contact a physician immediately if suspected. Onset is usually 2–4 days after stopping alcohol. Signs include picking at objects, delusions, marked agitation, confusion, and visual or auditory hallucinations. Assess using NEWS2. Elevated pulse, blood pressure, and temperature are common.",
+            "sv": "Delirium tremens DT är ett allvarligt medicinsk tillstånd och kräver behandling! Direkt kontakt med läkare vid misstanke Uppstår oftast 2-4 dygn efter avbrutet drickande. Symtom: plockighet, vanföreställningar, stark oro, konfusion samt syn- och hörselhallucinos. Bedöm enligt NEWS2. Förhöjd puls, förhöjt blodtryck samt temperaturstegring är vanligt."
+          },
+          "source_page": 37
+        },
+        {
+          "triage_color": "orange",
+          "text": {
+            "en": "Marked withdrawal symptoms with physical signs and risk of seizures and delirium tremens. Contact a physician. Use a single room, offer sedative medication, and assess the level of observation required.",
+            "sv": "Påtagliga abstinenssymtom med somatisk påverkan Risk för EP och DT (somatisk påverkan) Kontakt med läkare. Eget rum. Erbjud lugnande läkemedel. Bedöm tillsynsgrad."
+          },
+          "source_page": 37
+        },
+        {
+          "triage_color": "yellow",
+          "text": {
+            "en": "New behavioral disturbance. Hallucinations and delusions may be new or reflect worsening psychosis. Confusion develops over hours to days. Mania may present with marked overactivity, pressured speech, and disinhibition. Other signs include marked anxiety, emotional lability, inhibition, or dissociation.",
+            "sv": "Nytillkommet avvikande beteende Hallucinationer:Nytillkomna eller försämring i befintlig psykossjukdom Vanföreställningar - Nytillkomna eller försämring i befintlig psykossjukdom Konfusion – Har ett snabbt insjuknande, timmar till dagar. Mani – Kraftig uppvarvning, forcerat talflöde, gränslös Påtagligt oroligt beteende Påtaglig affektlabilitet Påtagliga hämningar Dissociation"
+          },
+          "source_page": 37
+        }
+      ],
+      "id": "psychiatric",
+      "displayLabel": {
+        "en": "Psychiatric symptoms",
+        "sv": "Psykiska besvär"
+      }
+    },
+    {
+      "category": {
+        "en": "Rectal symptoms",
+        "sv": "RECT"
+      },
+      "source_pages": [
+        38
+      ],
+      "criteria": [],
+      "notes": {
+        "en": "The color table lists no warning signs specific to this category. Use clinical judgment and the other triage components. An empty list does not imply green priority.",
+        "sv": "Inga egna varningssymtom anges i kategorins färgtabell. Använd klinisk bedömning och övriga triagekomponenter; tom lista innebär inte grön prioritet."
+      },
+      "id": "rectal",
+      "displayLabel": {
+        "en": "Rectal symptoms",
+        "sv": "Rect"
+      }
+    },
+    {
+      "category": {
+        "en": "Back pain",
+        "sv": "RYGGSMÄRTA"
+      },
+      "source_pages": [
+        39
+      ],
+      "criteria": [
+        {
+          "text": {
+            "en": "Back pain with new saddle anesthesia or incontinence",
+            "sv": "Ryggsmärta med nytillkommen ridbyxanestesi eller inkontinens"
+          },
+          "triage_color": "orange",
+          "source_page": 39,
+          "id": "back.01"
+        }
+      ],
+      "id": "back",
+      "displayLabel": {
+        "en": "Back pain",
+        "sv": "Ryggsmärta"
+      }
+    },
+    {
+      "category": {
+        "en": "Syncope",
+        "sv": "SVIMNING"
+      },
+      "source_pages": [
+        40
+      ],
+      "criteria": [
+        {
+          "text": {
+            "en": "Syncope without any warning symptoms",
+            "sv": "Svimning: helt utan förkänning"
+          },
+          "triage_color": "orange",
+          "source_page": 40,
+          "id": "syncope.01"
+        }
+      ],
+      "id": "syncope",
+      "displayLabel": {
+        "en": "Syncope",
+        "sv": "Svimning"
+      }
+    },
+    {
+      "category": {
+        "en": "Male genital symptoms",
+        "sv": "UNDERLIVSBESVÄR MÄN"
+      },
+      "source_pages": [
+        41
+      ],
+      "criteria": [
+        {
+          "text": {
+            "en": "Sudden, severe, persistent genital or scrotal pain",
+            "sv": "Underlivssmärtor / Skrotumsmärtor: hastigt påkommande, kraftig och ihållande"
+          },
+          "triage_color": "orange",
+          "source_page": 41,
+          "id": "male-genital.01"
+        }
+      ],
+      "id": "male-genital",
+      "displayLabel": {
+        "en": "Male genital symptoms",
+        "sv": "Underlivsbesvär män"
+      }
+    },
+    {
+      "category": {
+        "en": "Urinary symptoms",
+        "sv": "URINVÄGSBESVÄR"
+      },
+      "source_pages": [
+        42
+      ],
+      "criteria": [
+        {
+          "text": {
+            "en": "Obstructed urinary outflow",
+            "sv": "Urostopp"
+          },
+          "triage_color": "yellow",
+          "source_page": 42,
+          "id": "urinary.01"
+        }
+      ],
+      "id": "urinary",
+      "displayLabel": {
+        "en": "Urinary symptoms",
+        "sv": "Urinvägsbesvär"
+      }
+    },
+    {
+      "category": {
+        "en": "Trauma/injuries",
+        "sv": "Trauma/skador"
+      },
+      "source_pages": [
+        3,
+        43,
+        44
+      ],
+      "criteria": [],
+      "subcategories": [
+        {
+          "category": {
+            "en": "Trauma/injuries meeting trauma alert criteria",
+            "sv": "TRAUMA/SKADOR – TRAUMALARMSKRITERIER"
+          },
+          "source_pages": [
+            3,
+            43
+          ],
+          "criteria": [],
+          "subcategories": [
+            {
+              "category": {
+                "en": "Level 1",
+                "sv": "NIVÅ 1"
+              },
+              "source_pages": [
+                3,
+                43
+              ],
+              "criteria": [
+                {
+                  "text": {
+                    "en": "Ventilatory support needed",
+                    "sv": "Behov av ventilationsstöd"
+                  },
+                  "triage_color": "red",
+                  "source_page": 43,
+                  "criterion_group": {
+                    "en": "Breathing",
+                    "sv": "Andning"
+                  },
+                  "color_source_page": 3,
+                  "id": "trauma-alert.01.01"
+                },
+                {
+                  "text": {
+                    "en": "Respiratory rate <10 or >29/min",
+                    "sv": "AF <10 eller >29"
+                  },
+                  "triage_color": "red",
+                  "source_page": 43,
+                  "criterion_group": {
+                    "en": "Breathing",
+                    "sv": "Andning"
+                  },
+                  "color_source_page": 3,
+                  "id": "trauma-alert.01.02"
+                },
+                {
+                  "text": {
+                    "en": "Respiratory compromise",
+                    "sv": "Andningspåverkan"
+                  },
+                  "triage_color": "red",
+                  "source_page": 43,
+                  "criterion_group": {
+                    "en": "Breathing — children",
+                    "sv": "Andning — BARN"
+                  },
+                  "color_source_page": 3,
+                  "id": "trauma-alert.01.03",
+                  "population": "paediatric"
+                },
+                {
+                  "text": {
+                    "en": "BP <90 mmHg or no palpable radial pulse",
+                    "sv": "BT <90 eller ej palpabel radialispuls"
+                  },
+                  "triage_color": "red",
+                  "source_page": 43,
+                  "criterion_group": {
+                    "en": "Circulation",
+                    "sv": "Cirkulation"
+                  },
+                  "color_source_page": 3,
+                  "id": "trauma-alert.01.04"
+                },
+                {
+                  "text": {
+                    "en": "Capillary refill >2 seconds",
+                    "sv": "kapillär återfyllnad >2sek"
+                  },
+                  "triage_color": "red",
+                  "source_page": 43,
+                  "criterion_group": {
+                    "en": "Circulation — children",
+                    "sv": "Cirkulation — BARN"
+                  },
+                  "color_source_page": 3,
+                  "id": "trauma-alert.01.05",
+                  "population": "paediatric",
+                  "displayLabel": {
+                    "en": "Capillary refill >2 seconds",
+                    "sv": "Kapillär återfyllnad >2sek"
+                  }
+                },
+                {
+                  "text": {
+                    "en": "Pulse <90 or >190/min at age 0–1 year",
+                    "sv": "Puls 0-1 år <90 eller >190"
+                  },
+                  "triage_color": "red",
+                  "source_page": 43,
+                  "criterion_group": {
+                    "en": "Circulation — children",
+                    "sv": "Cirkulation — BARN"
+                  },
+                  "color_source_page": 3,
+                  "id": "trauma-alert.01.06",
+                  "population": "paediatric"
+                },
+                {
+                  "text": {
+                    "en": "Pulse <70 or >160/min at age 1–5 years",
+                    "sv": "Puls 1-5 år <70 eller >160"
+                  },
+                  "triage_color": "red",
+                  "source_page": 43,
+                  "criterion_group": {
+                    "en": "Circulation — children",
+                    "sv": "Cirkulation — BARN"
+                  },
+                  "color_source_page": 3,
+                  "id": "trauma-alert.01.07",
+                  "population": "paediatric"
+                },
+                {
+                  "text": {
+                    "en": "RLS ≥3 or GCS ≤13",
+                    "sv": "RLS≥3 eller GCS≤13"
+                  },
+                  "triage_color": "red",
+                  "source_page": 43,
+                  "criterion_group": {
+                    "en": "Neurology",
+                    "sv": "NEUROLOGI"
+                  },
+                  "color_source_page": 3,
+                  "id": "trauma-alert.01.08"
+                },
+                {
+                  "text": {
+                    "en": "Penetrating injury to the head, neck, torso, or limbs above the elbow or knee, excluding superficial cuts*",
+                    "sv": "Penetrerande våld mot huvud, hals, bål, extremiteter ovan armbåge/knä (inte ytliga skärsår)*"
+                  },
+                  "triage_color": "red",
+                  "source_page": 43,
+                  "criterion_group": {
+                    "en": "Anatomic criteria",
+                    "sv": "ANATOMISKA KRITERIER"
+                  },
+                  "color_source_page": 3,
+                  "id": "trauma-alert.01.09"
+                },
+                {
+                  "text": {
+                    "en": "Open skull injury or depressed skull fracture*",
+                    "sv": "Öppen skallskada/impressionsfraktur*"
+                  },
+                  "triage_color": "red",
+                  "source_page": 43,
+                  "criterion_group": {
+                    "en": "Anatomic criteria",
+                    "sv": "ANATOMISKA KRITERIER"
+                  },
+                  "color_source_page": 3,
+                  "id": "trauma-alert.01.10"
+                },
+                {
+                  "text": {
+                    "en": "Facial or neck injury with a threatened airway",
+                    "sv": "Ansikt-/halsskda med hotad luftväg"
+                  },
+                  "triage_color": "red",
+                  "source_page": 43,
+                  "criterion_group": {
+                    "en": "Anatomic criteria",
+                    "sv": "ANATOMISKA KRITERIER"
+                  },
+                  "color_source_page": 3,
+                  "id": "trauma-alert.01.11"
+                },
+                {
+                  "text": {
+                    "en": "Unstable or deformed chest wall*",
+                    "sv": "Instabil/deformerad bröstkorg*"
+                  },
+                  "triage_color": "red",
+                  "source_page": 43,
+                  "criterion_group": {
+                    "en": "Anatomic criteria",
+                    "sv": "ANATOMISKA KRITERIER"
+                  },
+                  "color_source_page": 3,
+                  "id": "trauma-alert.01.12"
+                },
+                {
+                  "text": {
+                    "en": "Severe pelvic pain (suspected pelvic fracture)*",
+                    "sv": "Svår smärta i bäckenet (misstänkt bäckenfraktur)*"
+                  },
+                  "triage_color": "red",
+                  "source_page": 43,
+                  "criterion_group": {
+                    "en": "Anatomic criteria",
+                    "sv": "ANATOMISKA KRITERIER"
+                  },
+                  "color_source_page": 3,
+                  "id": "trauma-alert.01.13"
+                },
+                {
+                  "text": {
+                    "en": "Suspected spinal cord injury*",
+                    "sv": "Misstänkt ryggmärgsskada*"
+                  },
+                  "triage_color": "red",
+                  "source_page": 43,
+                  "criterion_group": {
+                    "en": "Anatomic criteria",
+                    "sv": "ANATOMISKA KRITERIER"
+                  },
+                  "color_source_page": 3,
+                  "id": "trauma-alert.01.14"
+                },
+                {
+                  "text": {
+                    "en": "≥2 long-bone fractures",
+                    "sv": "≥2 frakturer på långa rörben"
+                  },
+                  "triage_color": "red",
+                  "source_page": 43,
+                  "criterion_group": {
+                    "en": "Anatomic criteria",
+                    "sv": "ANATOMISKA KRITERIER"
+                  },
+                  "color_source_page": 3,
+                  "id": "trauma-alert.01.15"
+                },
+                {
+                  "text": {
+                    "en": "Amputation proximal to the hand or foot*",
+                    "sv": "Amputation ovan hand/fot*"
+                  },
+                  "triage_color": "red",
+                  "source_page": 43,
+                  "criterion_group": {
+                    "en": "Anatomic criteria",
+                    "sv": "ANATOMISKA KRITERIER"
+                  },
+                  "color_source_page": 3,
+                  "id": "trauma-alert.01.16"
+                },
+                {
+                  "text": {
+                    "en": "Major external bleeding",
+                    "sv": "Stor yttre blödning"
+                  },
+                  "triage_color": "red",
+                  "source_page": 43,
+                  "criterion_group": {
+                    "en": "Anatomic criteria",
+                    "sv": "ANATOMISKA KRITERIER"
+                  },
+                  "color_source_page": 3,
+                  "id": "trauma-alert.01.17"
+                },
+                {
+                  "text": {
+                    "en": "Burns covering ≥18% of body surface area or inhalation injury*",
+                    "sv": "Brännskada ≥18% eller inhalationsskada*"
+                  },
+                  "triage_color": "red",
+                  "source_page": 43,
+                  "criterion_group": {
+                    "en": "Anatomic criteria",
+                    "sv": "ANATOMISKA KRITERIER"
+                  },
+                  "color_source_page": 3,
+                  "id": "trauma-alert.01.18"
+                }
+              ],
+              "id": "trauma-alert.01",
+              "criterionLabelSuffix": {
+                "en": "Level 1",
+                "sv": "Nivå 1"
+              },
+              "displayLabel": {
+                "en": "Level 1",
+                "sv": "Nivå 1"
+              }
+            },
+            {
+              "category": {
+                "en": "Level 2",
+                "sv": "NIVÅ 2"
+              },
+              "source_pages": [
+                3,
+                43
+              ],
+              "criteria": [
+                {
+                  "text": {
+                    "en": "Car crash at >50 km/h without a seat belt",
+                    "sv": "Bilolycka >50 km/tim utan bilbälte"
+                  },
+                  "triage_color": "red",
+                  "source_page": 43,
+                  "criterion_group": {
+                    "en": "Mechanism of injury",
+                    "sv": "SKADEMEKANISM"
+                  },
+                  "color_source_page": 3,
+                  "id": "trauma-alert.02.01"
+                },
+                {
+                  "text": {
+                    "en": "Ejected from a vehicle",
+                    "sv": "Utkastad ur fordon"
+                  },
+                  "triage_color": "red",
+                  "source_page": 43,
+                  "criterion_group": {
+                    "en": "Mechanism of injury",
+                    "sv": "SKADEMEKANISM"
+                  },
+                  "color_source_page": 3,
+                  "id": "trauma-alert.02.02"
+                },
+                {
+                  "text": {
+                    "en": "Entrapment requiring >20 minutes for extrication",
+                    "sv": "Fastklämd med losstagning >20 min"
+                  },
+                  "triage_color": "red",
+                  "source_page": 43,
+                  "criterion_group": {
+                    "en": "Mechanism of injury",
+                    "sv": "SKADEMEKANISM"
+                  },
+                  "color_source_page": 3,
+                  "id": "trauma-alert.02.03"
+                },
+                {
+                  "text": {
+                    "en": "Motorcycle crash (or equivalent) at >35 km/h",
+                    "sv": "MC-olycka (eller motsvarande) >35 km/tim"
+                  },
+                  "triage_color": "red",
+                  "source_page": 43,
+                  "criterion_group": {
+                    "en": "Mechanism of injury",
+                    "sv": "SKADEMEKANISM"
+                  },
+                  "color_source_page": 3,
+                  "id": "trauma-alert.02.04"
+                },
+                {
+                  "text": {
+                    "en": "Fall from >5 m",
+                    "sv": "Fall >5 m"
+                  },
+                  "triage_color": "red",
+                  "source_page": 43,
+                  "criterion_group": {
+                    "en": "Mechanism of injury",
+                    "sv": "SKADEMEKANISM"
+                  },
+                  "color_source_page": 3,
+                  "id": "trauma-alert.02.05"
+                },
+                {
+                  "text": {
+                    "en": "Struck or run over by a motor vehicle",
+                    "sv": "Påkörd/överkörd av motorfordon"
+                  },
+                  "triage_color": "red",
+                  "source_page": 43,
+                  "criterion_group": {
+                    "en": "Mechanism of injury — children",
+                    "sv": "SKADEMEKANISM — BARN"
+                  },
+                  "color_source_page": 3,
+                  "id": "trauma-alert.02.06",
+                  "population": "paediatric"
+                },
+                {
+                  "text": {
+                    "en": "Fall from >3 m",
+                    "sv": "Fall >3m"
+                  },
+                  "triage_color": "red",
+                  "source_page": 43,
+                  "criterion_group": {
+                    "en": "Mechanism of injury — children",
+                    "sv": "SKADEMEKANISM — BARN"
+                  },
+                  "color_source_page": 3,
+                  "id": "trauma-alert.02.07",
+                  "population": "paediatric"
+                }
+              ],
+              "clarification": {
+                "en": "A level 2 alert is triggered when the mechanism suggests that an unprotected patient sustained high-energy trauma and serious injury is possible despite stable vital signs.",
+                "sv": "Nivå 2-larm utlöses om skademekanismen talar för att patienten OSKYDDAD har utsatts för högenergetiskt våld och det finns risk för svåra skador trots stabila VP."
+              },
+              "examples": [
+                {
+                  "en": "Thrown from a galloping horse",
+                  "sv": "Avkastad av häst i galopp"
+                },
+                {
+                  "en": "Kicked or trampled by a horse on the abdomen, chest, head, or pelvis",
+                  "sv": "Sparkad/trampad av häst i buk/thorax/huvud/bäcken"
+                },
+                {
+                  "en": "Skier, sledder, or cyclist striking a fixed object at >35 km/h",
+                  "sv": "Skidåkare/pulkaåkare/cyklist som i >35km/tim kolliderar med ett fast föremål"
+                },
+                {
+                  "en": "Collision at >35 km/h on a ski slope",
+                  "sv": "Kollisionsolycka >35 km/tim i skidbacke"
+                },
+                {
+                  "en": "Personal watercraft or water-skiing accident",
+                  "sv": "Olycka med vattenskoter eller vattenskidor"
+                },
+                {
+                  "en": "Snowmobile or ATV accident",
+                  "sv": "Olycka med snöskoter/fyrhjuling"
+                }
+              ],
+              "id": "trauma-alert.02",
+              "criterionLabelSuffix": {
+                "en": "Level 2",
+                "sv": "Nivå 2"
+              },
+              "displayLabel": {
+                "en": "Level 2",
+                "sv": "Nivå 2"
+              }
+            },
+            {
+              "category": {
+                "en": "Level 3",
+                "sv": "NIVÅ 3"
+              },
+              "source_pages": [
+                3,
+                43
+              ],
+              "criteria": [
+                {
+                  "text": {
+                    "en": "Fall from >3 m",
+                    "sv": "Fall >3m"
+                  },
+                  "triage_color": "yellow",
+                  "source_page": 43,
+                  "criterion_group": {
+                    "en": "Mechanism of injury",
+                    "sv": "SKADEMEKANISM"
+                  },
+                  "color_source_page": 3,
+                  "id": "trauma-alert.03.01"
+                },
+                {
+                  "text": {
+                    "en": "Traffic collision with a suspected high-energy mechanism",
+                    "sv": "Trafikolycka med misstanke om högenergivåld"
+                  },
+                  "triage_color": "yellow",
+                  "source_page": 43,
+                  "criterion_group": {
+                    "en": "Mechanism of injury",
+                    "sv": "SKADEMEKANISM"
+                  },
+                  "color_source_page": 3,
+                  "id": "trauma-alert.03.02"
+                },
+                {
+                  "text": {
+                    "en": "Motorcycle or moped crash at >35 km/h",
+                    "sv": "MC/Mopedolycka >35 km/tim"
+                  },
+                  "triage_color": "yellow",
+                  "source_page": 43,
+                  "criterion_group": {
+                    "en": "Mechanism of injury",
+                    "sv": "SKADEMEKANISM"
+                  },
+                  "color_source_page": 3,
+                  "id": "trauma-alert.03.03"
+                },
+                {
+                  "text": {
+                    "en": "Horse-related accident",
+                    "sv": "Hästolycka"
+                  },
+                  "triage_color": "yellow",
+                  "source_page": 43,
+                  "criterion_group": {
+                    "en": "Mechanism of injury",
+                    "sv": "SKADEMEKANISM"
+                  },
+                  "color_source_page": 3,
+                  "id": "trauma-alert.03.04"
+                },
+                {
+                  "text": {
+                    "en": "Unprotected road user",
+                    "sv": "Oskyddade trafikanter"
+                  },
+                  "triage_color": "yellow",
+                  "source_page": 43,
+                  "criterion_group": {
+                    "en": "Mechanism of injury",
+                    "sv": "SKADEMEKANISM"
+                  },
+                  "color_source_page": 3,
+                  "id": "trauma-alert.03.05"
+                }
+              ],
+              "id": "trauma-alert.03",
+              "criterionLabelSuffix": {
+                "en": "Level 3",
+                "sv": "Nivå 3"
+              },
+              "displayLabel": {
+                "en": "Level 3",
+                "sv": "Nivå 3"
+              }
+            }
+          ],
+          "notes": {
+            "en": "National trauma alert criteria apply when the mechanism of injury affects multiple organ systems. Levels 1 and 2 are red and level 3 is yellow, as shown on page 3.",
+            "sv": "Traumalarm uppfylls när skademekanismen ger påverkan på flera organsystem, enl de nationella traumalarmskriterierna. Nivå 1 och 2 är röda, nivå 3 gul enligt sida 3."
+          },
+          "observanda": [
+            {
+              "en": "Progressive deterioration in a patient with suspected serious injury",
+              "sv": "Successiv försämring av misstänkt allvarlig skadad patient"
+            },
+            {
+              "en": "Increased bleeding risk (blood-thinning medication)",
+              "sv": "Ökad blödningsrisk (blodförtunnande medicinering)"
+            },
+            {
+              "en": "Age <5 years or >60 years",
+              "sv": "Ålder <5 år eller >60 år"
+            },
+            {
+              "en": "Serious underlying illness",
+              "sv": "Allvarlig grundsjukdom"
+            },
+            {
+              "en": "Hypothermia <35 °C",
+              "sv": "Hypoterm <35°C"
+            },
+            {
+              "en": "Under the influence of drugs",
+              "sv": "Drogpåverkad"
+            },
+            {
+              "en": "Pregnancy",
+              "sv": "Gravid"
+            }
+          ],
+          "footnote": {
+            "en": "*Consider direct transport in VGR to RTC Sahlgrenska SU/S or DBUS SU if the patient’s physiology and the transport distance permit. Have a low threshold for upgrading the alert if a cautionary feature is present.",
+            "sv": "*Överväg att köra patienter i VGR direkt till RTC Sahlgrenska SU/S eller DBUS SU om fysiologi och transportsträcka tillåter. Var frikostig med uppgradering av larm vid kriterium för observandum."
+          },
+          "id": "trauma-alert",
+          "combineSubcategoriesInPicker": true,
+          "displayLabel": {
+            "en": "Trauma/injuries meeting trauma alert criteria",
+            "sv": "Trauma/skador – traumalarmskriterier"
+          }
+        },
+        {
+          "category": {
+            "en": "Trauma/injuries below trauma alert criteria",
+            "sv": "TRAUMA/SKADOR som inte uppfyller traumalarmskriterierna"
+          },
+          "source_pages": [
+            44
+          ],
+          "criteria": [
+            {
+              "text": {
+                "en": "Hanging or strangulation",
+                "sv": "Hängning / strypning"
+              },
+              "triage_color": "red",
+              "source_page": 44,
+              "id": "trauma.01"
+            },
+            {
+              "text": {
+                "en": "Penetrating or chemical eye injury",
+                "sv": "Ögonskada: penetrerande eller frätande"
+              },
+              "triage_color": "red",
+              "source_page": 44,
+              "id": "trauma.02"
+            },
+            {
+              "text": {
+                "en": "Abdominal or chest trauma with increasing pain or girth, obstructed urinary outflow, or hematuria",
+                "sv": "Buk / Toraxtrauma med tilltagande smärta / omfång, urostopp eller hematuri"
+              },
+              "triage_color": "red",
+              "source_page": 44,
+              "id": "trauma.03"
+            },
+            {
+              "text": {
+                "en": "Fracture with suspected vascular injury (impaired distal circulation, pale and cold limb) or nerve injury",
+                "sv": "Fraktur med misstänkt kärlskada (nedsatt cirkulation distalt, blek och kall extremitet), nervskada"
+              },
+              "triage_color": "red",
+              "source_page": 44,
+              "id": "trauma.04"
+            },
+            {
+              "text": {
+                "en": "Drowning or diving accident",
+                "sv": "Drunkning / dykolycka"
+              },
+              "triage_color": "red",
+              "source_page": 44,
+              "id": "trauma.05"
+            },
+            {
+              "text": {
+                "en": "Chemical accident or radiation injury",
+                "sv": "Kemolycka / strålskada"
+              },
+              "triage_color": "red",
+              "source_page": 44,
+              "id": "trauma.06"
+            },
+            {
+              "text": {
+                "en": "High-voltage electrical injury or lightning strike",
+                "sv": "Elolycka högspänning / blixt"
+              },
+              "triage_color": "red",
+              "source_page": 44,
+              "id": "trauma.07"
+            },
+            {
+              "text": {
+                "en": "Head trauma with GCS ≤14, or GCS 15 with at least one of the following findings — bleeding risk (warfarin, a direct oral anticoagulant, dual antiplatelet therapy, or hemophilia), seizure, neurologic abnormality, or a CSF shunt",
+                "sv": "Skalltrauma med med ≤ GCS 14 eller GCS 15 + 1 av: Blödningsrisk (Waran/NOAK, dubbel trombocythämmare eller blödarsjuka), krampanfall, neurologiska avvikelser, shuntbehandling"
+              },
+              "triage_color": "orange",
+              "source_page": 44,
+              "id": "trauma.08"
+            },
+            {
+              "text": {
+                "en": "Abdominal or chest trauma with autonomic symptoms",
+                "sv": "Buk / Toraxtrauma: med vegetativa symtom"
+              },
+              "triage_color": "orange",
+              "source_page": 44,
+              "id": "trauma.09"
+            },
+            {
+              "text": {
+                "en": "Joint dislocation (excluding fingers and toes), prosthetic joint dislocation, or fracture-dislocation",
+                "sv": "Ledluxation (ej fingrar / tår), protesluxatione eller luxationsfraktur"
+              },
+              "triage_color": "orange",
+              "source_page": 44,
+              "id": "trauma.10"
+            },
+            {
+              "text": {
+                "en": "Open, displaced, or proximal femoral fracture",
+                "sv": "Fraktur: öppen, felställd eller höftnära"
+              },
+              "triage_color": "orange",
+              "source_page": 44,
+              "id": "trauma.11"
+            },
+            {
+              "text": {
+                "en": "Thermal or chemical burn covering 5–18% of body surface area, or a circumferential burn",
+                "sv": "Brännskada / frätskada 5-18 % eller cirkumferent"
+              },
+              "triage_color": "orange",
+              "source_page": 44,
+              "id": "trauma.12"
+            },
+            {
+              "text": {
+                "en": "Head trauma with GCS 15 and loss of consciousness, amnesia, or repeated vomiting",
+                "sv": "Skalltrauma: GCS 15 och varit avsvimmad el amnesi el upprepade kräkningar."
+              },
+              "triage_color": "yellow",
+              "source_page": 44,
+              "id": "trauma.13"
+            },
+            {
+              "text": {
+                "en": "GCS 15, age ≥65 years, and taking antiplatelet medication",
+                "sv": "GCS 15 och ≥65 år med trombocythämmare"
+              },
+              "triage_color": "yellow",
+              "source_page": 44,
+              "id": "trauma.14"
+            },
+            {
+              "text": {
+                "en": "Neck injury with tenderness on palpation over the spine",
+                "sv": "Nackskada: med palpömhet över kotpelaren"
+              },
+              "triage_color": "yellow",
+              "source_page": 44,
+              "id": "trauma.15"
+            },
+            {
+              "text": {
+                "en": "Injury with pain out of proportion",
+                "sv": "Skada: med oproportionerlig smärtnivå"
+              },
+              "triage_color": "yellow",
+              "source_page": 44,
+              "id": "trauma.16"
+            },
+            {
+              "text": {
+                "en": "Strong suspicion of fracture <48 hours after injury",
+                "sv": "Fraktur: stark misstanke om aktuellt (< 48 tim efter skadetillfället"
+              },
+              "triage_color": "yellow",
+              "source_page": 44,
+              "id": "trauma.17"
+            }
+          ],
+          "notes": {
+            "en": "Identical yellow wording about pain out of proportion occurs in four rows of the original and is included once. The Swedish source retains its incomplete parenthesis and typographical errors.",
+            "sv": "Identisk gul text om oproportionerlig smärtnivå förekommer i fyra rader i originalet och återges en gång. Ofullständig parentes och tryckfel i originalet har bevarats."
+          },
+          "id": "trauma",
+          "displayLabel": {
+            "en": "Trauma/injuries below trauma alert criteria",
+            "sv": "Trauma/skador som inte uppfyller traumalarmskriterierna"
+          }
+        }
+      ],
+      "id": "trauma-injuries",
+      "combineSubcategoriesInPicker": true
+    },
+    {
+      "category": {
+        "en": "Eyes and ears",
+        "sv": "Ögon och Öron"
+      },
+      "source_pages": [
+        45
+      ],
+      "criteria": [
+        {
+          "text": {
+            "en": "Obstructed or threatened airway. For injury, see trauma.",
+            "sv": "Ofri eller hotande luftväg Om skada se trauma"
+          },
+          "triage_color": "red",
+          "source_page": 45,
+          "id": "eye-ear.01"
+        },
+        {
+          "text": {
+            "en": "Swallowed a button battery or ≥2 magnets",
+            "sv": "Svalt knappcellsbatteri eller ≥ 2 magneter."
+          },
+          "triage_color": "orange",
+          "source_page": 45,
+          "id": "eye-ear.02"
+        },
+        {
+          "text": {
+            "en": "Esophageal obstruction with inability to swallow saliva",
+            "sv": "Stopp i esofagus, kan inte svälja saliv"
+          },
+          "triage_color": "yellow",
+          "source_page": 45,
+          "id": "eye-ear.03"
+        },
+        {
+          "text": {
+            "en": "Penetrating or chemical eye injury. See trauma.",
+            "sv": "Ögonskada: penetrerad eller frätande se trauma"
+          },
+          "triage_color": "red",
+          "source_page": 45,
+          "id": "eye-ear.04"
+        }
+      ],
+      "id": "eye-ear",
+      "displayLabel": {
+        "en": "Eyes and ears",
+        "sv": "Ögon och öron"
+      }
+    },
+    {
+      "category": {
+        "en": "Frailty in older adults – care needs",
+        "sv": "SKÖR ÄLDRE – BEHOV/PROCESS"
+      },
+      "source_pages": [
+        46
+      ],
+      "criteria": [
+        {
+          "text": {
+            "en": "Frail older adult by FRESH screening",
+            "sv": "Skör äldre enl screening (fresh)"
+          },
+          "triage_color": "yellow",
+          "source_page": 46,
+          "definition": {
+            "en": "Age ≥75 years plus a modified FRESH score ≥2 defines frailty. Living in residential care scores 2 points. Reduced endurance, general tiredness or reduced energy for <2 months, frequent falls or fear of falling, and needing help with shopping each score 1 point. Assign at least yellow priority and see the patient first within their color group.",
+            "sv": "≥75 år + ≥2p enligt modifierad FRESH definieras som Skör äldre. Bor på särskilt boende (2p); nedsatt uthållighet (1p); allmän trötthet/minskad ork <2 mån (1p); ramlar ofta/oro för fall (1p); behöver hjälp med inköp (1p). Prioriteras lägst GUL och tas först i sin färg."
+          },
+          "id": "frailty.01"
+        }
+      ],
+      "id": "frailty",
+      "displayLabel": {
+        "en": "Frailty in older adults – care needs",
+        "sv": "Skör äldre – behov/process"
+      }
+    },
+    {
+      "category": {
+        "en": "Hospital admission – care needs",
+        "sv": "INLÄGGNING - BEHOV/PROCESS"
+      },
+      "source_pages": [
+        47
+      ],
+      "criteria": [
+        {
+          "text": {
+            "en": "Likely need for inpatient care",
+            "sv": "Sannolikt slutenvårdsbehov"
+          },
+          "triage_color": "yellow",
+          "source_page": 47,
+          "id": "admission.01"
+        }
+      ],
+      "id": "admission",
+      "displayLabel": {
+        "en": "Hospital admission – care needs",
+        "sv": "Inläggning – behov/process"
+      }
+    },
+    {
+      "category": {
+        "en": "Interpersonal violence – care needs",
+        "sv": "YTTRE VÅLD – BEHOV/PROCESS"
+      },
+      "source_pages": [
+        48
+      ],
+      "criteria": [
+        {
+          "text": {
+            "en": "Reported or suspected sexual assault",
+            "sv": "Sexuellt övergrepp: påtalat eller misstanke"
+          },
+          "triage_color": "yellow",
+          "source_page": 48,
+          "id": "interpersonal-violence.01"
+        },
+        {
+          "text": {
+            "en": "Reported or suspected violence in a close relationship",
+            "sv": "Våld i nära relation: påtalat eller misstanke"
+          },
+          "triage_color": "yellow",
+          "source_page": 48,
+          "id": "interpersonal-violence.02"
+        }
+      ],
+      "id": "interpersonal-violence",
+      "displayLabel": {
+        "en": "Interpersonal violence – care needs",
+        "sv": "Yttre våld – behov/process"
+      }
+    }
+  ],
+  "conflicts": [
+    {
+      "id": "obstetric-boundaries",
+      "skaSPdfPages": [
+        24
+      ],
+      "finding": "Four ONEWS2 cells overlap at RR 10, systolic BP 80, diastolic BP 90 and pulse 60.",
+      "handling": "Apply the contemporaneous Swedish obstetric NEWS2 chart at the four overlapping endpoints. RR 10 scores 0, systolic BP 80 scores 2, diastolic BP 90 scores 1 and pulse 60 scores 0.",
+      "basis": "obstetricBands",
+      "status": "resolvedForDefinition"
+    },
+    {
+      "id": "potassium",
+      "skaSPdfPages": [
+        8,
+        37
+      ],
+      "finding": "Category uses potassium ≥6.0 with ECG changes. Overview uses >6.0.",
+      "handling": "Use the inclusive category threshold. Potassium exactly 6.0 with ECG changes qualifies for the red finding.",
+      "basis": "criteria",
+      "status": "resolvedForDefinition"
+    },
+    {
+      "id": "neurology",
+      "skaSPdfPages": [
+        8,
+        35
+      ],
+      "finding": "Overview includes acute dizziness at 4.5–24 hours or unknown onset and mNIHSS ≥2 in red. The category and extract name suspected stroke in that row.",
+      "handling": "Use the supplied Östra neurology category rows and their onset and mNIHSS qualifiers. An overview-only dizziness combination does not create a selectable finding.",
+      "basis": "criteria",
+      "status": "resolvedForDefinition"
+    },
+    {
+      "id": "gynaecology",
+      "skaSPdfPages": [
+        23,
+        44
+      ],
+      "finding": "Östra supplies six gynaecology subcategories, including time-limited green criteria. SkaS has a different category structure. In the non-pregnant bleeding subgroup the supplied JSON gives heavy vaginal bleeding yellow; the SkaS female genital category gives it orange. The supplied bleeding category also gives it orange.",
+      "handling": "Assign the identical heavy vaginal bleeding criterion orange in both adult pickers. The pregnancy-specific heavy bleeding criterion remains red. Preserve the original yellow on the non-pregnant source row. Apply 07:00 inclusive to 16:00 exclusive at local measurement time to timed green rows.",
+      "basis": "localReconciliation",
+      "status": "resolvedForDefinition"
+    },
+    {
+      "id": "early-pregnancy-vomiting",
+      "skaSPdfPages": [
+        23
+      ],
+      "finding": "SkaS lists ongoing vomiting before week 18 as yellow here. Östra includes a separate early-pregnancy nausea and vomiting pathway.",
+      "handling": "Use the supplied early-pregnancy nausea and vomiting pathway with its own criteria. The SkaS overview adds no separate finding.",
+      "basis": "criteria",
+      "status": "resolvedForDefinition"
+    },
+    {
+      "id": "trauma",
+      "skaSPdfPages": [
+        7,
+        8,
+        47
+      ],
+      "finding": "Overview qualifies hanging/strangulation by visible or audible injury; the category lists it without that qualifier.",
+      "handling": "Use the supplied red hanging or strangulation criterion. Visible or audible injury is not an additional selection condition.",
+      "basis": "criteria",
+      "status": "resolvedForDefinition"
+    },
+    {
+      "id": "withdrawal",
+      "skaSPdfPages": [
+        9,
+        38
+      ],
+      "finding": "The extract describes withdrawal with risk of both seizure and delirium tremens, while the SkaS category says either.",
+      "handling": "Use the supplied Östra orange criterion for somatically affected withdrawal with risk of both seizure and delirium tremens.",
+      "basis": "criteria",
+      "status": "resolvedForDefinition"
+    },
+    {
+      "id": "respiratory-wording",
+      "skaSPdfPages": [
+        7,
+        21
+      ],
+      "finding": "The SkaS overview includes gurgling with foaming breathing; the category describes foaming breathing.",
+      "handling": "Use the supplied red dyspnoea with foaming breathing criterion. Gurgling is not an additional selection condition.",
+      "basis": "criteria",
+      "status": "resolvedForDefinition"
+    },
+    {
+      "id": "scale2-air",
+      "skaSPdfPages": [
+        10
+      ],
+      "finding": "The compact SkaS table omits saturation ≥93% on air from Scale 2. The RCP chart explicitly assigns 0.",
+      "handling": "Score saturation of 93% or above on room air as zero on prescribed Scale 2. Use the separate supplemental-oxygen branch when oxygen is administered.",
+      "basis": "scale2",
+      "status": "resolvedForDefinition"
+    },
+    {
+      "id": "unrestricted-override",
+      "skaSPdfPages": [
+        12
+      ],
+      "finding": "SkaS prohibits clinical down-prioritisation from red or orange.",
+      "handling": "A clinician may select any of the four colours. That single effective colour takes precedence. Store the calculated result and provenance separately.",
+      "basis": "localOverride",
+      "status": "resolvedForDefinition"
+    },
+    {
+      "id": "foreign-body",
+      "skaSPdfPages": [
+        7,
+        48
+      ],
+      "finding": "Overview describes ingestion of a battery or magnet. The category and extract specify a button battery or at least two magnets.",
+      "handling": "Use the supplied orange criterion for a button battery or at least two magnets.",
+      "basis": "criteria",
+      "status": "resolvedForDefinition"
+    },
+    {
+      "id": "overview-only-findings",
+      "skaSPdfPages": [
+        7,
+        8,
+        9,
+        38,
+        47
+      ],
+      "finding": "The overview includes symptomatic smoke inhalation (orange), finger or toe dislocation (yellow), and newly impaired or worsened outwardly aggressive behaviour with inability to care for oneself (yellow). These are not standalone criteria in the extract under those labels.",
+      "handling": "Use the supplied category inventory. Symptomatic smoke inhalation, finger or toe dislocation and the overview-only behavioural description are not additional standalone options.",
+      "basis": "criteria",
+      "status": "resolvedForDefinition"
+    },
+    {
+      "id": "high-voltage-trauma",
+      "skaSPdfPages": [
+        7,
+        47
+      ],
+      "finding": "SkaS specifies more than 1,000 V or lightning. The extract refers to high voltage or lightning without the number.",
+      "handling": "Use the supplied red high-voltage or lightning criterion. The clinician selects this finding.",
+      "basis": "criteria",
+      "status": "resolvedForDefinition"
+    },
+    {
+      "id": "extremity-wording",
+      "skaSPdfPages": [
+        22
+      ],
+      "finding": "The supplied joint criterion says interarticular; the SkaS category describes intra-articular swelling.",
+      "handling": "Use the supplied Östra joint criterion and wording. A clinician selecting it records yellow.",
+      "basis": "criteria",
+      "status": "resolvedForDefinition"
+    }
+  ],
+  "catalogFields": {
+    "categories": {
+      "title": {
+        "en": "WEST categories",
+        "sv": "WEST-kategorier"
+      },
+      "description": {
+        "en": "Categories documented for this vital measurement.",
+        "sv": "Dokumenterade kategorier för denna mätning av vitalparametrar."
+      }
+    },
+    "criteria": {
+      "title": {
+        "en": "WEST assessed criteria",
+        "sv": "Bedömda WEST-kriterier"
+      },
+      "description": {
+        "en": "Clinical criteria or explicit negative findings documented by category.",
+        "sv": "Kliniska kriterier eller uttryckligen negativa fynd dokumenterade per kategori."
+      }
+    },
+    "noWarningCriteria": {
+      "title": {
+        "en": "WEST no warning criteria",
+        "sv": "WEST inga varningskriterier"
+      },
+      "description": {
+        "en": "Explicit absence of warning criteria for this measurement.",
+        "sv": "Uttrycklig frånvaro av varningskriterier för denna mätning."
+      }
+    },
+    "newsScale": {
+      "title": {
+        "en": "NEWS scale",
+        "sv": "NEWS-skala"
+      },
+      "description": {
+        "en": "The clinical scale selected for this measurement.",
+        "sv": "Klinisk skala som valts för denna mätning."
+      }
+    },
+    "overrideColour": {
+      "title": {
+        "en": "Manual WEST color",
+        "sv": "Manuell WEST-färg"
+      },
+      "description": {
+        "en": "The clinician's manual triage color for this measurement.",
+        "sv": "Vårdgivarens manuella triagefärg för denna mätning."
+      }
+    },
+    "physiologyScore": {
+      "title": {
+        "en": "Calculated NEWS total",
+        "sv": "Beräknad NEWS-poäng"
+      },
+      "description": {
+        "en": "Read-only integer total for the selected scale.",
+        "sv": "Skrivskyddad totalpoäng i heltal för vald skala."
+      }
+    }
+  },
+  "uiMessages": {
+    "mobile.westObservationUnset": {
+      "en": "Select…",
+      "sv": "Välj…"
+    },
+    "mobile.westFieldPoints": {
+      "en": {
+        "one": "{points} pt",
+        "other": "{points} pts"
+      },
+      "sv": "{points} poäng"
+    },
+    "mobile.westFieldPointsPending": {
+      "en": "— pts",
+      "sv": "— poäng"
+    },
+    "mobile.westScoreTotal": {
+      "en": "{scale} total",
+      "sv": "Totalt {scale}"
+    },
+    "mobile.westScoreIncomplete": {
+      "en": "{points} · Incomplete",
+      "sv": "{points} · Ofullständig"
+    },
+    "mobile.westObservation.oxygen": {
+      "en": "Oxygen",
+      "sv": "Syrgas"
+    },
+    "mobile.westObservation.oxygen.air": {
+      "en": "Room air",
+      "sv": "Rumsluft"
+    },
+    "mobile.westObservation.oxygen.supplemental": {
+      "en": "Supplemental oxygen",
+      "sv": "Tillförd syrgas"
+    },
+    "mobile.westObservation.consciousness": {
+      "en": "Consciousness",
+      "sv": "Medvetandegrad"
+    },
+    "mobile.westObservation.consciousness.A": {
+      "en": "Alert",
+      "sv": "Vaken"
+    },
+    "mobile.westObservation.consciousness.C": {
+      "en": "New or worsening confusion",
+      "sv": "Ny eller förvärrad förvirring"
+    },
+    "mobile.westObservation.consciousness.V": {
+      "en": "Responds to voice",
+      "sv": "Reagerar på tilltal"
+    },
+    "mobile.westObservation.consciousness.P": {
+      "en": "Responds to pain",
+      "sv": "Reagerar på smärta"
+    },
+    "mobile.westObservation.consciousness.U": {
+      "en": "Unresponsive",
+      "sv": "Reagerar inte"
+    },
+    "mobile.westObservation.pulse": {
+      "en": "Pulse rate",
+      "sv": "Pulsfrekvens"
+    },
+    "mobile.westObservation.respiratoryRate": {
+      "en": "Respiratory rate",
+      "sv": "Andningsfrekvens"
+    },
+    "mobile.westObservation.spo2": {
+      "en": "Oxygen saturation",
+      "sv": "Syremättnad"
+    },
+    "mobile.westObservation.systolic": {
+      "en": "Systolic pressure",
+      "sv": "Systoliskt tryck"
+    },
+    "mobile.westObservation.diastolic": {
+      "en": "Diastolic pressure",
+      "sv": "Diastoliskt tryck"
+    },
+    "mobile.westObservation.heartRate": {
+      "en": "Heart rate or pulse",
+      "sv": "Hjärtfrekvens eller puls"
+    },
+    "mobile.westObservation.temperature": {
+      "en": "Temperature",
+      "sv": "Temperatur"
+    },
+    "mobile.westPhysiologyBasis": {
+      "en": "Physiology: {components}",
+      "sv": "Fysiologi: {components}"
+    },
+    "mobile.westPhysiologyComponent": {
+      "en": "{name} ({points})",
+      "sv": "{name} ({points})"
+    },
+    "mobile.westPhysiologyNormal": {
+      "en": "No points",
+      "sv": "Inga poäng"
+    },
+    "mobile.westCategory": {
+      "en": "WEST category",
+      "sv": "WEST-kategori"
+    },
+    "mobile.westChooseCategory": {
+      "en": "Choose category",
+      "sv": "Välj kategori"
+    },
+    "mobile.westChooseFinding": {
+      "en": "Choose finding",
+      "sv": "Välj fynd"
+    },
+    "mobile.westFindingOption": {
+      "en": "{severity} · {finding}",
+      "sv": "{severity} · {finding}"
+    },
+    "mobile.westDocumentedFindings": {
+      "en": "Documented WEST findings",
+      "sv": "Dokumenterade WEST-fynd"
+    },
+    "mobile.westRemoveFinding": {
+      "en": "Remove {finding}",
+      "sv": "Ta bort {finding}"
+    },
+    "mobile.westCalculationChanged": {
+      "en": "Calculation changed since override",
+      "sv": "Beräkningen har ändrats sedan det manuella valet"
+    },
+    "mobile.westLatestLevel": {
+      "en": "Latest WEST level · {result}",
+      "sv": "Senaste WEST-nivå · {result}"
+    },
+    "mobile.westRecordedLevel": {
+      "en": "WEST · {result}",
+      "sv": "WEST · {result}"
+    },
+    "mobile.westOverride": {
+      "en": "WEST override",
+      "sv": "Manuell WEST-färg"
+    },
+    "mobile.westAutomatic": {
+      "en": "Automatic",
+      "sv": "Automatisk"
+    },
+    "mobile.westManual": {
+      "en": "{colour} · Manual",
+      "sv": "{colour} · Manuell"
+    },
+    "mobile.westCalculated": {
+      "en": "Calculated: {result}",
+      "sv": "Beräknad: {result}"
+    },
+    "mobile.westProvisional": {
+      "en": "{colour} · Provisional",
+      "sv": "{colour} · Preliminär"
+    }
+  }
+}

@@ -1,10 +1,13 @@
 import { SUPPORTED_UI_LANGUAGES } from "@open-triage/contracts";
+import { westUiMessages } from "../../../defines/decision_support/west-localization.mjs";
 import { MESSAGE_DICTIONARIES } from "./message-dictionaries.generated";
 
 export type AgencyLanguage = string;
 type Message = string | { one?: string; other: string };
 type Dictionary = Record<string, Message>;
-const dictionaries: Record<string, Dictionary> = MESSAGE_DICTIONARIES;
+const dictionaries: Record<string, Dictionary> = Object.fromEntries(
+  Object.entries(MESSAGE_DICTIONARIES).map(([language, messages]) => [language, { ...messages, ...westUiMessages(language) }]),
+);
 
 /** UI languages are discovered from apps/web/messages/*.json at build time. */
 export const availableUiLanguages = SUPPORTED_UI_LANGUAGES;

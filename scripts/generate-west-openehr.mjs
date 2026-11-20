@@ -7,11 +7,11 @@ import {
   decisionSupportPickerCategories, isSelectableDecisionSupportCriterion,
 } from "@open-triage/contracts";
 
-const source = new URL("../defines/decision_support/west-a-2025.en.json", import.meta.url);
-const west = JSON.parse(readFileSync(source, "utf8"));
-const labels = JSON.parse(readFileSync(new URL("localization/catalog-labels.json", source), "utf8"));
-assert.equal(west.language, "en", "The template requires the English WEST definition");
+import { shippedWestDefinition, westCatalogText, westUiMessages } from "../defines/decision_support/west-localization.mjs";
+
+const west = shippedWestDefinition("en");
 const messages = JSON.parse(readFileSync(new URL("../apps/web/messages/en.json", import.meta.url), "utf8"));
+const westMessages = westUiMessages("en");
 const output = new URL("../packages/contracts/openehr/west-a-2025.opt", import.meta.url);
 const templateId = `OpenTriage ${west.name} ${west.version}`;
 const required = [1, 1], optional = [0, 1], repeating = [0, null], oneOrMore = [1, null];
@@ -88,7 +88,8 @@ function field(id, label, value, occurrences = optional, description = label) {
 }
 
 function catalogField(id, key, value, occurrences) {
-  return field(id, labels[key].title.en, value, occurrences, labels[key].description.en);
+  const { label, description } = westCatalogText(key, "en");
+  return field(id, label, value, occurrences, description);
 }
 
 function choices(key, entries) {
@@ -121,7 +122,7 @@ const inputFields = [
 ];
 assert.deepEqual(inputFields.map(([key]) => key).sort(), Object.keys(west.inputs).sort(),
   "Each WEST input needs a measurement and component score in the template");
-const observationLabel = key => messages[`mobile.westObservation.${key}`];
+const observationLabel = key => westMessages[`mobile.westObservation.${key}`];
 const observations = inputFields.map(([key, id]) => {
   const input = west.inputs[key];
   const value = input.values
@@ -198,7 +199,7 @@ const composition = {
   ] },
 };
 
-const language = { terminology_id: { value: "ISO_639-1" }, code_string: west.language };
+const language = { terminology_id: { value: "ISO_639-1" }, code_string: "en" };
 const xml = xmlbuilder.create({ template: {
   "@xmlns": "http://schemas.openehr.org/v1", "@xmlns:xsi": "http://www.w3.org/2001/XMLSchema-instance",
   language,

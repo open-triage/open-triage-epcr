@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import type { ClinicalDecisionSupportConfiguration, ClinicianSession, EncounterDocument } from "@open-triage/contracts";
-import westDefinition from "../../../defines/decision_support/west-a-2025.sv.json";
+import { shippedWestDefinition } from "../../../defines/decision_support/west-localization.mjs";
 import syntheticEncounter from "../app/data/synthetic-encounter-document.json";
 import {
   acceptDraftChange,
@@ -30,6 +30,8 @@ import {
 } from "../app/offline-reports";
 import type { SaveDraftReportCommand } from "../app/draft-report";
 import { compiledValidationBundleSha256, type CompiledValidationBundle } from "@open-triage/contracts";
+
+const westDefinition = shippedWestDefinition();
 
 function memoryStorage(seed = new Map<string, string>()) {
   return {
