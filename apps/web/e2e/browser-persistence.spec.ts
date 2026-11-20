@@ -522,6 +522,15 @@ for (const labels of [
     await page.getByRole("button", { name: labels.openCall, exact: true }).click();
     const add = page.getByRole("button", { name: labels.addTriage, exact: true });
     await expect(add).toHaveText("Triage");
+    const caption = add.getByText("Triage", { exact: true });
+    const fitsVertically = await caption.evaluate((element) => {
+      const range = document.createRange();
+      range.selectNodeContents(element);
+      const text = range.getBoundingClientRect();
+      const box = element.getBoundingClientRect();
+      return text.top >= box.top && text.bottom <= box.bottom;
+    });
+    expect(fitsVertically).toBe(true);
     await add.click();
     const dialog = page.getByRole("dialog", { name: "Triage", exact: true });
     await dialog.getByRole("combobox", { name: labels.category }).selectOption("trauma-injuries");
