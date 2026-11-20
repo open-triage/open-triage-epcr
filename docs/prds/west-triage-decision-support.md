@@ -1,5 +1,7 @@
 # WEST triage decision support
 
+For the openEHR representation of finalized adult assessments, see the [WEST-A template and field mapping](../../packages/contracts/openehr/README.md).
+
 **Status** — Planned. Mobile interaction, four implementation modules, and test scope agreed on 2026-11-19. A draft WEST-A definition and an interactive mobile mockup exist.
 
 ## Problem Statement
