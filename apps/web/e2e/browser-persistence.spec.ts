@@ -503,6 +503,52 @@ test("Mobile Vitals keeps an unsupported WEST draft and syncs a finalized manual
     })]);
 });
 
+for (const labels of [
+  { language: "en", openCall: "Open call", addVitals: "Add vital signs", category: "WEST category",
+    finding: "Choose finding", longCriterion: /Head trauma with GCS ≤14/, documented: "Documented WEST findings" },
+  { language: "sv", openCall: "Öppna uppdrag", addVitals: "Lägg till vitalparametrar", category: "WEST-kategori",
+    finding: "Välj fynd", longCriterion: /Skalltrauma.*GCS 14/, documented: "Dokumenterade WEST-fynd" },
+]) {
+  test(`WEST criteria list fits the screen and wraps long findings in ${labels.language}`, async ({ page }) => {
+    test.skip(!serverBacked, "requires OPEN_TRIAGE_E2E_SERVER_MODE=true");
+    await page.setViewportSize({ width: 320, height: 568 });
+    await installRoutes(page, true, undefined, {
+      definition: { schemaVersion: 1, sections: [] }, catalogFields: {}, decisionSupport: westDecisionSupport,
+    });
+    await page.route("**/api/installation", (route) => route.fulfill({ json: { settings: { ...productionSettings, language: labels.language } } }));
+    await page.goto("/");
+    await page.getByRole("button", { name: labels.openCall, exact: true }).click();
+    await page.getByRole("button", { name: labels.addVitals, exact: true }).click();
+    const dialog = page.getByRole("dialog");
+    await dialog.getByRole("combobox", { name: labels.category }).selectOption("trauma-injuries");
+    await dialog.getByLabel(labels.finding, { exact: true }).tap();
+    const list = page.getByRole("listbox", { name: labels.finding });
+    await expect(list).toBeInViewport({ ratio: 1 });
+    expect(await list.evaluate(element => element.scrollWidth <= element.clientWidth)).toBe(true);
+    const longFinding = list.getByRole("option", { name: labels.longCriterion });
+    await longFinding.scrollIntoViewIfNeeded();
+    const layout = await longFinding.evaluate((row) => {
+      const text = document.createRange();
+      text.selectNodeContents(row);
+      const bounds = row.getBoundingClientRect();
+      const lines = [...text.getClientRects()];
+      return { lines: lines.length, fits: lines.every(line => line.left >= bounds.left && line.right <= bounds.right) };
+    });
+    expect(layout.lines).toBeGreaterThan(1);
+    expect(layout.fits).toBe(true);
+    expect(await list.evaluate(element => element.scrollTop)).toBeGreaterThan(0);
+    await longFinding.tap();
+    const recorded = dialog.getByRole("list", { name: labels.documented });
+    await expect(recorded).toContainText(labels.longCriterion);
+    expect(await dialog.evaluate(element => element.scrollWidth <= element.clientWidth)).toBe(true);
+  });
+}
+
+async function selectWestFinding(page: Page, name: string | RegExp) {
+  await page.getByRole("button", { name: "Choose finding", exact: true }).click();
+  await page.getByRole("listbox", { name: "Choose finding" }).getByRole("option", { name, exact: true }).click();
+}
+
 test("Mobile WEST documents multiple findings and keeps the calculated level visible under an override", async ({ page }) => {
   test.skip(!serverBacked, "requires OPEN_TRIAGE_E2E_SERVER_MODE=true");
   await page.setViewportSize({ width: 320, height: 740 });
@@ -528,57 +574,67 @@ test("Mobile WEST documents multiple findings and keeps the calculated level vis
   const category = dialog.getByRole("combobox", { name: "WEST category" });
   const documented = dialog.getByRole("list", { name: "Documented WEST findings" });
   const status = dialog.getByRole("status").and(dialog.locator(".vital-decision-support-result"));
-  const choose = dialog.getByRole("combobox", { name: "Choose finding" });
+  const choose = dialog.getByRole("button", { name: "Choose finding" });
+  const options = dialog.getByRole("listbox", { name: "Choose finding" });
   const override = dialog.getByRole("combobox", { name: "WEST override" });
   await expect(category.locator('option[value^="gynaecology."]')).toHaveCount(6);
   await expect(category.getByRole("option", { name: "Trauma/injuries", exact: true })).toHaveCount(1);
   await category.selectOption("trauma-injuries");
-  await expect(choose).toBeVisible();
-  await expect(choose.locator("option:enabled").first()).toHaveText("No criteria met");
-  await expect(choose.getByRole("option", { name: "Red · Ventilatory support needed · Level 1", exact: true })).toHaveCount(1);
-  await expect(choose.locator('option[value="trauma-alert.01.03"]')).toHaveCount(0);
+  await choose.click();
+  await expect(options.getByRole("option").first()).toHaveText("No criteria met");
+  await expect(options.getByRole("option", { name: "Red · Ventilatory support needed · Level 1", exact: true })).toHaveCount(1);
+  await expect(options.getByRole("option", { name: /Respiratory compromise/ })).toHaveCount(0);
+  await page.keyboard.press("Escape");
+  await expect(choose).toBeFocused();
   await expect(documented).toHaveCount(0);
 
   await category.selectOption("gynaecology.01");
-  await expect(choose.locator('option[value="gynaecology.01.08"]')).toHaveCount(0);
+  const referral = options.getByRole("option", { name: /Referral from a gynecologist for suspected ectopic pregnancy/ });
+  await choose.click();
+  await expect(referral).toHaveCount(0);
+  await page.keyboard.press("Escape");
   await dialog.locator(".time-picker-trigger").click();
   const timePicker = page.getByRole("dialog", { name: "Select clinical time" });
   // Minute and hour wrap independently in the time wheel.
   await timePicker.getByRole("spinbutton", { name: "Minute" }).press("ArrowUp");
   await timePicker.getByRole("spinbutton", { name: "Hour" }).press("ArrowUp");
   await timePicker.getByRole("button", { name: "Use date & time" }).click();
-  await expect(choose.locator('option[value="gynaecology.01.08"]')).toHaveCount(1);
+  await choose.click();
+  await expect(referral).toHaveCount(1);
+  await page.keyboard.press("Escape");
   await expect(documented).toHaveCount(0);
 
   await category.selectOption("gynaecology.04");
-  await choose.selectOption({ label: "Postoperative infection. See infection." });
+  await selectWestFinding(page, "Postoperative infection. See infection.");
   await expect(category).toHaveValue("infection");
   await expect(documented).toHaveCount(0);
-  await choose.selectOption("infection.none");
-  await expect(choose).toHaveValue("");
+  await selectWestFinding(page, "No criteria met");
+  await expect(choose).toHaveText("Choose finding");
   await expect(status).toHaveText("Unassessed");
   await expect(documented).toContainText("No criteria met");
 
   await category.selectOption("bleeding");
-  const firstFinding = choose.locator("option:enabled").nth(1);
+  await choose.click();
+  const firstFinding = options.getByRole("option").nth(1);
   await expect(firstFinding).toHaveText(/^Red · /);
   await expect(firstFinding).toHaveAttribute("data-colour", "red");
-  await choose.selectOption("bleeding.07");
+  const heavyBleeding = /Heavy vaginal bleeding soaking through several overnight pads per hour/;
+  await options.getByRole("option", { name: heavyBleeding }).click();
   await expect(status).toContainText("Orange · Provisional");
   await expect(status).toContainText("Heavy vaginal bleeding soaking through several overnight pads per hour");
-  await choose.selectOption("bleeding.none");
+  await selectWestFinding(page, "No criteria met");
   await expect(status).toHaveText("Unassessed");
-  await choose.selectOption("bleeding.07");
+  await selectWestFinding(page, heavyBleeding);
   await expect(status).toContainText("Orange · Provisional");
   await expect(dialog.getByRole("checkbox", { name: "No warning criteria" })).toHaveCount(0);
   await override.selectOption("green");
   await expect(status).toContainText("Green · Manual");
 
   await category.selectOption("gynaecology.03");
-  await choose.selectOption("gynaecology.03.04");
+  await selectWestFinding(page, heavyBleeding);
   await expect(status).toContainText("Calculated: Orange · Provisional");
   await category.selectOption("pregnancy-postpartum");
-  await choose.selectOption("pregnancy-postpartum.01");
+  await selectWestFinding(page, /Heavy vaginal bleeding in pregnancy/);
   await expect(status).toContainText("Calculated: Red");
   await expect(status).toContainText("Calculation changed since override");
   await expect(documented.getByRole("button", { name: /^Remove Heavy vaginal bleeding soaking/ })).toHaveCount(2);
@@ -620,9 +676,10 @@ test("Swedish WEST uses the installation language for offline choices, documente
   const dialog = page.getByRole("dialog");
   const category = dialog.getByRole("combobox", { name: "WEST-kategori" });
   await category.selectOption({ label: "Trauma/skador" });
-  const finding = dialog.getByRole("combobox", { name: "Välj fynd" });
-  await expect(finding.locator("option:enabled").first()).toHaveText("Inga kriterier uppfyllda");
-  await finding.selectOption({ label: "Röd · Behov av ventilationsstöd · Nivå 1" });
+  await dialog.getByRole("button", { name: "Välj fynd" }).click();
+  const finding = dialog.getByRole("listbox", { name: "Välj fynd" });
+  await expect(finding.getByRole("option").first()).toHaveText("Inga kriterier uppfyllda");
+  await finding.getByRole("option", { name: "Röd · Behov av ventilationsstöd · Nivå 1", exact: true }).click();
   await expect(dialog.getByRole("list", { name: "Dokumenterade WEST-fynd" })).toContainText("Trauma/skador");
   await expect(dialog.getByRole("button", { name: "Ta bort Behov av ventilationsstöd · Nivå 1" })).toBeVisible();
   await expect(dialog.locator(".vital-decision-support-result")).toContainText("Behov av ventilationsstöd · Nivå 1");
@@ -697,7 +754,7 @@ test("Mobile WEST scores the selected NEWS scale and syncs only a complete integ
   await expect(output).toHaveAccessibleName("NEWS2 total");
   await expect(result).toHaveText("Unassessed");
   await dialog.getByRole("combobox", { name: "WEST category" }).selectOption("infection");
-  await dialog.getByRole("combobox", { name: "Choose finding" }).selectOption("infection.none");
+  await selectWestFinding(page, "No criteria met");
   await expect(result).toContainText("Green");
   await scale.selectOption("obstetric");
   await expect(output).toHaveText("0 · Incomplete");
@@ -779,7 +836,7 @@ test("Mobile WEST repeat vitals preserve offline decisions and start fresh measu
   await oxygen.selectOption("air");
   await consciousness.selectOption("A");
   await dialog.getByRole("combobox", { name: "WEST category" }).selectOption("infection");
-  await dialog.getByRole("combobox", { name: "Choose finding" }).selectOption("infection.none");
+  await selectWestFinding(page, "No criteria met");
   await override.selectOption("red");
   await save.click();
   await expect(dialog).toHaveCount(0);

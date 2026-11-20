@@ -15,9 +15,17 @@ test.beforeEach(async ({ page }) => {
     capabilities: ["clinical:document", "clinical:demo"], workspaceAvailable: true,
   } }));
   await page.route("**/api/calls/assigned", (route) => route.fulfill({ json: demoAssignedCalls }));
-  await page.route("**/api/reports/open", (route) => route.fulfill({ json: { openCalls: [], completedReportIds: [], refreshedAt: new Date().toISOString() } }));
+  let callOpened = false;
+  await page.route("**/api/reports/open", (route) => route.fulfill({ json: {
+    openCalls: callOpened ? [{ reportId: demoOpenAssignment.report.id, callNumber: call.callNumber,
+      lastSavedAt: new Date().toISOString(), syncStatus: "saved", validationErrorCount: 0,
+      revision: demoOpenAssignment.report.revision, formVersionId: demoOpenAssignment.report.formVersionId,
+      catalogReleaseId: demoOpenAssignment.report.catalogReleaseId, demoMutable: false }] : [],
+    completedReportIds: [], refreshedAt: new Date().toISOString(),
+  } }));
   await page.route("**/api/calls/synthetic-generation", (route) => route.fulfill({ json: { eligibleUnits: [call.unit], hasUnopenedCall: true } }));
   await page.route("**/api/reports/*/active", (route) => route.fulfill({ status: 304 }));
+  await page.route("**/api/reports/*/eps/context", (route) => route.fulfill({ json: null }));
   await page.route("**/api/reports/*/protected-key-envelope", (route) => route.fulfill({ status: 201, json: {
     schemaVersion: 1, recoveryHandle: route.request().postDataJSON().recoveryHandle,
     recoveryDeadline: "2099-09-29T12:00:00Z", wrappingKeyVersion: 1,
@@ -48,9 +56,10 @@ test.beforeEach(async ({ page }) => {
       instance.elements = instance.elements.filter((element) => element.id !== "ePatient.13");
     }
   }
-  await page.route(`**/api/calls/${call.id}/open`, (route) => route.fulfill({
-    json: { ...opened, report: { ...opened.report, clinicalForm } },
-  }));
+  await page.route(`**/api/calls/${call.id}/open`, (route) => {
+    callOpened = true;
+    return route.fulfill({ json: { ...opened, report: { ...opened.report, clinicalForm } } });
+  });
   await page.goto("/");
   await page.getByLabel("Username").fill("demo");
   await page.getByLabel("Password").fill("opentriagedemo");

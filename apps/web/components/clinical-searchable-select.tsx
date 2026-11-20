@@ -2,9 +2,15 @@
 
 import React, { useCallback, useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import type { TriageColour } from "@open-triage/contracts";
 import { resolveMessage } from "../app/localization";
 
-export type ClinicalSelectOption = { readonly key: string; readonly label: string; readonly disabled?: boolean };
+export type ClinicalSelectOption = {
+  readonly key: string;
+  readonly label: string;
+  readonly disabled?: boolean;
+  readonly triageColour?: TriageColour;
+};
 
 type Placement = { readonly left: number; readonly top: number; readonly width: number; readonly maxHeight: number };
 
@@ -24,7 +30,8 @@ export function ClinicalSearchableSelect({ label, value, values, options, disabl
   const search = useRef<HTMLInputElement>(null);
   const openingOffset = useRef<number | null>(null);
   const touchOpening = useRef(false);
-  const [open, setOpen] = useState(false);
+  const [popupHost, setPopupHost] = useState<Element | null>(null);
+  const open = popupHost !== null;
   const [query, setQuery] = useState("");
   const [active, setActive] = useState(0);
   const [placement, setPlacement] = useState<Placement | null>(null);
@@ -43,7 +50,7 @@ export function ClinicalSearchableSelect({ label, value, values, options, disabl
   }, []);
 
   const close = useCallback((restoreFocus = true) => {
-    setOpen(false);
+    setPopupHost(null);
     onOpenChange?.(false);
     setQuery("");
     if (restoreFocus) trigger.current?.focus({ preventScroll: true });
@@ -65,15 +72,17 @@ export function ClinicalSearchableSelect({ label, value, values, options, disabl
       if (!rect) return;
       const viewport = window.visualViewport;
       const viewportTop = viewport?.offsetTop ?? 0;
+      const viewportLeft = viewport?.offsetLeft ?? 0;
       const viewportHeight = viewport?.height ?? window.innerHeight;
       const viewportWidth = viewport?.width ?? window.innerWidth;
       const width = Math.min(Math.max(rect.width, 220), viewportWidth - 16);
-      const left = Math.max(8, Math.min(rect.left, viewportWidth - width - 8));
+      const left = Math.max(viewportLeft + 8, Math.min(rect.left, viewportLeft + viewportWidth - width - 8));
       // Search is above the first result. When space permits, the first result
       // covers the pointer location after the opening click has finished.
       const preferred = openingOffset.current !== null ? rect.top + openingOffset.current - 48 - 24 : rect.top - 48;
-      const top = Math.max(viewportTop + 8, Math.min(preferred, viewportTop + viewportHeight - 104));
-      const next = { left, top, width, maxHeight: Math.max(96, viewportTop + viewportHeight - top - 8) };
+      const bottom = viewportTop + viewportHeight - 8;
+      const top = Math.max(viewportTop + 8, Math.min(preferred, bottom - 96));
+      const next = { left, top, width, maxHeight: bottom - top };
       setPlacement(current => current && current.left === next.left && current.top === next.top && current.width === next.width && current.maxHeight === next.maxHeight ? current : next);
     }
     const onScroll = (event: Event) => {
@@ -125,10 +134,10 @@ export function ClinicalSearchableSelect({ label, value, values, options, disabl
         openingOffset.current = event.detail ? event.clientY - event.currentTarget.getBoundingClientRect().top : null;
         setActive(0);
         setQuery("");
-        setOpen(true);
+        setPopupHost(event.currentTarget.closest('[aria-modal="true"]') ?? document.body);
         onOpenChange?.(true);
       }}>{values ? selectedValues.map((option) => option.label).join(", ") || emptyLabel : selected?.label ?? emptyLabel}</button>
-    {open && placement && createPortal(<div ref={attachPopup} className="clinical-searchable-popup" style={placement} tabIndex={-1} role="group" aria-label={label}
+    {popupHost && placement && createPortal(<div ref={attachPopup} className="clinical-searchable-popup" style={placement} tabIndex={-1} role="group" aria-label={label}
       onKeyDown={(event) => { if (event.key === "Escape") { event.preventDefault(); close(); } }}>
       <input ref={search} type="search" role="combobox" aria-label={resolveMessage(language, "clinicalSelect.search", { label })} aria-autocomplete="list"
         placeholder={resolveMessage(language, "clinicalSelect.search", { label })}
@@ -144,11 +153,11 @@ export function ClinicalSearchableSelect({ label, value, values, options, disabl
         }} />
       <div id={`${id}-options`} className="clinical-searchable-options" role="listbox" aria-label={label} aria-multiselectable={values ? true : undefined}>
         {visible.length ? visible.map((option, index) => <button key={option.key} id={`${id}-option-${index}`}
-          type="button" role="option" disabled={option.disabled} aria-selected={values ? values.includes(option.key) : option.key === value}
+          type="button" role="option" disabled={option.disabled} data-colour={option.triageColour} aria-selected={values ? values.includes(option.key) : option.key === value}
           className={`${index === active ? "is-active " : ""}${values?.includes(option.key) ? "is-selected" : ""}`.trim()}
           onMouseEnter={() => setActive(index)} onClick={() => commit(option.key)}>{option.label}</button>)
           : <div className="clinical-searchable-empty" role="status">{resolveMessage(language, "clinicalSelect.noMatches")}</div>}
       </div>
-    </div>, document.body)}
+    </div>, popupHost)}
   </>;
 }

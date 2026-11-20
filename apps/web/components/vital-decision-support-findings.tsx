@@ -11,6 +11,7 @@ import {
 import { useRef, useState } from "react";
 import { localizedDecisionSupportDefinition } from "../app/decision-support-localization";
 import { resolveMessage } from "../app/localization";
+import { ClinicalSearchableSelect } from "./clinical-searchable-select";
 
 export function VitalDecisionSupportFindings({ definition: pinned, findings, localTime, language, onChange }: {
   readonly definition: DecisionSupportDefinition;
@@ -34,6 +35,7 @@ export function VitalDecisionSupportFindings({ definition: pinned, findings, loc
       other.navigateToCategory === criterion.navigateToCategory && other.text === criterion.text) === index)).sort((left, right) =>
     priority.indexOf(right.criterion.triage_color) - priority.indexOf(left.criterion.triage_color));
   const noCriteriaLabel = t("mobile.westNoCriteriaMet");
+  const chooseFinding = t("mobile.westChooseFinding");
   const negativeCode = decisionSupportNegativeCode(definition, categoryId);
   const displayCategory = (item: typeof categories[number]) => item.displayLabel ?? item.category;
   const select = (code: string) => {
@@ -54,22 +56,20 @@ export function VitalDecisionSupportFindings({ definition: pinned, findings, loc
         {categories.map((item) => <option value={item.id} key={item.id}>{displayCategory(item)}</option>)}
       </select>
     </label>
-    {category && <select aria-label={t("mobile.westChooseFinding")} value="" onChange={(event) => {
-      const code = event.target.value;
-      if (!code) return;
+    {category && <ClinicalSearchableSelect label={chooseFinding} placeholder={chooseFinding} options={[
+      { key: negativeCode, label: noCriteriaLabel, disabled: findings.criteria.includes(negativeCode) },
+      ...available.map(({ criterion, labelSuffix }) => {
+        const finding = decisionSupportCriterionLabel(criterion, labelSuffix, locale);
+        if (criterion.navigateToCategory) return { key: criterion.id, label: finding };
+        return { key: criterion.id, triageColour: criterion.triage_color, label: t("mobile.westFindingOption", {
+          severity: t(`mobile.westColour.${criterion.triage_color}`), finding,
+        }) };
+      }),
+    ]} onChange={(code) => {
       const target = available.find(({ criterion }) => criterion.id === code)?.criterion.navigateToCategory;
       if (target) setCategoryId(target);
       else select(code);
-    }}>
-      <option value="" disabled hidden>{t("mobile.westChooseFinding")}</option>
-      <option value={negativeCode} disabled={findings.criteria.includes(negativeCode)}>{noCriteriaLabel}</option>
-      {available.map(({ criterion, labelSuffix }) => {
-        const finding = decisionSupportCriterionLabel(criterion, labelSuffix, locale);
-        return <option key={criterion.id} value={criterion.id} data-colour={criterion.navigateToCategory ? undefined : criterion.triage_color}>{criterion.navigateToCategory ? finding : t("mobile.westFindingOption", {
-          severity: t(`mobile.westColour.${criterion.triage_color}`), finding,
-        })}</option>;
-      })}
-    </select>}
+    }} />}
     {documented.length > 0 && <ul className="vital-west-documented" aria-label={t("mobile.westDocumentedFindings")}>
       {documented.map(({ category: documentedCategory, negative, criteria }) => <li key={documentedCategory.id}>
         <strong>{displayCategory(documentedCategory)}</strong>
