@@ -1,5 +1,6 @@
 "use client";
 
+import { DemoFhirValidation } from "./demo-fhir-validation";
 import { AdminText, useAdminText } from "../app/admin-localization";
 
 import type { ClinicianSession, SyntheticCallGenerationContext } from "@open-triage/contracts";
@@ -135,6 +136,7 @@ export function ClinicalDemoBanner({
     {canUseClinicalDemoDraftActions(activeReport) && <span className="demo-data-controls" role="group" aria-label={t("admin.demoRecordData")}>
       <button type="button" onClick={() => window.dispatchEvent(new Event(DEMO_POPULATE_EVENT))}><AdminText messageKey="admin.populate" /></button>
       <button type="button" onClick={() => window.dispatchEvent(new Event(DEMO_CLEAR_EVENT))}><AdminText messageKey="admin.clear" /></button>
+      <DemoFhirValidation key={activeReport.id} reportId={activeReport.id} csrf={sessionRequestToken(session)} />
       <button className="delete-record-action" type="button" disabled={deleting}
         onClick={() => void deleteRecord()}>{deleting ? t("admin.deleting") : t("admin.delete")}</button>
     </span>}

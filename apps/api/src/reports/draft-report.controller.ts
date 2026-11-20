@@ -49,6 +49,21 @@ export class DraftReportController {
     return response.send(pdf);
   }
 
+  @Post(":id/demo/fhir-validation")
+  @HttpCode(200)
+  @Header("Cache-Control", "no-store, private")
+  validateDemoFhir(@Param("id", uuidV4) id: string, @Query("background") background: string | undefined, @Headers("x-csrf-token") csrf?: string,
+    @Headers("authorization") authorization?: string, @Headers("cookie") cookie?: string) {
+    return this.reports.validateSyntheticFhir(bearerToken(authorization, cookie), id, csrf, background === "true");
+  }
+
+  @Get(":id/demo/fhir-validation/:jobId")
+  @Header("Cache-Control", "no-store, private")
+  demoFhirStatus(@Param("id", uuidV4) id: string, @Param("jobId", uuidV4) jobId: string,
+    @Headers("authorization") authorization?: string, @Headers("cookie") cookie?: string) {
+    return this.reports.syntheticFhirStatus(bearerToken(authorization, cookie), id, jobId);
+  }
+
   @Post()
   @Header("Cache-Control", "no-store, private")
   create(@Body() body: unknown, @Headers("authorization") authorization?: string, @Headers("cookie") cookie?: string, @Headers("x-job-confirmation") confirmationToken?: string): Promise<DraftReportResult> {

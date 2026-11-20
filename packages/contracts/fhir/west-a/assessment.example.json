@@ -1,0 +1,24 @@
+{
+  "definitionKey": "west-a-2025",
+  "definitionVersion": "1.0.0-draft.6",
+  "measurementId": "95770cd7-e7b7-4c0b-91f1-5390bbbe67f6",
+  "measurementInstant": "2026-11-20T10:35:00+01:00",
+  "patientId": "6c176c67-1aed-5cda-9a51-7833bc0e1246",
+  "resourceBase": "https://example.org/fhir/",
+  "encounterId": "synthetic-ambulance-visit",
+  "encounterStatus": "in-progress",
+  "encounterClass": "EMER",
+  "performer": { "resourceType": "Practitioner", "id": "synthetic-registrar", "name": [{ "text": "Example ambulance clinician" }] },
+  "primaryCategory": "chest-pain",
+  "scale": "standard",
+  "measurements": {
+    "eVitals.14": 22,
+    "eVitals.12": 95,
+    "eVitals.06": 105,
+    "eVitals.07": 70,
+    "eVitals.10": 95,
+    "eVitals.24": 37.5
+  },
+  "observations": { "oxygen": "air", "consciousness": "A" },
+  "findings": { "criteria": ["chest-pain.05"], "noWarningCriteria": false }
+}

@@ -1,0 +1,295 @@
+{
+  "resourceType" : "OperationOutcome",
+  "text" : {
+    "status" : "generated",
+    "div" : "<div xmlns=\"http://www.w3.org/1999/xhtml\"><p class=\"res-header-id\"><b>OperationOutcome </b></p><p>All OK</p><table class=\"grid\"><tr><td><b>Severity</b></td><td><b>Location</b></td><td><b>Code</b></td><td><b>Details</b></td><td><b>Diagnostics</b></td><td><b>Source</b></td></tr><tr><td>Information</td><td>Bundle.entry[3].resource/*Observation/95770cd7-e7b7-4c0b-91f1-5390bbbe67f6-respiratory-rate*/</td><td>Informational Note</td><td>Validate Observation against the Respiratory Rate profile (http://hl7.org/fhir/StructureDefinition/resprate) which is required by the FHIR specification because the LOINC code 9279-1 was found</td><td/><td>InstanceValidator</td></tr><tr><td>Information</td><td>Bundle.entry[4].resource/*Observation/95770cd7-e7b7-4c0b-91f1-5390bbbe67f6-oxygen-saturation*/</td><td>Informational Note</td><td>Validate Observation against the Oxygen saturation profile (http://hl7.org/fhir/StructureDefinition/oxygensat) which is required by the FHIR specification because the LOINC code 2708-6 was found</td><td/><td>InstanceValidator</td></tr><tr><td>Information</td><td>Bundle.entry[5].resource/*Observation/95770cd7-e7b7-4c0b-91f1-5390bbbe67f6-heart-rate*/</td><td>Informational Note</td><td>Validate Observation against the Heart rate profile (http://hl7.org/fhir/StructureDefinition/heartrate) which is required by the FHIR specification because the LOINC code 8867-4 was found</td><td/><td>InstanceValidator</td></tr><tr><td>Information</td><td>Bundle.entry[6].resource/*Observation/95770cd7-e7b7-4c0b-91f1-5390bbbe67f6-body-temperature*/</td><td>Informational Note</td><td>Validate Observation against the Body temperature profile (http://hl7.org/fhir/StructureDefinition/bodytemp) which is required by the FHIR specification because the LOINC code 8310-5 was found</td><td/><td>InstanceValidator</td></tr><tr><td>Information</td><td>Bundle.entry[7].resource/*Observation/95770cd7-e7b7-4c0b-91f1-5390bbbe67f6-blood-pressure*/</td><td>Informational Note</td><td>Validate Observation against the Blood pressure systolic and diastolic profile (http://hl7.org/fhir/StructureDefinition/bp) which is required by the FHIR specification because the LOINC code 85354-9 was found</td><td/><td>InstanceValidator</td></tr><tr><td>Information</td><td>Bundle.entry[3].resource</td><td>Informational Note</td><td>Validate Observation against the Respiratory Rate profile (http://hl7.org/fhir/StructureDefinition/resprate) which is required by the FHIR specification because the LOINC code 9279-1 was found</td><td/><td>InstanceValidator</td></tr><tr><td>Information</td><td>Bundle.entry[4].resource</td><td>Informational Note</td><td>Validate Observation against the Oxygen saturation profile (http://hl7.org/fhir/StructureDefinition/oxygensat) which is required by the FHIR specification because the LOINC code 2708-6 was found</td><td/><td>InstanceValidator</td></tr><tr><td>Information</td><td>Bundle.entry[5].resource</td><td>Informational Note</td><td>Validate Observation against the Heart rate profile (http://hl7.org/fhir/StructureDefinition/heartrate) which is required by the FHIR specification because the LOINC code 8867-4 was found</td><td/><td>InstanceValidator</td></tr><tr><td>Information</td><td>Bundle.entry[6].resource</td><td>Informational Note</td><td>Validate Observation against the Body temperature profile (http://hl7.org/fhir/StructureDefinition/bodytemp) which is required by the FHIR specification because the LOINC code 8310-5 was found</td><td/><td>InstanceValidator</td></tr><tr><td>Information</td><td>Bundle.entry[7].resource</td><td>Informational Note</td><td>Validate Observation against the Blood pressure systolic and diastolic profile (http://hl7.org/fhir/StructureDefinition/bp) which is required by the FHIR specification because the LOINC code 85354-9 was found</td><td/><td>InstanceValidator</td></tr></table></div>"
+  },
+  "extension" : [{
+    "url" : "http://hl7.org/fhir/tools/StructureDefinition/validator-version",
+    "valueString" : "FHIR Validation tool Version 7.0.6 (Git# 86bf796ddc97). Built 2026-11-13T23:28:34.381Z (6 days old)"
+  },
+  {
+    "url" : "http://hl7.org/fhir/StructureDefinition/operationoutcome-file",
+    "valueString" : "packages/contracts/fhir/west-a/bundle.example.json"
+  }],
+  "issue" : [{
+    "extension" : [{
+      "url" : "http://hl7.org/fhir/StructureDefinition/operationoutcome-issue-line",
+      "valueInteger" : 76
+    },
+    {
+      "url" : "http://hl7.org/fhir/StructureDefinition/operationoutcome-issue-col",
+      "valueInteger" : 8
+    },
+    {
+      "url" : "http://hl7.org/fhir/StructureDefinition/operationoutcome-issue-source",
+      "valueString" : "InstanceValidator"
+    },
+    {
+      "url" : "http://hl7.org/fhir/StructureDefinition/operationoutcome-message-id",
+      "valueCode" : "VALIDATION_VAL_PROFILE_SIGNPOST_OBS"
+    },
+    {
+      "url" : "http://hl7.org/fhir/StructureDefinition/operationoutcome-issue-context",
+      "valueString" : "http://hl7.org/fhir/StructureDefinition/Practitioner|4.0.1"
+    }],
+    "severity" : "information",
+    "code" : "informational",
+    "details" : {
+      "text" : "Validate Observation against the Respiratory Rate profile (http://hl7.org/fhir/StructureDefinition/resprate) which is required by the FHIR specification because the LOINC code 9279-1 was found"
+    },
+    "expression" : ["Bundle.entry[3].resource/*Observation/95770cd7-e7b7-4c0b-91f1-5390bbbe67f6-respiratory-rate*/"]
+  },
+  {
+    "extension" : [{
+      "url" : "http://hl7.org/fhir/StructureDefinition/operationoutcome-issue-line",
+      "valueInteger" : 129
+    },
+    {
+      "url" : "http://hl7.org/fhir/StructureDefinition/operationoutcome-issue-col",
+      "valueInteger" : 8
+    },
+    {
+      "url" : "http://hl7.org/fhir/StructureDefinition/operationoutcome-issue-source",
+      "valueString" : "InstanceValidator"
+    },
+    {
+      "url" : "http://hl7.org/fhir/StructureDefinition/operationoutcome-message-id",
+      "valueCode" : "VALIDATION_VAL_PROFILE_SIGNPOST_OBS"
+    },
+    {
+      "url" : "http://hl7.org/fhir/StructureDefinition/operationoutcome-issue-context",
+      "valueString" : "http://hl7.org/fhir/StructureDefinition/Practitioner|4.0.1"
+    }],
+    "severity" : "information",
+    "code" : "informational",
+    "details" : {
+      "text" : "Validate Observation against the Oxygen saturation profile (http://hl7.org/fhir/StructureDefinition/oxygensat) which is required by the FHIR specification because the LOINC code 2708-6 was found"
+    },
+    "expression" : ["Bundle.entry[4].resource/*Observation/95770cd7-e7b7-4c0b-91f1-5390bbbe67f6-oxygen-saturation*/"]
+  },
+  {
+    "extension" : [{
+      "url" : "http://hl7.org/fhir/StructureDefinition/operationoutcome-issue-line",
+      "valueInteger" : 182
+    },
+    {
+      "url" : "http://hl7.org/fhir/StructureDefinition/operationoutcome-issue-col",
+      "valueInteger" : 8
+    },
+    {
+      "url" : "http://hl7.org/fhir/StructureDefinition/operationoutcome-issue-source",
+      "valueString" : "InstanceValidator"
+    },
+    {
+      "url" : "http://hl7.org/fhir/StructureDefinition/operationoutcome-message-id",
+      "valueCode" : "VALIDATION_VAL_PROFILE_SIGNPOST_OBS"
+    },
+    {
+      "url" : "http://hl7.org/fhir/StructureDefinition/operationoutcome-issue-context",
+      "valueString" : "http://hl7.org/fhir/StructureDefinition/Practitioner|4.0.1"
+    }],
+    "severity" : "information",
+    "code" : "informational",
+    "details" : {
+      "text" : "Validate Observation against the Heart rate profile (http://hl7.org/fhir/StructureDefinition/heartrate) which is required by the FHIR specification because the LOINC code 8867-4 was found"
+    },
+    "expression" : ["Bundle.entry[5].resource/*Observation/95770cd7-e7b7-4c0b-91f1-5390bbbe67f6-heart-rate*/"]
+  },
+  {
+    "extension" : [{
+      "url" : "http://hl7.org/fhir/StructureDefinition/operationoutcome-issue-line",
+      "valueInteger" : 235
+    },
+    {
+      "url" : "http://hl7.org/fhir/StructureDefinition/operationoutcome-issue-col",
+      "valueInteger" : 8
+    },
+    {
+      "url" : "http://hl7.org/fhir/StructureDefinition/operationoutcome-issue-source",
+      "valueString" : "InstanceValidator"
+    },
+    {
+      "url" : "http://hl7.org/fhir/StructureDefinition/operationoutcome-message-id",
+      "valueCode" : "VALIDATION_VAL_PROFILE_SIGNPOST_OBS"
+    },
+    {
+      "url" : "http://hl7.org/fhir/StructureDefinition/operationoutcome-issue-context",
+      "valueString" : "http://hl7.org/fhir/StructureDefinition/Practitioner|4.0.1"
+    }],
+    "severity" : "information",
+    "code" : "informational",
+    "details" : {
+      "text" : "Validate Observation against the Body temperature profile (http://hl7.org/fhir/StructureDefinition/bodytemp) which is required by the FHIR specification because the LOINC code 8310-5 was found"
+    },
+    "expression" : ["Bundle.entry[6].resource/*Observation/95770cd7-e7b7-4c0b-91f1-5390bbbe67f6-body-temperature*/"]
+  },
+  {
+    "extension" : [{
+      "url" : "http://hl7.org/fhir/StructureDefinition/operationoutcome-issue-line",
+      "valueInteger" : 288
+    },
+    {
+      "url" : "http://hl7.org/fhir/StructureDefinition/operationoutcome-issue-col",
+      "valueInteger" : 8
+    },
+    {
+      "url" : "http://hl7.org/fhir/StructureDefinition/operationoutcome-issue-source",
+      "valueString" : "InstanceValidator"
+    },
+    {
+      "url" : "http://hl7.org/fhir/StructureDefinition/operationoutcome-message-id",
+      "valueCode" : "VALIDATION_VAL_PROFILE_SIGNPOST_OBS"
+    },
+    {
+      "url" : "http://hl7.org/fhir/StructureDefinition/operationoutcome-issue-context",
+      "valueString" : "http://hl7.org/fhir/StructureDefinition/Practitioner|4.0.1"
+    }],
+    "severity" : "information",
+    "code" : "informational",
+    "details" : {
+      "text" : "Validate Observation against the Blood pressure systolic and diastolic profile (http://hl7.org/fhir/StructureDefinition/bp) which is required by the FHIR specification because the LOINC code 85354-9 was found"
+    },
+    "expression" : ["Bundle.entry[7].resource/*Observation/95770cd7-e7b7-4c0b-91f1-5390bbbe67f6-blood-pressure*/"]
+  },
+  {
+    "extension" : [{
+      "url" : "http://hl7.org/fhir/StructureDefinition/operationoutcome-issue-line",
+      "valueInteger" : 76
+    },
+    {
+      "url" : "http://hl7.org/fhir/StructureDefinition/operationoutcome-issue-col",
+      "valueInteger" : 8
+    },
+    {
+      "url" : "http://hl7.org/fhir/StructureDefinition/operationoutcome-issue-source",
+      "valueString" : "InstanceValidator"
+    },
+    {
+      "url" : "http://hl7.org/fhir/StructureDefinition/operationoutcome-message-id",
+      "valueCode" : "VALIDATION_VAL_PROFILE_SIGNPOST_OBS"
+    },
+    {
+      "url" : "http://hl7.org/fhir/StructureDefinition/operationoutcome-issue-context",
+      "valueString" : "https://vadi2.github.io/west-a-triage-ig/StructureDefinition/west-a-news2-observation|0.1.0"
+    }],
+    "severity" : "information",
+    "code" : "informational",
+    "details" : {
+      "text" : "Validate Observation against the Respiratory Rate profile (http://hl7.org/fhir/StructureDefinition/resprate) which is required by the FHIR specification because the LOINC code 9279-1 was found"
+    },
+    "expression" : ["Bundle.entry[3].resource"]
+  },
+  {
+    "extension" : [{
+      "url" : "http://hl7.org/fhir/StructureDefinition/operationoutcome-issue-line",
+      "valueInteger" : 129
+    },
+    {
+      "url" : "http://hl7.org/fhir/StructureDefinition/operationoutcome-issue-col",
+      "valueInteger" : 8
+    },
+    {
+      "url" : "http://hl7.org/fhir/StructureDefinition/operationoutcome-issue-source",
+      "valueString" : "InstanceValidator"
+    },
+    {
+      "url" : "http://hl7.org/fhir/StructureDefinition/operationoutcome-message-id",
+      "valueCode" : "VALIDATION_VAL_PROFILE_SIGNPOST_OBS"
+    },
+    {
+      "url" : "http://hl7.org/fhir/StructureDefinition/operationoutcome-issue-context",
+      "valueString" : "http://hl7.org/fhir/StructureDefinition/resprate|4.0.1"
+    }],
+    "severity" : "information",
+    "code" : "informational",
+    "details" : {
+      "text" : "Validate Observation against the Oxygen saturation profile (http://hl7.org/fhir/StructureDefinition/oxygensat) which is required by the FHIR specification because the LOINC code 2708-6 was found"
+    },
+    "expression" : ["Bundle.entry[4].resource"]
+  },
+  {
+    "extension" : [{
+      "url" : "http://hl7.org/fhir/StructureDefinition/operationoutcome-issue-line",
+      "valueInteger" : 182
+    },
+    {
+      "url" : "http://hl7.org/fhir/StructureDefinition/operationoutcome-issue-col",
+      "valueInteger" : 8
+    },
+    {
+      "url" : "http://hl7.org/fhir/StructureDefinition/operationoutcome-issue-source",
+      "valueString" : "InstanceValidator"
+    },
+    {
+      "url" : "http://hl7.org/fhir/StructureDefinition/operationoutcome-message-id",
+      "valueCode" : "VALIDATION_VAL_PROFILE_SIGNPOST_OBS"
+    },
+    {
+      "url" : "http://hl7.org/fhir/StructureDefinition/operationoutcome-issue-context",
+      "valueString" : "http://hl7.org/fhir/StructureDefinition/oxygensat|4.0.1"
+    }],
+    "severity" : "information",
+    "code" : "informational",
+    "details" : {
+      "text" : "Validate Observation against the Heart rate profile (http://hl7.org/fhir/StructureDefinition/heartrate) which is required by the FHIR specification because the LOINC code 8867-4 was found"
+    },
+    "expression" : ["Bundle.entry[5].resource"]
+  },
+  {
+    "extension" : [{
+      "url" : "http://hl7.org/fhir/StructureDefinition/operationoutcome-issue-line",
+      "valueInteger" : 235
+    },
+    {
+      "url" : "http://hl7.org/fhir/StructureDefinition/operationoutcome-issue-col",
+      "valueInteger" : 8
+    },
+    {
+      "url" : "http://hl7.org/fhir/StructureDefinition/operationoutcome-issue-source",
+      "valueString" : "InstanceValidator"
+    },
+    {
+      "url" : "http://hl7.org/fhir/StructureDefinition/operationoutcome-message-id",
+      "valueCode" : "VALIDATION_VAL_PROFILE_SIGNPOST_OBS"
+    },
+    {
+      "url" : "http://hl7.org/fhir/StructureDefinition/operationoutcome-issue-context",
+      "valueString" : "http://hl7.org/fhir/StructureDefinition/heartrate|4.0.1"
+    }],
+    "severity" : "information",
+    "code" : "informational",
+    "details" : {
+      "text" : "Validate Observation against the Body temperature profile (http://hl7.org/fhir/StructureDefinition/bodytemp) which is required by the FHIR specification because the LOINC code 8310-5 was found"
+    },
+    "expression" : ["Bundle.entry[6].resource"]
+  },
+  {
+    "extension" : [{
+      "url" : "http://hl7.org/fhir/StructureDefinition/operationoutcome-issue-line",
+      "valueInteger" : 288
+    },
+    {
+      "url" : "http://hl7.org/fhir/StructureDefinition/operationoutcome-issue-col",
+      "valueInteger" : 8
+    },
+    {
+      "url" : "http://hl7.org/fhir/StructureDefinition/operationoutcome-issue-source",
+      "valueString" : "InstanceValidator"
+    },
+    {
+      "url" : "http://hl7.org/fhir/StructureDefinition/operationoutcome-message-id",
+      "valueCode" : "VALIDATION_VAL_PROFILE_SIGNPOST_OBS"
+    },
+    {
+      "url" : "http://hl7.org/fhir/StructureDefinition/operationoutcome-issue-context",
+      "valueString" : "http://hl7.org/fhir/StructureDefinition/bodytemp|4.0.1"
+    }],
+    "severity" : "information",
+    "code" : "informational",
+    "details" : {
+      "text" : "Validate Observation against the Blood pressure systolic and diastolic profile (http://hl7.org/fhir/StructureDefinition/bp) which is required by the FHIR specification because the LOINC code 85354-9 was found"
+    },
+    "expression" : ["Bundle.entry[7].resource"]
+  }]
+}

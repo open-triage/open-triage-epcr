@@ -10,6 +10,7 @@ import {
   validateSaveDraftReportCommand
 } from "../dist/reports/draft-report.validation.js";
 import { storedEncounterValue } from "../dist/reports/encounter-document.persistence.js";
+import { startDemoValidation, awaitDemoValidation, demoValidationStatus } from "../dist/reports/demo-fhir-validation.js";
 import { DraftReportService } from "../dist/reports/draft-report.service.js";
 
 test("active-report reconstruction retains coded terminology metadata", () => {
@@ -261,4 +262,39 @@ test("draft validation rejects mixed or duplicate coded occurrences within the r
   } };
   await assert.rejects(service.assertCodedChoiceCombinations(manager, report), /cannot combine exceptional or duplicate choices/);
   assert.equal(observed, true);
+});
+
+test("FHIR demo validation requires the demo capability, CSRF and a generator-owned draft", async () => {
+  const calls = [];
+  const service = Object.assign(Object.create(DraftReportService.prototype), {
+    sessions: {
+      requireCapability: async (...args) => calls.push(args),
+      assertCsrf: async (...args) => calls.push(args),
+    },
+    reopen: async (...args) => { calls.push(args); return { report: { status: "draft" } }; },
+  });
+  await assert.rejects(service.validateSyntheticFhir("session", "record", "proof"), error => error.getStatus() === 404);
+  assert.deepEqual(calls, [["session", "clinical:demo"], ["session", "proof"], ["session", "record"]]);
+});
+
+test("FHIR validation shares identical snapshots within a session and retries failed jobs", async () => {
+  const previous = process.env.FHIR_VALIDATOR_JAR;
+  process.env.FHIR_VALIDATOR_JAR = "/missing-test-validator-" + randomUUID();
+  try {
+    const report = { id: randomUUID(), revision: 1, demoMutable: true, status: "draft", document: {}, notes: [] };
+    const { jobId } = startDemoValidation(report, "session");
+    assert.equal(startDemoValidation(structuredClone(report), "session").jobId, jobId);
+    const completion = awaitDemoValidation(report, "session");
+    for (const [input, owner] of [[{ ...report, revision: 2 }, "session"],
+      [{ ...report, notes: [{ content: "changed" }] }, "session"], [report, "other"]]) {
+      assert.throws(() => startDemoValidation(input, owner), error => error.getStatus() === 429);
+    }
+    assert.throws(() => demoValidationStatus(jobId, report.id, "other"), error => error.getStatus() === 404);
+    await assert.rejects(completion, error => error.getStatus() === 503);
+    assert.notEqual(startDemoValidation(report, "session").jobId, jobId);
+    await assert.rejects(awaitDemoValidation(report, "session"));
+  } finally {
+    if (previous === undefined) delete process.env.FHIR_VALIDATOR_JAR;
+    else process.env.FHIR_VALIDATOR_JAR = previous;
+  }
 });

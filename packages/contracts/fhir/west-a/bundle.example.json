@@ -1,0 +1,743 @@
+{
+  "resourceType": "Bundle",
+  "type": "collection",
+  "entry": [
+    {
+      "fullUrl": "https://example.org/fhir/Patient/6c176c67-1aed-5cda-9a51-7833bc0e1246",
+      "resource": {
+        "resourceType": "Patient",
+        "id": "6c176c67-1aed-5cda-9a51-7833bc0e1246",
+        "meta": {
+          "profile": [
+            "https://vadi2.github.io/west-a-triage-ig/StructureDefinition/west-a-patient"
+          ]
+        },
+        "text": {
+          "status": "generated",
+          "div": "<div xmlns=\"http://www.w3.org/1999/xhtml\"><p>Arne Bergström</p></div>"
+        },
+        "identifier": [
+          {
+            "system": "http://electronichealth.se/identifier/personnummer",
+            "value": "194302096997"
+          }
+        ],
+        "name": [
+          {
+            "text": "Arne Bergström",
+            "family": "Bergström",
+            "given": [
+              "Arne",
+              "Gustav"
+            ]
+          }
+        ],
+        "gender": "male",
+        "birthDate": "1943-02-09"
+      }
+    },
+    {
+      "fullUrl": "https://example.org/fhir/Encounter/synthetic-ambulance-visit",
+      "resource": {
+        "resourceType": "Encounter",
+        "id": "synthetic-ambulance-visit",
+        "status": "in-progress",
+        "text": {
+          "status": "generated",
+          "div": "<div xmlns=\"http://www.w3.org/1999/xhtml\"><p>Encounter synthetic-ambulance-visit, in-progress.</p></div>"
+        },
+        "class": {
+          "system": "http://terminology.hl7.org/CodeSystem/v3-ActCode",
+          "code": "EMER"
+        },
+        "subject": {
+          "reference": "https://example.org/fhir/Patient/6c176c67-1aed-5cda-9a51-7833bc0e1246"
+        }
+      }
+    },
+    {
+      "fullUrl": "https://example.org/fhir/Practitioner/synthetic-registrar",
+      "resource": {
+        "resourceType": "Practitioner",
+        "id": "synthetic-registrar",
+        "name": [
+          {
+            "text": "Example ambulance clinician"
+          }
+        ],
+        "text": {
+          "status": "generated",
+          "div": "<div xmlns=\"http://www.w3.org/1999/xhtml\"><p>Example ambulance clinician</p></div>"
+        }
+      }
+    },
+    {
+      "fullUrl": "https://example.org/fhir/Observation/95770cd7-e7b7-4c0b-91f1-5390bbbe67f6-respiratory-rate",
+      "resource": {
+        "resourceType": "Observation",
+        "id": "95770cd7-e7b7-4c0b-91f1-5390bbbe67f6-respiratory-rate",
+        "meta": {
+          "profile": [
+            "https://vadi2.github.io/west-a-triage-ig/StructureDefinition/west-a-respiratory-rate"
+          ]
+        },
+        "status": "final",
+        "category": [
+          {
+            "coding": [
+              {
+                "system": "http://terminology.hl7.org/CodeSystem/observation-category",
+                "code": "vital-signs"
+              }
+            ]
+          }
+        ],
+        "text": {
+          "status": "generated",
+          "div": "<div xmlns=\"http://www.w3.org/1999/xhtml\"><p>respiratory rate: 22 /min</p></div>"
+        },
+        "performer": [
+          {
+            "reference": "https://example.org/fhir/Practitioner/synthetic-registrar"
+          }
+        ],
+        "code": {
+          "coding": [
+            {
+              "system": "http://loinc.org",
+              "code": "9279-1"
+            }
+          ]
+        },
+        "subject": {
+          "reference": "https://example.org/fhir/Patient/6c176c67-1aed-5cda-9a51-7833bc0e1246"
+        },
+        "encounter": {
+          "reference": "https://example.org/fhir/Encounter/synthetic-ambulance-visit"
+        },
+        "effectiveDateTime": "2026-11-20T10:35:00+01:00",
+        "valueQuantity": {
+          "value": 22,
+          "unit": "/min",
+          "system": "http://unitsofmeasure.org",
+          "code": "/min"
+        }
+      }
+    },
+    {
+      "fullUrl": "https://example.org/fhir/Observation/95770cd7-e7b7-4c0b-91f1-5390bbbe67f6-oxygen-saturation",
+      "resource": {
+        "resourceType": "Observation",
+        "id": "95770cd7-e7b7-4c0b-91f1-5390bbbe67f6-oxygen-saturation",
+        "meta": {
+          "profile": [
+            "https://vadi2.github.io/west-a-triage-ig/StructureDefinition/west-a-oxygen-saturation"
+          ]
+        },
+        "status": "final",
+        "category": [
+          {
+            "coding": [
+              {
+                "system": "http://terminology.hl7.org/CodeSystem/observation-category",
+                "code": "vital-signs"
+              }
+            ]
+          }
+        ],
+        "text": {
+          "status": "generated",
+          "div": "<div xmlns=\"http://www.w3.org/1999/xhtml\"><p>oxygen saturation: 95 %</p></div>"
+        },
+        "performer": [
+          {
+            "reference": "https://example.org/fhir/Practitioner/synthetic-registrar"
+          }
+        ],
+        "code": {
+          "coding": [
+            {
+              "system": "http://loinc.org",
+              "code": "2708-6"
+            }
+          ]
+        },
+        "subject": {
+          "reference": "https://example.org/fhir/Patient/6c176c67-1aed-5cda-9a51-7833bc0e1246"
+        },
+        "encounter": {
+          "reference": "https://example.org/fhir/Encounter/synthetic-ambulance-visit"
+        },
+        "effectiveDateTime": "2026-11-20T10:35:00+01:00",
+        "valueQuantity": {
+          "value": 95,
+          "unit": "%",
+          "system": "http://unitsofmeasure.org",
+          "code": "%"
+        }
+      }
+    },
+    {
+      "fullUrl": "https://example.org/fhir/Observation/95770cd7-e7b7-4c0b-91f1-5390bbbe67f6-heart-rate",
+      "resource": {
+        "resourceType": "Observation",
+        "id": "95770cd7-e7b7-4c0b-91f1-5390bbbe67f6-heart-rate",
+        "meta": {
+          "profile": [
+            "https://vadi2.github.io/west-a-triage-ig/StructureDefinition/west-a-heart-rate"
+          ]
+        },
+        "status": "final",
+        "category": [
+          {
+            "coding": [
+              {
+                "system": "http://terminology.hl7.org/CodeSystem/observation-category",
+                "code": "vital-signs"
+              }
+            ]
+          }
+        ],
+        "text": {
+          "status": "generated",
+          "div": "<div xmlns=\"http://www.w3.org/1999/xhtml\"><p>heart rate: 95 /min</p></div>"
+        },
+        "performer": [
+          {
+            "reference": "https://example.org/fhir/Practitioner/synthetic-registrar"
+          }
+        ],
+        "code": {
+          "coding": [
+            {
+              "system": "http://loinc.org",
+              "code": "8867-4"
+            }
+          ]
+        },
+        "subject": {
+          "reference": "https://example.org/fhir/Patient/6c176c67-1aed-5cda-9a51-7833bc0e1246"
+        },
+        "encounter": {
+          "reference": "https://example.org/fhir/Encounter/synthetic-ambulance-visit"
+        },
+        "effectiveDateTime": "2026-11-20T10:35:00+01:00",
+        "valueQuantity": {
+          "value": 95,
+          "unit": "/min",
+          "system": "http://unitsofmeasure.org",
+          "code": "/min"
+        }
+      }
+    },
+    {
+      "fullUrl": "https://example.org/fhir/Observation/95770cd7-e7b7-4c0b-91f1-5390bbbe67f6-body-temperature",
+      "resource": {
+        "resourceType": "Observation",
+        "id": "95770cd7-e7b7-4c0b-91f1-5390bbbe67f6-body-temperature",
+        "meta": {
+          "profile": [
+            "https://vadi2.github.io/west-a-triage-ig/StructureDefinition/west-a-body-temperature"
+          ]
+        },
+        "status": "final",
+        "category": [
+          {
+            "coding": [
+              {
+                "system": "http://terminology.hl7.org/CodeSystem/observation-category",
+                "code": "vital-signs"
+              }
+            ]
+          }
+        ],
+        "text": {
+          "status": "generated",
+          "div": "<div xmlns=\"http://www.w3.org/1999/xhtml\"><p>body temperature: 37.5 °C</p></div>"
+        },
+        "performer": [
+          {
+            "reference": "https://example.org/fhir/Practitioner/synthetic-registrar"
+          }
+        ],
+        "code": {
+          "coding": [
+            {
+              "system": "http://loinc.org",
+              "code": "8310-5"
+            }
+          ]
+        },
+        "subject": {
+          "reference": "https://example.org/fhir/Patient/6c176c67-1aed-5cda-9a51-7833bc0e1246"
+        },
+        "encounter": {
+          "reference": "https://example.org/fhir/Encounter/synthetic-ambulance-visit"
+        },
+        "effectiveDateTime": "2026-11-20T10:35:00+01:00",
+        "valueQuantity": {
+          "value": 37.5,
+          "unit": "°C",
+          "system": "http://unitsofmeasure.org",
+          "code": "Cel"
+        }
+      }
+    },
+    {
+      "fullUrl": "https://example.org/fhir/Observation/95770cd7-e7b7-4c0b-91f1-5390bbbe67f6-blood-pressure",
+      "resource": {
+        "resourceType": "Observation",
+        "id": "95770cd7-e7b7-4c0b-91f1-5390bbbe67f6-blood-pressure",
+        "meta": {
+          "profile": [
+            "https://vadi2.github.io/west-a-triage-ig/StructureDefinition/west-a-blood-pressure"
+          ]
+        },
+        "status": "final",
+        "category": [
+          {
+            "coding": [
+              {
+                "system": "http://terminology.hl7.org/CodeSystem/observation-category",
+                "code": "vital-signs"
+              }
+            ]
+          }
+        ],
+        "text": {
+          "status": "generated",
+          "div": "<div xmlns=\"http://www.w3.org/1999/xhtml\"><p>Blood pressure: 105/70 mmHg</p></div>"
+        },
+        "performer": [
+          {
+            "reference": "https://example.org/fhir/Practitioner/synthetic-registrar"
+          }
+        ],
+        "code": {
+          "coding": [
+            {
+              "system": "http://loinc.org",
+              "code": "85354-9"
+            }
+          ]
+        },
+        "subject": {
+          "reference": "https://example.org/fhir/Patient/6c176c67-1aed-5cda-9a51-7833bc0e1246"
+        },
+        "encounter": {
+          "reference": "https://example.org/fhir/Encounter/synthetic-ambulance-visit"
+        },
+        "effectiveDateTime": "2026-11-20T10:35:00+01:00",
+        "component": [
+          {
+            "code": {
+              "coding": [
+                {
+                  "system": "http://loinc.org",
+                  "code": "8480-6"
+                }
+              ]
+            },
+            "valueQuantity": {
+              "value": 105,
+              "unit": "mmHg",
+              "system": "http://unitsofmeasure.org",
+              "code": "mm[Hg]"
+            }
+          },
+          {
+            "code": {
+              "coding": [
+                {
+                  "system": "http://loinc.org",
+                  "code": "8462-4"
+                }
+              ]
+            },
+            "valueQuantity": {
+              "value": 70,
+              "unit": "mmHg",
+              "system": "http://unitsofmeasure.org",
+              "code": "mm[Hg]"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "fullUrl": "https://example.org/fhir/Observation/95770cd7-e7b7-4c0b-91f1-5390bbbe67f6-consciousness",
+      "resource": {
+        "resourceType": "Observation",
+        "id": "95770cd7-e7b7-4c0b-91f1-5390bbbe67f6-consciousness",
+        "meta": {
+          "profile": [
+            "https://vadi2.github.io/west-a-triage-ig/StructureDefinition/west-a-consciousness"
+          ]
+        },
+        "status": "final",
+        "category": [
+          {
+            "coding": [
+              {
+                "system": "http://terminology.hl7.org/CodeSystem/observation-category",
+                "code": "exam"
+              }
+            ]
+          }
+        ],
+        "text": {
+          "status": "generated",
+          "div": "<div xmlns=\"http://www.w3.org/1999/xhtml\"><p>Consciousness (ACVPU): A</p></div>"
+        },
+        "performer": [
+          {
+            "reference": "https://example.org/fhir/Practitioner/synthetic-registrar"
+          }
+        ],
+        "code": {
+          "coding": [
+            {
+              "system": "http://snomed.info/sct",
+              "code": "1104441000000107",
+              "version": "http://snomed.info/sct/45991000052106"
+            }
+          ]
+        },
+        "subject": {
+          "reference": "https://example.org/fhir/Patient/6c176c67-1aed-5cda-9a51-7833bc0e1246"
+        },
+        "encounter": {
+          "reference": "https://example.org/fhir/Encounter/synthetic-ambulance-visit"
+        },
+        "effectiveDateTime": "2026-11-20T10:35:00+01:00",
+        "valueCodeableConcept": {
+          "coding": [
+            {
+              "system": "http://snomed.info/sct",
+              "code": "248234008",
+              "version": "http://snomed.info/sct/45991000052106"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "fullUrl": "https://example.org/fhir/Observation/95770cd7-e7b7-4c0b-91f1-5390bbbe67f6-supplemental-oxygen",
+      "resource": {
+        "resourceType": "Observation",
+        "id": "95770cd7-e7b7-4c0b-91f1-5390bbbe67f6-supplemental-oxygen",
+        "meta": {
+          "profile": [
+            "https://vadi2.github.io/west-a-triage-ig/StructureDefinition/west-a-supplemental-oxygen"
+          ]
+        },
+        "status": "final",
+        "category": [
+          {
+            "coding": [
+              {
+                "system": "http://terminology.hl7.org/CodeSystem/observation-category",
+                "code": "therapy"
+              }
+            ]
+          }
+        ],
+        "text": {
+          "status": "generated",
+          "div": "<div xmlns=\"http://www.w3.org/1999/xhtml\"><p>Oxygen flow: 0 L/min</p></div>"
+        },
+        "performer": [
+          {
+            "reference": "https://example.org/fhir/Practitioner/synthetic-registrar"
+          }
+        ],
+        "code": {
+          "coding": [
+            {
+              "system": "http://snomed.info/sct",
+              "code": "427081008",
+              "version": "http://snomed.info/sct/45991000052106"
+            }
+          ]
+        },
+        "subject": {
+          "reference": "https://example.org/fhir/Patient/6c176c67-1aed-5cda-9a51-7833bc0e1246"
+        },
+        "encounter": {
+          "reference": "https://example.org/fhir/Encounter/synthetic-ambulance-visit"
+        },
+        "effectiveDateTime": "2026-11-20T10:35:00+01:00",
+        "valueQuantity": {
+          "value": 0,
+          "unit": "L/min",
+          "system": "http://unitsofmeasure.org",
+          "code": "L/min"
+        }
+      }
+    },
+    {
+      "fullUrl": "https://example.org/fhir/Observation/95770cd7-e7b7-4c0b-91f1-5390bbbe67f6-news2-observation",
+      "resource": {
+        "resourceType": "Observation",
+        "id": "95770cd7-e7b7-4c0b-91f1-5390bbbe67f6-news2-observation",
+        "meta": {
+          "profile": [
+            "https://vadi2.github.io/west-a-triage-ig/StructureDefinition/west-a-news2-observation"
+          ]
+        },
+        "status": "final",
+        "category": [
+          {
+            "coding": [
+              {
+                "system": "http://terminology.hl7.org/CodeSystem/observation-category",
+                "code": "survey"
+              }
+            ]
+          }
+        ],
+        "text": {
+          "status": "generated",
+          "div": "<div xmlns=\"http://www.w3.org/1999/xhtml\"><p>NEWS2: 5, oxygen saturation scale 1.</p></div>"
+        },
+        "performer": [
+          {
+            "reference": "https://example.org/fhir/Practitioner/synthetic-registrar"
+          }
+        ],
+        "code": {
+          "coding": [
+            {
+              "system": "http://snomed.info/sct",
+              "code": "1104051000000101",
+              "version": "http://snomed.info/sct/45991000052106"
+            }
+          ]
+        },
+        "subject": {
+          "reference": "https://example.org/fhir/Patient/6c176c67-1aed-5cda-9a51-7833bc0e1246"
+        },
+        "encounter": {
+          "reference": "https://example.org/fhir/Encounter/synthetic-ambulance-visit"
+        },
+        "effectiveDateTime": "2026-11-20T10:35:00+01:00",
+        "valueInteger": 5,
+        "derivedFrom": [
+          {
+            "reference": "https://example.org/fhir/Observation/95770cd7-e7b7-4c0b-91f1-5390bbbe67f6-respiratory-rate"
+          },
+          {
+            "reference": "https://example.org/fhir/Observation/95770cd7-e7b7-4c0b-91f1-5390bbbe67f6-oxygen-saturation"
+          },
+          {
+            "reference": "https://example.org/fhir/Observation/95770cd7-e7b7-4c0b-91f1-5390bbbe67f6-heart-rate"
+          },
+          {
+            "reference": "https://example.org/fhir/Observation/95770cd7-e7b7-4c0b-91f1-5390bbbe67f6-body-temperature"
+          },
+          {
+            "reference": "https://example.org/fhir/Observation/95770cd7-e7b7-4c0b-91f1-5390bbbe67f6-blood-pressure"
+          },
+          {
+            "reference": "https://example.org/fhir/Observation/95770cd7-e7b7-4c0b-91f1-5390bbbe67f6-consciousness"
+          },
+          {
+            "reference": "https://example.org/fhir/Observation/95770cd7-e7b7-4c0b-91f1-5390bbbe67f6-supplemental-oxygen"
+          }
+        ],
+        "component": [
+          {
+            "code": {
+              "coding": [
+                {
+                  "system": "http://snomed.info/sct",
+                  "code": "1104301000000104",
+                  "version": "http://snomed.info/sct/45991000052106"
+                }
+              ]
+            },
+            "valueInteger": 2
+          },
+          {
+            "code": {
+              "coding": [
+                {
+                  "system": "http://snomed.info/sct",
+                  "code": "1104311000000102",
+                  "version": "http://snomed.info/sct/45991000052106"
+                }
+              ]
+            },
+            "valueInteger": 1
+          },
+          {
+            "code": {
+              "coding": [
+                {
+                  "system": "http://snomed.info/sct",
+                  "code": "1104331000000105",
+                  "version": "http://snomed.info/sct/45991000052106"
+                }
+              ]
+            },
+            "valueInteger": 0
+          },
+          {
+            "code": {
+              "coding": [
+                {
+                  "system": "http://snomed.info/sct",
+                  "code": "1104341000000101",
+                  "version": "http://snomed.info/sct/45991000052106"
+                }
+              ]
+            },
+            "valueInteger": 1
+          },
+          {
+            "code": {
+              "coding": [
+                {
+                  "system": "http://snomed.info/sct",
+                  "code": "1104351000000103",
+                  "version": "http://snomed.info/sct/45991000052106"
+                }
+              ]
+            },
+            "valueInteger": 1
+          },
+          {
+            "code": {
+              "coding": [
+                {
+                  "system": "http://snomed.info/sct",
+                  "code": "1104361000000100",
+                  "version": "http://snomed.info/sct/45991000052106"
+                }
+              ]
+            },
+            "valueInteger": 0
+          },
+          {
+            "code": {
+              "coding": [
+                {
+                  "system": "http://snomed.info/sct",
+                  "code": "1104371000000107",
+                  "version": "http://snomed.info/sct/45991000052106"
+                }
+              ]
+            },
+            "valueInteger": 0
+          }
+        ]
+      }
+    },
+    {
+      "fullUrl": "https://example.org/fhir/Observation/95770cd7-e7b7-4c0b-91f1-5390bbbe67f6-triage-observation",
+      "resource": {
+        "resourceType": "Observation",
+        "id": "95770cd7-e7b7-4c0b-91f1-5390bbbe67f6-triage-observation",
+        "meta": {
+          "profile": [
+            "https://vadi2.github.io/west-a-triage-ig/StructureDefinition/west-a-triage-observation"
+          ]
+        },
+        "status": "final",
+        "category": [
+          {
+            "coding": [
+              {
+                "system": "http://terminology.hl7.org/CodeSystem/observation-category",
+                "code": "survey"
+              }
+            ]
+          }
+        ],
+        "text": {
+          "status": "generated",
+          "div": "<div xmlns=\"http://www.w3.org/1999/xhtml\"><p>WEST-A: orange. Primary complaint: chest-pain. Ongoing chest pain with suspected acute coronary syndrome or another serious cause</p></div>"
+        },
+        "performer": [
+          {
+            "reference": "https://example.org/fhir/Practitioner/synthetic-registrar"
+          }
+        ],
+        "code": {
+          "coding": [
+            {
+              "system": "http://snomed.info/sct",
+              "code": "425705009",
+              "version": "http://snomed.info/sct/45991000052106"
+            }
+          ]
+        },
+        "subject": {
+          "reference": "https://example.org/fhir/Patient/6c176c67-1aed-5cda-9a51-7833bc0e1246"
+        },
+        "encounter": {
+          "reference": "https://example.org/fhir/Encounter/synthetic-ambulance-visit"
+        },
+        "effectiveDateTime": "2026-11-20T10:35:00+01:00",
+        "identifier": [
+          {
+            "system": "https://opentriage.org/identifiers/vital-measurement",
+            "value": "95770cd7-e7b7-4c0b-91f1-5390bbbe67f6"
+          }
+        ],
+        "valueCodeableConcept": {
+          "coding": [
+            {
+              "system": "https://vadi2.github.io/west-a-triage-ig/CodeSystem/west-a-triage-priority-cs",
+              "code": "2"
+            }
+          ]
+        },
+        "component": [
+          {
+            "code": {
+              "coding": [
+                {
+                  "system": "http://snomed.info/sct",
+                  "code": "1269489004",
+                  "version": "http://snomed.info/sct/45991000052106"
+                }
+              ]
+            },
+            "valueCodeableConcept": {
+              "coding": [
+                {
+                  "system": "https://vadi2.github.io/west-a-triage-ig/CodeSystem/west-a-chief-complaint-cs",
+                  "code": "4"
+                }
+              ]
+            }
+          },
+          {
+            "code": {
+              "coding": [
+                {
+                  "system": "https://vadi2.github.io/west-a-triage-ig/CodeSystem/west-a-observation-code-cs",
+                  "code": "1"
+                }
+              ]
+            },
+            "valueCodeableConcept": {
+              "coding": [
+                {
+                  "system": "https://vadi2.github.io/west-a-triage-ig/CodeSystem/west-a-triage-criterion-cs",
+                  "code": "15"
+                }
+              ]
+            }
+          }
+        ],
+        "derivedFrom": [
+          {
+            "reference": "https://example.org/fhir/Observation/95770cd7-e7b7-4c0b-91f1-5390bbbe67f6-news2-observation"
+          }
+        ]
+      }
+    }
+  ]
+}

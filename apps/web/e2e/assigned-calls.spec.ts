@@ -408,10 +408,12 @@ test("a no-op conflict recovery does not block a later edit from rebasing", asyn
   await expect(page.getByRole("button", { name: /Vital signs.*BP 118/ })).toBeVisible();
 });
 
-for (const recoverFirstSave of [false, true]) test(`Populate before autosave preserves manual vital signs${recoverFirstSave ? " after conflict recovery" : " in separate ordered commands"}`, async ({ page }) => {
-  test.skip(process.env.OPEN_TRIAGE_E2E_SERVER_MODE !== "true", "Requires the server-backed mock API configuration.");
-  let revision = 0;
+async function installDemoDraft(page: Page) {
   const testReportId = openedAssignment.report.id;
+  await page.route(`**/api/reports/${testReportId}/signing-status`, route => route.fulfill({ json: { status: "draft" } }));
+  for (const kind of ["eps", "cos"]) {
+    await page.route(`**/api/reports/${testReportId}/${kind}/context`, route => route.fulfill({ json: null }));
+  }
   await page.route(`**/api/reports/${testReportId}/protected-key-envelope`, (route) => route.fulfill({ status: 201, json: {
     schemaVersion: 1, recoveryHandle: route.request().postDataJSON().recoveryHandle,
     recoveryDeadline: "2099-09-29T12:00:00Z", wrappingKeyVersion: 1,
@@ -420,17 +422,6 @@ for (const recoverFirstSave of [false, true]) test(`Populate before autosave pre
     schemaVersion: 1, recoveryDeadline: "2099-09-29T12:00:00Z",
   } }));
   await page.route(`**/api/reports/${testReportId}/protected-ciphertext-checkpoint`, (route) => route.fulfill({ json: route.request().postDataJSON() }));
-  const commands: Array<{
-    demoAction?: "populate" | "clear";
-    groups?: ReadonlyArray<{ correlationId?: string }>;
-    occurrences?: ReadonlyArray<{
-      elementId: string;
-      provenanceKind?: string;
-      provenanceDetail?: { generator?: string };
-      sourceAttributes?: Record<string, unknown>;
-      value?: { value?: unknown };
-    }>;
-  }> = [];
   await page.route("**/api/installation", (route) => route.fulfill({ json: { settings: productionSettings } }));
   await page.route("**/api/sessions", (route) => route.fulfill({ json: {
     csrfToken: "browser-test-csrf",
@@ -455,6 +446,55 @@ for (const recoverFirstSave of [false, true]) test(`Populate before autosave pre
       report: { ...openedAssignment.report, demoMutable: true },
     }),
   }));
+}
+
+test("the demo validates a saved FHIR revision and offers the WEST payload", async ({ page }) => {
+  test.skip(process.env.OPEN_TRIAGE_E2E_SERVER_MODE !== "true", "Requires the server-backed mock API configuration.");
+  await installDemoDraft(page);
+  await page.route(`**/api/reports/${openedAssignment.report.id}/active`, route => route.fulfill({ json: {
+    reportId: openedAssignment.report.id, reportRevision: 7, dispatchRevision: 0,
+    document: openedAssignment.report.document, dispatchConflicts: [], dispatchCancellation: null,
+  } }));
+  await page.route(`**/api/reports/${openedAssignment.report.id}/demo/fhir-validation?background=true`, route => {
+    expect(route.request().method()).toBe("POST");
+    expect(route.request().headers()["x-csrf-token"]).toBe("browser-test-csrf");
+    return route.fulfill({ json: { jobId: "job-7" } });
+  });
+  let polls = 0;
+  await page.route(`**/api/reports/${openedAssignment.report.id}/demo/fhir-validation/job-7`, route => {
+    if (++polls === 1) return route.fulfill({ json: { phase: "loading", seconds: 12 } });
+    return route.fulfill({ json: { phase: "complete", result: { revision: 7, assessments: 2, bundle: { resourceType: "Bundle" },
+      outcome: { resourceType: "OperationOutcome", issue: [{ severity: "error", code: "required", diagnostics: "Missing chief complaint" }] } } } });
+  });
+  await signIn(page);
+  await page.getByRole("button", { name: "Open call" }).click();
+  await page.getByRole("button", { name: "Validate FHIR" }).click();
+  const dialog = page.getByRole("dialog", { name: "Validate FHIR" });
+  await expect(dialog.getByRole("status")).toContainText("Loading FHIR R4 and WEST-A profiles");
+  await expect(dialog.getByRole("status")).toContainText("Revision 7 · WEST assessments: 2 · Errors: 1");
+  await expect(dialog).toContainText("Missing chief complaint");
+  const download = page.waitForEvent("download");
+  await dialog.getByRole("button", { name: "Download Bundle" }).click();
+  expect((await download).suggestedFilename()).toBe(openedAssignment.report.id + "-bundle.json");
+  await dialog.getByRole("button", { name: "Close" }).click();
+  await expect(dialog).toHaveCount(0);
+});
+
+for (const recoverFirstSave of [false, true]) test(`Populate before autosave preserves manual vital signs${recoverFirstSave ? " after conflict recovery" : " in separate ordered commands"}`, async ({ page }) => {
+  test.skip(process.env.OPEN_TRIAGE_E2E_SERVER_MODE !== "true", "Requires the server-backed mock API configuration.");
+  let revision = 0;
+  const commands: Array<{
+    demoAction?: "populate" | "clear";
+    groups?: ReadonlyArray<{ correlationId?: string }>;
+    occurrences?: ReadonlyArray<{
+      elementId: string;
+      provenanceKind?: string;
+      provenanceDetail?: { generator?: string };
+      sourceAttributes?: Record<string, unknown>;
+      value?: { value?: unknown };
+    }>;
+  }> = [];
+  await installDemoDraft(page);
   await page.route(`**/api/reports/${openedAssignment.report.id}/active`, (route) => route.fulfill({ json: {
     reportId: openedAssignment.report.id, reportRevision: revision, dispatchRevision: 0,
     document: openedAssignment.report.document, dispatchConflicts: [], dispatchCancellation: null,

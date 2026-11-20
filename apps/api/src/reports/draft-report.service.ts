@@ -1,5 +1,6 @@
 import { AndroidUpgradePolicyService, prepareAndroidNewWork } from "../admin/android-upgrade-policy.service.js";
 import {validateDestinationProvenance} from "../hospital/destination-provenance.js";
+import { demoValidationStatus, startDemoValidation, awaitDemoValidation } from "./demo-fhir-validation.js";
 import { recordPatientAccess } from "./patient-access-audit.js";
 import {
   ConflictException,
@@ -1046,6 +1047,25 @@ export class DraftReportService {
         }
       };
     });
+  }
+
+  async validateSyntheticFhir(accessToken: string, reportId: string, csrfToken?: string, background = false) {
+    await this.sessions.requireCapability(accessToken, "clinical:demo");
+    await this.sessions.assertCsrf(accessToken, csrfToken);
+    const { report } = await this.reopen(accessToken, reportId);
+    if (!report.demoMutable || report.status !== "draft") throw new NotFoundException();
+    return background ? startDemoValidation(report, commandSha256(accessToken)) : awaitDemoValidation(report, commandSha256(accessToken));
+  }
+
+  async syntheticFhirStatus(accessToken: string, reportId: string, jobId: string) {
+    await this.sessions.requireCapability(accessToken, "clinical:demo");
+    await this.sessions.requireCapability(accessToken, "clinical:document");
+    const status = demoValidationStatus(jobId, reportId, commandSha256(accessToken));
+    if (status.result) {
+      const { report } = await this.reopen(accessToken, reportId);
+      if (!report.demoMutable || report.status !== "draft") throw new NotFoundException();
+    }
+    return status;
   }
 
   /** Physical deletion limited to a currently authorized, generator-provenanced demo draft. */
