@@ -1,3 +1,4 @@
+import { importAndroidFile } from './helpers/android-file-import';
 import { expect, test, type Page } from '@playwright/test';
 import { build } from 'esbuild';
 import path from 'node:path';
@@ -29,9 +30,9 @@ const artifact=(origin='https://original.example')=>({name:'trust.json',mimeType
 for(const language of ['en','sv'])test(`pending trust update requires confirmation and keeps its original intent in ${language}`,async({page})=>{
   await start(page,language);
   const before=await page.evaluate(()=>JSON.stringify((window as unknown as {fixture:{intent:unknown}}).fixture.intent));
-  await page.locator('input[type=file]').setInputFiles(artifact('https://other.example'));
+  await importAndroidFile(page.locator('input[type=file]'), artifact('https://other.example'));
   await expect(page.getByRole('alert')).toBeVisible();await expect(page.getByRole('checkbox')).toHaveCount(0);
-  await page.locator('input[type=file]').setInputFiles(artifact());
+  await importAndroidFile(page.locator('input[type=file]'), artifact());
   await expect(page.getByRole('checkbox')).toBeVisible();await expect(page.locator('button[type=submit]')).toBeDisabled();
   await page.screenshot({path:test.info().outputPath(`pending-trust-${language}.png`)});
   await page.getByRole('checkbox').check();await page.locator('button[type=submit]').click();
@@ -53,7 +54,7 @@ test('unavailable and missing-server outcomes cannot discard a journal; only a p
   expect(await page.evaluate(()=>(window as unknown as {fixture:{ciphertext:string}}).fixture.ciphertext)).toBe('opaque-retained-ciphertext');
 });
 test('a stale trust preview cannot survive a managed policy change or bypass missing settings',async({page})=>{
-  await start(page,'en',{holdPreview:true});await page.locator('input[type=file]').setInputFiles(artifact());
+  await start(page,'en',{holdPreview:true});await importAndroidFile(page.locator('input[type=file]'), artifact());
   await expect.poll(()=>page.evaluate(()=>Boolean((window as unknown as {fixture:{releasePreview?:()=>void}}).fixture.releasePreview))).toBe(true);
   await page.evaluate(()=>{const f=window as unknown as {fixture:{state:Record<string,unknown>;releasePreview:()=>void};emitPending(state:Record<string,unknown>):void};f.emitPending({...f.fixture.state,connectionContext:'policy-changed',managedContext:'new-policy',blocked:true,managedStatus:'missing'});});
   await expect(page.locator('input[type=file]')).toBeDisabled();await page.evaluate(()=>(window as unknown as {fixture:{releasePreview:()=>void}}).fixture.releasePreview());

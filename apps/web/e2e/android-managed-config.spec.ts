@@ -1,3 +1,4 @@
+import { importAndroidFile } from './helpers/android-file-import';
 import {expect, test} from '@playwright/test';
 import {build} from 'esbuild';
 import {readFile} from 'node:fs/promises';
@@ -47,7 +48,7 @@ for (const language of ['en', 'sv']) test(`${language} managed connection is loc
   await page.evaluate(artifact => { (window as unknown as {managedFixture: {artifact: string}}).managedFixture.artifact = JSON.stringify(artifact); }, artifact);
   await page.locator('[data-pairing-scan]').click();
   await expect(page.getByRole('alert')).toHaveText(t('Pairing conflicts with the managed connection.', 'Kopplingen stämmer inte med den hanterade anslutningen.'));
-  await page.locator('input[type=file]').setInputFiles({name: 'pairing.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(artifact))});
+  await importAndroidFile(page.locator('input[type=file]'), {name: 'pairing.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(artifact))});
   await expect(page.getByRole('alert')).toHaveText(t('Pairing conflicts with the managed connection.', 'Kopplingen stämmer inte med den hanterade anslutningen.'));
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   await page.screenshot({path: testInfo.outputPath(`managed-${language}-mobile.png`)});
@@ -136,7 +137,7 @@ test('a delayed scanner result cannot preview after policy changed and was resto
 
 for (const operation of ['scan', 'import', 'confirm'] as const) test(`managed-blocked ${operation} rejection is localized before its policy event arrives`, async ({page}) => {
   await startFixture(page, operation === 'confirm' ? {previewMode:'success',confirmError:'MANAGED_BLOCKED'} : {previewError:'MANAGED_BLOCKED'});
-  if (operation === 'import') await page.locator('input[type=file]').setInputFiles({name:'pairing.json',mimeType:'application/json',buffer:Buffer.from(pairing())});
+  if (operation === 'import') await importAndroidFile(page.locator('input[type=file]'), {name:'pairing.json',mimeType:'application/json',buffer:Buffer.from(pairing())});
   else {
     await page.locator('[data-pairing-scan]').click();
     if (operation === 'confirm') {await expect(page.getByRole('textbox')).toHaveValue('Synthetic unit');await expect(page.getByRole('textbox')).toHaveAttribute('readonly', '');await page.getByRole('checkbox').check();await page.locator('button[type=submit]').click();}

@@ -1,3 +1,4 @@
+import { importAndroidFile } from './helpers/android-file-import';
 import {expect, test} from '@playwright/test';
 import {build} from 'esbuild';
 import path from 'node:path';
@@ -37,9 +38,14 @@ test('legacy native replacement settles current identity and resumes only the al
   await page.getByRole('button',{name:'Return to current installation'}).click();
   await expect(page.locator('[data-clinical]')).toBeVisible();
   expect(await page.evaluate(()=>localStorage.getItem('open-triage.clinician-session.v1'))).toBe('old personal identity');
+  await page.evaluate(()=>{(window as unknown as {fixture:{holdReplacement:boolean}}).fixture.holdReplacement=true;});
   await page.getByRole('button',{name:'Simulate legacy replacement'}).click();
   const artifact={version:1,origin:'https://original.example',token:'A'.repeat(43),caPem:'',expiresAt:new Date(Date.now()+240000).toISOString()};
-  await page.locator('input[type=file]').setInputFiles({name:'pairing.json',mimeType:'application/json',buffer:Buffer.from(JSON.stringify(artifact))});
+  const input = page.getByLabel('Import vehicle pairing file');
+  await expect(input).toBeDisabled();
+  const upload = importAndroidFile(input, {name:'pairing.json',mimeType:'application/json',buffer:Buffer.from(JSON.stringify(artifact))});
+  await page.evaluate(()=>{(window as unknown as {fixture:{releaseReplacement:()=>void}}).fixture.releaseReplacement();});
+  await upload;
   await expect(page.getByRole('textbox')).toHaveValue('Admin tablet');await expect(page.getByRole('textbox')).not.toBeEditable();await page.getByRole('checkbox').check();await page.locator('button[type=submit]').click();
   await expect(page.getByRole('button',{name:'Retry confirmed pairing'})).toBeVisible();
   await expect(page.locator('input[type=checkbox],[data-clinical]')).toHaveCount(0);
@@ -56,7 +62,7 @@ test('proved abandonment in the same live gate removes the stale confirmed previ
   await page.route('**/__live-abandon',route=>route.fulfill({contentType:'text/html',body:'<html><body><div id="root"></div><script>window.fixture={begun:0,uncommitted:true,state:{configured:true,origin:"https://original.example",storageScope:"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",connectionContext:"original"}}</script><script src="/__live-abandon-script"></script></body></html>'}));
   await page.goto('/__live-abandon');await page.getByRole('button',{name:'Simulate legacy replacement'}).click();
   const artifact={version:1,origin:'https://original.example',token:'A'.repeat(43),caPem:'',expiresAt:new Date(Date.now()+240000).toISOString()};
-  await page.getByLabel('Import vehicle pairing file').setInputFiles({name:'pairing.json',mimeType:'application/json',buffer:Buffer.from(JSON.stringify(artifact))});
+  await importAndroidFile(page.getByLabel('Import vehicle pairing file'), {name:'pairing.json',mimeType:'application/json',buffer:Buffer.from(JSON.stringify(artifact))});
   await expect(page.getByRole('textbox')).toHaveValue('Admin tablet');await page.getByRole('checkbox').check();await page.locator('button[type=submit]').click();
   await expect(page.locator('[data-pending-enrollment]')).toBeVisible();await page.getByRole('button',{name:'Use a new pairing code'}).click();
   await expect(page.locator('[data-pending-enrollment]')).toHaveCount(0);
