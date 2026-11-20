@@ -24,7 +24,8 @@ import { resolveCatalogElementText } from "./catalog-localization";
 import { VitalDecisionSupport } from "../components/vital-decision-support";
 import { VitalDecisionSupportScale, VitalDecisionSupportObservations } from "../components/vital-decision-support-scoring";
 import { VitalDecisionSupportFindings } from "../components/vital-decision-support-findings";
-import { effectiveDecisionSupportColour, EMPTY_DECISION_SUPPORT_FINDINGS } from "@open-triage/contracts";
+import { VitalField as VitalEditorField, vitalPointsLabel } from "../components/vital-field";
+import { decisionSupportScale, effectiveDecisionSupportColour, EMPTY_DECISION_SUPPORT_FINDINGS } from "@open-triage/contracts";
 import { ProcedureDialog } from "../components/procedure-dialog";
 import { QuickActionIcon } from "../components/quick-action-icon";
 import { StationaryRecord } from "../components/stationary-record";
@@ -294,6 +295,24 @@ function EncounterWorkspace({ session, report, presentationMode, language, onSav
     ? (previewWestDraft ? westEffectiveColour ?? "gray" : latestWestLevel?.colour)
     : undefined;
   const vitalDefinition = mobileDisplayDefinition(bundledEncounterDefinition, language, report?.clinicalForm).events.vitals;
+  const westPoints = westDraft.calculation.physiology?.points;
+  const westDefinition = decisionSupport?.definition;
+  const activeWestScale = westDefinition && decisionSupportScale(westDefinition, westDraft.scale);
+  const westScoreInputs = activeWestScale && westDefinition?.assessment.elements.newsScale.values[activeWestScale]?.tablesByInput;
+  const westPointsByElement = new Map<string, number | null>();
+  let pulsePoints: number | null | undefined;
+  for (const key of Object.keys(westScoreInputs || {})) {
+    const input = westDefinition?.inputs[key];
+    if (!input || !("element" in input)) continue;
+    const points = westPoints?.[key] ?? null;
+    const field = vitalDefinition.fields.find(({ reference }) => reference === input.element);
+    const measured = field ? shell.vitalDraft?.values[field.id] : shell.vitalDraft?.additionalMeasurements?.[input.element];
+    if (input.preferMeasuredHeartRateOverPulse && !measured) {
+      pulsePoints = points;
+      if (points !== null) continue;
+    }
+    westPointsByElement.set(input.element, points);
+  }
   const displayDefinition = { ...bundledEncounterDefinition, events: { ...bundledEncounterDefinition.events,
     procedure: procedureDefinition, medication: medicationDefinition, vitals: vitalDefinition } };
   const reviewFindings = useMemo(() => reviewEncounter(shell), [shell]);
@@ -1339,42 +1358,41 @@ function EncounterWorkspace({ session, report, presentationMode, language, onSav
               definition={decisionSupport.definition} findings={westDraft.findings ?? EMPTY_DECISION_SUPPORT_FINDINGS}
               localTime={shell.vitalDraft.recordedLocalTime ?? shell.vitalDraft.time} language={language}
               onChange={(findings) => dispatch({ type: "vitals-findings-changed", findings })} />}
-            {decisionSupport && <>
-              <VitalDecisionSupportScale definition={decisionSupport.definition} assessment={westDraft} language={language}
-                onScale={(value) => dispatch({ type: "vitals-scale-changed", value })} />
-              <VitalDecisionSupportObservations definition={decisionSupport.definition} assessment={westDraft} language={language}
-                onObservation={(key, value) => dispatch({ type: "vitals-observation-changed", key, value })} />
-            </>}
+            {decisionSupport && <VitalDecisionSupportScale definition={decisionSupport.definition} assessment={westDraft} language={language}
+              showPendingScore
+              onScale={(value) => dispatch({ type: "vitals-scale-changed", value })}
+              onObservation={(key, value) => dispatch({ type: "vitals-observation-changed", key, value })} />}
             <div className="vital-grid">
+              {decisionSupport && <VitalDecisionSupportObservations definition={decisionSupport.definition} assessment={westDraft} language={language}
+                points={westPoints ?? {}} pulsePoints={pulsePoints}
+                onObservation={(key, value) => dispatch({ type: "vitals-observation-changed", key, value })} />}
               {decisionSupport && additionalVitalInputs(decisionSupport, bundledEncounterDefinition).map((input) =>
-                <label className="vital-field" key={input.element}>
-                  <span className="vital-field-label">{catalogText(input.element, "label") ?? t(`mobile.westObservation.${input.key}`)} <small>{input.unit}</small></span>
-                  <input type="number" inputMode={input.precision === 0 ? "numeric" : "decimal"} step={10 ** -input.precision}
-                    min={input.minValue} max={input.maxValue} value={shell.vitalDraft!.additionalMeasurements?.[input.element] ?? ""}
-                    onChange={(event) => dispatch({ type: "vitals-measurement-changed", elementId: input.element, value: event.target.value })} />
-                </label>)}
+                <VitalEditorField key={input.element} id={`vital-${input.element}`}
+                  label={catalogText(input.element, "label") ?? t(`mobile.westObservation.${input.key}`)} unit={input.unit}
+                  pointsLabel={vitalPointsLabel(language, westPointsByElement.get(input.element))}>
+                  {(describedBy) => <input id={`vital-${input.element}`} aria-describedby={describedBy} inputMode={input.precision === 0 ? "numeric" : "decimal"}
+                    placeholder={`${input.minValue}–${input.maxValue}`} value={shell.vitalDraft!.additionalMeasurements?.[input.element] ?? ""}
+                    onChange={(event) => dispatch({ type: "vitals-measurement-changed", elementId: input.element, value: event.target.value })} />}
+                </VitalEditorField>)}
               {vitalDefinition.fields.map((configuredField) => {
                 const field = configuredField.id;
                 const help = catalogText(configuredField.reference, "description");
-                const helpId = `vital-${field}-help`;
+                const id = `vital-${field}`;
                 return (
-                <div className={`vital-field ${vitalFindingActive && editingVitalField === field ? `finding-frame ${editingFinding!.severity}` : ""}`.trim()} key={field}>
-                  <label className="vital-field-label" htmlFor={`vital-${field}`} tabIndex={help ? 0 : undefined}>
-                    {configuredField.label} <small>{configuredField.unit}</small>
-                    {help && <small className="stationary-element-tooltip" id={helpId} role="tooltip">{configuredField.reference}: {help}</small>}
-                  </label>
-                  <div className="vital-inputs">
-                    <input id={`vital-${field}`} aria-describedby={help ? helpId : undefined} inputMode="numeric" required={configuredField.required} placeholder={`${configuredField.boundaries.min}–${configuredField.boundaries.max}`} value={shell.vitalDraft!.values[field]} onChange={(event) => dispatch({ type: "vitals-value-changed", field, value: event.target.value })} />
-                    <ExceptionalValueMenu label={t("mobile.setExceptional", { label: configuredField.label })}
+                <VitalEditorField key={field} id={id} label={configuredField.label} unit={configuredField.unit}
+                  help={help ? `${configuredField.reference}: ${help}` : undefined}
+                  pointsLabel={vitalPointsLabel(language, westPointsByElement.get(configuredField.reference))}
+                  className={vitalFindingActive && editingVitalField === field ? `finding-frame ${editingFinding!.severity}` : undefined}
+                  validation={<DialogValidationMessage finding={vitalFindingActive && editingVitalField === field ? editingActionableFinding : undefined} />}
+                  action={<ExceptionalValueMenu label={t("mobile.setExceptional", { label: configuredField.label })}
                       menuLabel={t("mobile.exceptionalMenu", { label: configuredField.label })}
                       selected={!!shell.vitalDraft!.values.nullValues[field]} open={openNullField === field}
                       onOpenChange={(open) => setOpenNullField(open ? field : null)}
                       choices={[...(shell.vitalDraft!.values.nullValues[field] ? [{ key: "", label: t("mobile.clearExceptional") }] : []),
                         ...nullOptionsFor(configuredField).filter((option) => option.value).map((option) => ({ key: option.value, label: option.label }))]}
-                      onSelect={(value) => dispatch({ type: "vitals-null-changed", field, value })} />
-                  </div>
-                  <DialogValidationMessage finding={vitalFindingActive && editingVitalField === field ? editingActionableFinding : undefined} />
-                </div>
+                      onSelect={(value) => dispatch({ type: "vitals-null-changed", field, value })} />}>
+                  {(describedBy) => <input id={id} aria-describedby={describedBy} inputMode="numeric" required={configuredField.required} placeholder={`${configuredField.boundaries.min}–${configuredField.boundaries.max}`} value={shell.vitalDraft!.values[field]} onChange={(event) => dispatch({ type: "vitals-value-changed", field, value: event.target.value })} />}
+                </VitalEditorField>
               );})}
             </div>
             <p className="null-help">{vitalDefinition.labels.absenceHelp}</p>

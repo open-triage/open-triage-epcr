@@ -25,7 +25,7 @@ export const UNASSESSED_VITAL: DraftDecisionSupportAssessment = {
 
 export function vitalAssessmentWithFindings(assessment: DraftDecisionSupportAssessment,
   definition: DecisionSupportDefinition, localTime: string,
-  measurements: Readonly<Record<string, string>>): DraftDecisionSupportAssessment {
+  measurements: Readonly<Record<string, string | number>>): DraftDecisionSupportAssessment {
   const result = decisionSupportFindingResult(definition, assessment.findings ?? EMPTY_DECISION_SUPPORT_FINDINGS, localTime);
   const scale = decisionSupportScale(definition, assessment.scale);
   const physiology = decisionSupportPhysiology(definition, scale, measurements, assessment.observations);

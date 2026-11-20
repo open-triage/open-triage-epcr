@@ -665,7 +665,7 @@ export function transitionShell(state: ShellState, action: ShellAction, definiti
       const assessment = vitalDraftDecisionSupport(draft, configuration, definition);
       if (configuration && !effectiveDecisionSupportColour(assessment.calculation, assessment.override?.colour)) return state;
       const additional = configuration ? Object.fromEntries(additionalVitalInputs(configuration, definition)
-        .map(({ element }) => [element, canonicalDecimal(draft.additionalMeasurements?.[element] ?? "") ?? draft.additionalMeasurements?.[element] ?? ""])) : undefined;
+        .map(({ element }) => [element, canonicalDecimal(draft.additionalMeasurements?.[element] ?? "") ?? ""])) : undefined;
       let document = saveCanonicalEvent(state.encounter.document, event, definition, state.timeZone ?? null, additional);
       if (configuration) {
         document = { ...document, groups: document.groups.map((group) => group.id === configuration.definition.assessment.group
@@ -709,6 +709,10 @@ export function vitalDraftDecisionSupport(draft: VitalDraft | null, configuratio
   const assessment = carry ? withCarriedVitalDecisions(entered, carry.snapshot, draft.id,
     vitalDraftMeasurementInstant(draft, carry.timeZone), carry.edits) : entered;
   const measurements = Object.fromEntries(definition.events.vitals.fields.map(({ id, reference }) => [reference, draft.values[id]]));
+  const additional = Object.fromEntries(Object.entries(draft.additionalMeasurements ?? {}).flatMap(([element, value]) => {
+    const canonical = canonicalDecimal(value);
+    return canonical === null ? [] : [[element, Number(canonical)]];
+  }));
   return vitalAssessmentWithFindings(assessment, configuration.definition, draft.recordedLocalTime ?? draft.time,
-    { ...measurements, ...draft.additionalMeasurements });
+    { ...measurements, ...additional });
 }

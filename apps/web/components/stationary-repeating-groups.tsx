@@ -288,6 +288,10 @@ function RepeatingGroupDialog({ placement, draft, instanceId, isNew, returnFocus
       : { ...group, instances: group.instances.map((entry) => entry.instanceId !== instance.instanceId ? entry
         : withVitalDecisionSupport(withVitalMeasurementOffset(entry, timeZone, timeChanged || !initialMeasurement), configuration, liveAssessment)) }) });
   };
+  const changeObservation = (key: string, value: string) => setAssessment((previous) => ({
+    ...previous, observations: { ...previous.observations, [key]: value },
+  }));
+
   return <div className="dialog-backdrop" role="presentation" onMouseDown={(event) => {
     if (event.target === event.currentTarget) onCancel();
   }}>
@@ -307,15 +311,15 @@ function RepeatingGroupDialog({ placement, draft, instanceId, isNew, returnFocus
           setAssessment((previous) => ({ ...previous, override: next.override }));
         }} />}
       {assessVitals && configuration && editable && <>
-        <VitalDecisionSupportScale definition={configuration.definition} assessment={liveAssessment} language={language}
+        <VitalDecisionSupportScale definition={configuration.definition} assessment={liveAssessment} language={language} onObservation={changeObservation}
           onScale={(scale) => {
             setDecisionEdits((previous) => ({ ...previous, scale: true }));
             setAssessment((previous) => ({ ...previous, scale }));
           }} />
-        <VitalDecisionSupportObservations definition={configuration.definition} assessment={liveAssessment} language={language}
-          onObservation={(key, value) => setAssessment((previous) => ({
-            ...previous, observations: { ...previous.observations, [key]: value },
-          }))} />
+        <div className="vital-grid">
+          <VitalDecisionSupportObservations definition={configuration.definition} assessment={liveAssessment} language={language}
+            onObservation={changeObservation} />
+        </div>
       </>}
       <div className="stationary-group-dialog-fields">
         {placement.elements.map((element, index) => editable && element.mode !== "read-only"
