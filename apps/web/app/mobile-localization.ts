@@ -22,8 +22,14 @@ export function mobileDisplayDefinition(definition: EncounterDefinition, languag
     ? clinicalForm?.catalogFields[elementId]?.codeChoices?.find((item) => item.code === code)?.localization?.sv?.label?.trim() || fallback
     : fallback;
   const { vitals, procedure, medication, note } = definition.events;
+  const triage = clinicalForm?.decisionSupport ? resolveMessage(language, "triage.title") : undefined;
+  const addVitals = resolveMessage(language, triage ? "triage.add" : "mobile.addVitals");
   return { ...definition, events: { ...definition.events,
-    vitals: { ...vitals, labels: labels("mobile.vital", vitals.labels),
+    vitals: { ...vitals, quickAction: { ...vitals.quickAction, label: addVitals },
+      labels: { ...labels("mobile.vital", vitals.labels), ...(triage && {
+        category: triage, timelineTitle: triage, editorTitle: triage, add: addVitals,
+        newEyebrow: resolveMessage(language, "triage.new"), editEyebrow: resolveMessage(language, "triage.edit"),
+      }) },
       fields: vitals.fields.map((field) => ({ ...field,
         label: text(`mobile.vital.field.${field.id}`, field.label),
         unit: text(`mobile.vital.unit.${field.id}`, field.unit),

@@ -4,7 +4,7 @@ import { LocalDateTime } from "./local-date-time";
 import { CosRecoveryActions } from "./cos-recovery-actions";
 import { EpsSubmissionPanel } from "./eps-submission";
 
-import type { ReportAudioNote, ReportNote, ReportPhotoNote, ReviewOverdueDraft, ReviewSignedReport } from "@open-triage/contracts";
+import type { ReportAudioNote, ReportNote, ReportPhotoNote, ReviewOverdueDraft, ReviewReportGroup, ReviewSignedReport } from "@open-triage/contracts";
 import { useEffect, useId, useMemo, useRef, useState, type CSSProperties, type RefObject } from "react";
 import { useAgencyTimeZone } from "../app/agency-time-zone";
 import { encounterEvents } from "../app/canonical-events";
@@ -13,6 +13,7 @@ import { resolveMessage, type AgencyLanguage } from "../app/localization";
 import { mobileDisplayDefinition, mobileDisplayEvent } from "../app/mobile-localization";
 import { completeReportTimeline } from "../app/report-text-notes";
 import { bundledEncounterDefinition, encounterEventDetail, encounterEventPresentation, type EncounterEvent } from "../app/standard-encounter";
+import { triageGroupLabel } from "../app/stationary-label";
 import { AuthorizedAudioButton } from "./audio-note";
 import { EncounterTimeline } from "./encounter-timeline";
 import { AuthorizedPhotoImage } from "./photo-note";
@@ -53,6 +54,8 @@ export function ReviewReport({ report, full = false, dataset, language, toolbarR
   const openNote = (note: ReportNote, element: HTMLElement) => { trigger.current = element; setSelection({ note }); };
   const displayedEvent = selection && "event" in selection ? mobileDisplayEvent(selection.event, language, report.clinicalForm) : null;
   const definition = mobileDisplayDefinition(bundledEncounterDefinition, language, report.clinicalForm);
+  const decisionSupport = report.clinicalForm?.decisionSupport;
+  const groupLabel = (group?: ReviewReportGroup) => group && (triageGroupLabel(group.groupId, decisionSupport, language) ?? group.label);
   const title = displayedEvent ? encounterEventPresentation(displayedEvent, definition).title :
     selection && "note" in selection ? t(`noteUi.kind.${selection.note.type}`) : "";
 
@@ -101,10 +104,10 @@ export function ReviewReport({ report, full = false, dataset, language, toolbarR
       document={report.document} formDefinition={report.clinicalForm?.definition}
       catalogFields={report.clinicalForm?.catalogFields} customFields={report.clinicalForm?.customFields}
       customGroups={report.clinicalForm?.customGroups} catalogGroups={report.clinicalForm?.catalogGroups}
-      validation={report.clinicalForm?.validation} language={language} onDocumentChange={() => {}} /> : <>
+      validation={report.clinicalForm?.validation} decisionSupport={decisionSupport} language={language} onDocumentChange={() => {}} /> : <>
       {report.groups.filter((group) => report.values.some((value) => value.groupInstanceId === group.id)).map((group) => <section key={group.id}>
-        <h3>{group.parentGroupInstanceId ? `${report.groups.find((item) => item.id === group.parentGroupInstanceId)?.label ?? ""} / ` : ""}
-          {group.label} {group.ordinal > 0 ? `#${group.ordinal + 1}` : ""}</h3>
+        <h3>{group.parentGroupInstanceId && <>{groupLabel(report.groups.find(({ id }) => id === group.parentGroupInstanceId))} / </>}
+          {groupLabel(group)} {group.ordinal > 0 ? `#${group.ordinal + 1}` : ""}</h3>
         <ReviewValues values={report.values.filter((value) => value.groupInstanceId === group.id)} />
       </section>)}
       <ReviewValues values={report.values.filter((value) => !value.groupInstanceId)} />

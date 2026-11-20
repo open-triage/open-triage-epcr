@@ -22,7 +22,7 @@ import { getNemsisGroup, requireNemsisDataElement } from "../app/nemsis-data-mod
 import { editScalarOccurrence, scalarControlPresentation, stationaryDateTimeDefault, type ScalarControlPresentation, type ScalarValidationFinding } from "../app/stationary-scalar";
 import { configuredStationaryCodedField, editStationaryCodedValue } from "../app/stationary-coded-value";
 import type { CompiledStationaryGroup, StationaryElementPlacement } from "../app/stationary-layout";
-import { stationaryActionLabel, stationaryDisplayLabel } from "../app/stationary-label";
+import { stationaryActionLabel, stationaryDisplayLabel, triageGroupLabel } from "../app/stationary-label";
 import { StationaryCodedOccurrencesField, StationaryCodedValueField } from "./stationary-coded-field";
 import { StationaryScalarOccurrences } from "./stationary-scalar-occurrences";
 import { StationaryScalarControl } from "./stationary-scalar-control";
@@ -38,6 +38,16 @@ import { VitalDecisionSupportScale, VitalDecisionSupportObservations } from "./v
 import { vitalMeasurementValues } from "../app/canonical-events";
 
 export { stationaryGroupValidationFindings } from "../app/stationary-record";
+
+function groupLabels(placement: CompiledStationaryGroup, clinicalForm: ClinicalFormConfiguration | undefined, language: FormLanguage) {
+  const triage = triageGroupLabel(placement.id, clinicalForm?.decisionSupport, language);
+  if (triage) return { label: triage, actionLabel: triage.toLocaleLowerCase(language) };
+  const name = placement.presentation.label ?? getNemsisGroup(placement.id)?.name;
+  return {
+    label: resolveCatalogGroupText(clinicalForm?.catalogGroups, placement.id, language, name ?? stationaryDisplayLabel(placement.id)),
+    actionLabel: resolveCatalogGroupText(clinicalForm?.catalogGroups, placement.id, language, stationaryActionLabel(name ?? placement.id)),
+  };
+}
 
 export function stationaryDialogFindings(document: EncounterDocument, clinicalForm?: ClinicalFormConfiguration): ReadonlyArray<StationarySectionFinding> {
   const reviewFindings = reviewEncounter({ ...INITIAL_SHELL_STATE, encounter: { ...INITIAL_SHELL_STATE.encounter, document } }, bundledEncounterDefinition);
@@ -262,10 +272,7 @@ function RepeatingGroupDialog({ placement, draft, instanceId, isNew, returnFocus
   }, [focusTarget]);
   if (!instance) return null;
   const editable = placement.mode !== "read-only";
-  const label = resolveCatalogGroupText(clinicalForm?.catalogGroups, placement.id, language,
-    placement.presentation.label ?? getNemsisGroup(placement.id)?.name ?? stationaryDisplayLabel(placement.id));
-  const actionLabel = resolveCatalogGroupText(clinicalForm?.catalogGroups, placement.id, language,
-    stationaryActionLabel(placement.presentation.label ?? getNemsisGroup(placement.id)?.name ?? placement.id));
+  const { label, actionLabel } = groupLabels(placement, clinicalForm, language);
   const validationFindings = stationaryGroupValidationFindings(draft, liveFindings, placement.id, instance.instanceId);
   const groupOnlyFindings = validationFindings.filter((finding) => !(finding.target.fieldId ?? finding.target.elementId));
   const save = () => {
@@ -347,8 +354,7 @@ function NestedSingleGroup({ document, placement, parentInstanceId, findings, cl
 }) {
   const { language } = useContext(FormPresentationContext);
   const t = (key: string, parameters: Record<string, string | number> = {}) => resolveMessage(language, key, parameters);
-  const label = resolveCatalogGroupText(clinicalForm?.catalogGroups, placement.id, language,
-    placement.presentation.label ?? getNemsisGroup(placement.id)?.name ?? stationaryDisplayLabel(placement.id));
+  const { label } = groupLabels(placement, clinicalForm, language);
   const [emptyInstanceId] = useState(() => crypto.randomUUID());
   // Supply a detached empty child to the normal controls. Only a committed edit
   // sends this document to the parent draft; opening or canceling records nothing.
@@ -408,10 +414,7 @@ export function RepeatingGroupTable({ document, placement, parentInstanceId, fin
   const [dialogState, setDialogState] = useState<{ draft: EncounterDocument; instanceId: string; isNew: boolean; returnFocus: HTMLElement }>();
   const [finding, setFinding] = useState<RepeatingGroupFinding>();
   const editable = placement.mode !== "read-only";
-  const label = resolveCatalogGroupText(clinicalForm?.catalogGroups, placement.id, language,
-    placement.presentation.label ?? getNemsisGroup(placement.id)?.name ?? stationaryDisplayLabel(placement.id));
-  const actionLabel = resolveCatalogGroupText(clinicalForm?.catalogGroups, placement.id, language,
-    stationaryActionLabel(placement.presentation.label ?? getNemsisGroup(placement.id)?.name ?? placement.id));
+  const { label, actionLabel } = groupLabels(placement, clinicalForm, language);
   const localFindings: ReadonlyArray<StationarySectionFinding> = finding ? [{ severity: "error", message: finding.message, target: { groupId: placement.id } }] : [];
   const validationFindings = [...stationaryGroupValidationFindings(document, findings, placement.id, undefined, true), ...localFindings];
   const validationSeverity = stationaryFindingSeverity(validationFindings);

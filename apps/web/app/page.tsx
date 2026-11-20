@@ -39,7 +39,6 @@ import { formatClinicalDate, formatClinicalNumber, useRegionalFormat } from "./r
 import { clinicalInstantParts, useAgencyTimeZone } from "./agency-time-zone";
 import { TimePicker } from "../components/time-picker";
 import { DialogValidationMessage } from "../components/dialog-validation-message";
-import type { QuickActionId } from "./encounter-definition";
 import {
   INITIAL_SHELL_STATE,
   MISSING_VITALS_FINDING_ID,
@@ -114,7 +113,6 @@ type TextNoteDraft = {
 };
 
 const tabs: ReadonlyArray<ShellView> = ["timeline", "checklist"];
-const structuredQuickActions = ["vitals", "medication", "procedure"] as const;
 
 function mergeProtectedMedia(notes: ReadonlyArray<ReportNote>, reportId: string): ReadonlyArray<ReportNote> {
   const local = [...protectedPhotoEntries(reportId), ...protectedAudioEntries(reportId)].map(({ note }) => note);
@@ -846,9 +844,12 @@ function EncounterWorkspace({ session, report, presentationMode, language, onSav
     dispatch({ type: "medication-started", id: crypto.randomUUID(), date: localClinicalDate(new Date(), zone), time: localClinicalTime(zone) });
   }
 
-  const quickActionHandlers: Record<QuickActionId, (event: React.MouseEvent<HTMLButtonElement>) => void> = {
-    vitals: startVitals, medication: startMedication, procedure: startProcedure, note: startNote,
-  };
+  const structuredQuickActions = [
+    { id: "vitals", title: decisionSupport ? vitalDefinition.labels.editorTitle : t("mobile.vitals"), label: vitalDefinition.quickAction.label },
+    { id: "medication", title: t("mobile.medications"), label: t("mobile.addMedication") },
+    { id: "procedure", title: t("mobile.procedures"), label: t("mobile.addProcedure") },
+  ] as const;
+  const quickActionHandlers = { vitals: startVitals, medication: startMedication, procedure: startProcedure };
 
   const signingReportId=report?.id;
   const completeSigningWorkspace=useEffectEvent(completeWorkspaceReport);
@@ -1106,9 +1107,8 @@ function EncounterWorkspace({ session, report, presentationMode, language, onSav
       </header>
 
       {presentationMode === "mobile" && <nav className="quick-actions" aria-label={t("mobile.quickDocumentation")}>
-        {structuredQuickActions.map((id) => <button key={id} className={activeDialog === id ? "active" : undefined} aria-pressed={activeDialog === id}
-          title={t(id === "vitals" ? "mobile.vitals" : id === "medication" ? "mobile.medications" : "mobile.procedures")} aria-label={t(id === "vitals" ? "mobile.addVitals" : id === "medication" ? "mobile.addMedication" : "mobile.addProcedure")}
-          type="button" onClick={quickActionHandlers[id]}><QuickActionIcon kind={id} /><span aria-hidden="true">{t(id === "vitals" ? "mobile.vitals" : id === "medication" ? "mobile.medications" : "mobile.procedures")}</span></button>)}
+        {structuredQuickActions.map(({ id, title, label }) => <button key={id} className={activeDialog === id ? "active" : undefined} aria-pressed={activeDialog === id}
+          title={title} aria-label={label} type="button" onClick={quickActionHandlers[id]}><QuickActionIcon kind={id} /><span aria-hidden="true">{title}</span></button>)}
         <button className={activeDialog === "note" ? "active" : undefined} aria-pressed={activeDialog === "note"} aria-label={t("mobile.textNote")} title={t("mobile.textNote")} type="button" onClick={startNote}><QuickActionIcon kind="note" /><span aria-hidden="true">{t("mobile.text")}</span></button>
         <button className={activeDialog === "photo" ? "active" : undefined} aria-pressed={activeDialog === "photo"} aria-label={t("mobile.addPhoto")} title={t("mobile.photoNote")} type="button" disabled={!report || editingBlocked} onClick={startPhoto}><span className="photo-action-icon" aria-hidden="true" /><span aria-hidden="true">{t("mobile.photo")}</span></button>
         <button className={activeDialog === "audio" ? "active" : undefined} aria-pressed={activeDialog === "audio"} aria-label={t("mobile.addAudio")} title={t("mobile.audioNote")} type="button" disabled={!report || editingBlocked} onClick={startAudio}><svg className="audio-action-icon" viewBox="0 0 48 56" aria-hidden="true"><rect x="14" y="2" width="20" height="34" rx="10" fill="currentColor" /><path d="M7 25v3c0 10 7.6 18 17 18s17-8 17-18v-3M24 46v7M16 53h16" fill="none" stroke="currentColor" strokeWidth="4" strokeLinecap="round" /></svg><span aria-hidden="true">{t("mobile.audio")}</span></button>

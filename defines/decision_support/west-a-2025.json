@@ -3772,6 +3772,22 @@
     }
   },
   "uiMessages": {
+    "triage.title": {
+      "en": "Triage",
+      "sv": "Triage"
+    },
+    "triage.add": {
+      "en": "Add triage",
+      "sv": "Lägg till triage"
+    },
+    "triage.new": {
+      "en": "New triage assessment",
+      "sv": "Ny triagebedömning"
+    },
+    "triage.edit": {
+      "en": "Edit triage assessment",
+      "sv": "Ändra triagebedömning"
+    },
     "mobile.westObservationUnset": {
       "en": "Select…",
       "sv": "Välj…"

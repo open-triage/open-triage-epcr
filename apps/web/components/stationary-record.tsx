@@ -14,7 +14,7 @@ import {
 import { STATIONARY_NON_REPEATING_GROUPS } from "../app/stationary-non-repeating";
 import { StationaryNonRepeatingRecord } from "./stationary-non-repeating-record";
 import { StationaryRepeatingGroups } from "./stationary-repeating-groups";
-import { stationaryDisplayLabel } from "../app/stationary-label";
+import { stationaryDisplayLabel, triageGroupLabel } from "../app/stationary-label";
 import { getNemsisDataElement } from "../app/nemsis-data-model";
 import { currentCatalogLanguage, resolveCatalogGroupText } from "../app/catalog-localization";
 import type { FormLanguage } from "../app/form-localization";
@@ -54,9 +54,14 @@ export function StationaryRecord({ document, findings = [], sectionFindings = fi
     return configuredStationaryPreviewSections(formDefinition, language);
   }, [formDefinition, language]);
   const sections = previewSections ?? defaultSections;
-  const sectionLabel = (section: (typeof sections)[number]) => "blocks" in section
-    ? section.visualName ?? stationaryDisplayLabel(resolveCatalogGroupText(catalogGroups, section.catalogGroupId, language, section.label))
-    : resolveMessage(language, "stationary.section." + section.id);
+  const sectionLabel = (section: (typeof sections)[number]) => {
+    const id = "blocks" in section ? section.catalogGroupId : section.id;
+    const triage = triageGroupLabel(id, decisionSupport, language);
+    if (triage) return triage;
+    return "blocks" in section
+      ? section.visualName ?? stationaryDisplayLabel(resolveCatalogGroupText(catalogGroups, id, language, section.label))
+      : resolveMessage(language, "stationary.section." + id);
+  };
   const inlineGroups = useMemo(() => new Map(STATIONARY_NON_REPEATING_GROUPS.map((group) => [group.id, group])), []);
   const statuses = useMemo(() => {
     if (!previewSections) return stationarySectionStatuses(sectionFindings, defaultSections);

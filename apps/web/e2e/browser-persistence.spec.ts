@@ -458,15 +458,15 @@ test("Mobile Vitals keeps an unsupported WEST draft and syncs a finalized manual
   const before = Number((await encryptedRecords(page))[0]?.ciphertextRevision);
   await context.setOffline(true);
   await page.evaluate(() => window.dispatchEvent(new Event("offline")));
-  await page.getByRole("button", { name: "Add vital signs" }).click();
-  const dialog = page.getByRole("dialog", { name: "Vital signs" });
+  await page.getByRole("button", { name: "Add triage" }).click();
+  const dialog = page.getByRole("dialog", { name: "Triage" });
   const systolic = dialog.getByRole("textbox", { name: /Systolic BP/ });
   const override = dialog.getByRole("combobox", { name: "WEST override" });
   await expect(dialog.getByRole("status").and(dialog.locator(".vital-decision-support-result"))).toHaveText("Unassessed");
   await systolic.fill("118");
   await dialog.evaluate((element) => element.scrollTo(0, element.scrollHeight));
   await expect(override).toBeInViewport();
-  await dialog.getByRole("button", { name: "Add vital set" }).click();
+  await dialog.getByRole("button", { name: "Add triage" }).click();
   await expect(override).toBeFocused();
   await expect(dialog.getByRole("alert")).toContainText("choose a WEST color");
   await expect(systolic).toHaveValue("118");
@@ -481,10 +481,10 @@ test("Mobile Vitals keeps an unsupported WEST draft and syncs a finalized manual
   await override.selectOption("green");
   await expect(dialog.getByRole("status").and(dialog.locator(".vital-decision-support-result"))).toContainText("Green · Manual");
   await expect(dialog.getByRole("status").and(dialog.locator(".vital-decision-support-result"))).toContainText("Calculated: Unassessed");
-  await dialog.getByRole("button", { name: "Add vital set" }).click();
+  await dialog.getByRole("button", { name: "Add triage" }).click();
   await expect(dialog).toHaveCount(0);
   await expect(page.locator(".sync-status")).toHaveText("Pending sync");
-  await page.locator(".timeline-event-button").filter({ hasText: "Vital signs" }).first().click();
+  await page.locator(".timeline-event-button").filter({ hasText: "Triage" }).first().click();
   await expect(override).toHaveValue("green");
   await expect(systolic).toHaveValue("118");
   await page.keyboard.press("Escape");
@@ -506,9 +506,9 @@ test("Mobile Vitals keeps an unsupported WEST draft and syncs a finalized manual
 });
 
 for (const labels of [
-  { language: "en", openCall: "Open call", addVitals: "Add vital signs", category: "WEST category",
+  { language: "en", openCall: "Open call", addTriage: "Add triage", category: "WEST category",
     finding: "Choose finding", longCriterion: /Head trauma with GCS ≤14/, documented: "Documented WEST findings" },
-  { language: "sv", openCall: "Öppna uppdrag", addVitals: "Lägg till vitalparametrar", category: "WEST-kategori",
+  { language: "sv", openCall: "Öppna uppdrag", addTriage: "Lägg till triage", category: "WEST-kategori",
     finding: "Välj fynd", longCriterion: /Skalltrauma.*GCS 14/, documented: "Dokumenterade WEST-fynd" },
 ]) {
   test(`WEST criteria list fits the screen and wraps long findings in ${labels.language}`, async ({ page }) => {
@@ -520,8 +520,10 @@ for (const labels of [
     await page.route("**/api/installation", (route) => route.fulfill({ json: { settings: { ...productionSettings, language: labels.language } } }));
     await page.goto("/");
     await page.getByRole("button", { name: labels.openCall, exact: true }).click();
-    await page.getByRole("button", { name: labels.addVitals, exact: true }).click();
-    const dialog = page.getByRole("dialog");
+    const add = page.getByRole("button", { name: labels.addTriage, exact: true });
+    await expect(add).toHaveText("Triage");
+    await add.click();
+    const dialog = page.getByRole("dialog", { name: "Triage", exact: true });
     await dialog.getByRole("combobox", { name: labels.category }).selectOption("trauma-injuries");
     await dialog.getByLabel(labels.finding, { exact: true }).tap();
     const list = page.getByRole("listbox", { name: labels.finding });
@@ -571,8 +573,8 @@ test("Mobile WEST documents multiple findings and keeps the calculated level vis
     commands.push(command);
     await route.fulfill({ json: { id: reportId, status: "draft", revision: command.expectedRevision + 1 } });
   });
-  await page.getByRole("button", { name: "Add vital signs" }).click();
-  const dialog = page.getByRole("dialog", { name: "Vital signs" });
+  await page.getByRole("button", { name: "Add triage" }).click();
+  const dialog = page.getByRole("dialog", { name: "Triage" });
   const category = dialog.getByRole("combobox", { name: "WEST category" });
   const documented = dialog.getByRole("list", { name: "Documented WEST findings" });
   const status = dialog.getByRole("status").and(dialog.locator(".vital-decision-support-result"));
@@ -644,7 +646,7 @@ test("Mobile WEST documents multiple findings and keeps the calculated level vis
   await expect(status).toContainText("Red");
   await expect(status).not.toContainText("Provisional");
 
-  await dialog.getByRole("button", { name: "Add vital set" }).click();
+  await dialog.getByRole("button", { name: "Add triage" }).click();
   await expect(dialog).toHaveCount(0);
   await expect(page.locator(".sync-status")).toHaveText("Saved");
   expect(commands).toHaveLength(1);
@@ -656,7 +658,7 @@ test("Mobile WEST documents multiple findings and keeps the calculated level vis
     .toMatchObject({ kind: "datetime", utcOffsetMinutes: 120 });
   expect(storedCodes("FixtureCriteria")).toEqual(["infection.none", "bleeding.07", "gynaecology.03.04", "pregnancy-postpartum.01"]);
   expect(storedCodes("FixtureCategories")).toEqual(expect.arrayContaining(["infection", "bleeding", "gynaecology.03", "pregnancy-postpartum"]));
-  await page.locator(".timeline-event-button").filter({ hasText: "Vital signs" }).first().click();
+  await page.locator(".timeline-event-button").filter({ hasText: "Triage" }).first().click();
   await expect(documented).toContainText("No criteria met");
   await expect(status).toContainText("Red");
   await documented.getByRole("button", { name: /^Remove Heavy vaginal bleeding in pregnancy/ }).click();
@@ -674,7 +676,7 @@ test("Swedish WEST uses the installation language for offline choices, documente
   await expect.poll(async () => (await encryptedRecords(page)).length).toBe(1);
   await context.setOffline(true);
   await page.evaluate(() => window.dispatchEvent(new Event("offline")));
-  await page.getByRole("button", { name: "Lägg till vitalparametrar" }).click();
+  await page.getByRole("button", { name: "Lägg till triage" }).click();
   const dialog = page.getByRole("dialog");
   const category = dialog.getByRole("combobox", { name: "WEST-kategori" });
   await category.selectOption({ label: "Trauma/skador" });
@@ -714,8 +716,8 @@ test("Mobile WEST scores the selected NEWS scale and syncs only a complete integ
   });
   await context.setOffline(true);
   await page.evaluate(() => window.dispatchEvent(new Event("offline")));
-  await page.getByRole("button", { name: "Add vital signs" }).click();
-  const dialog = page.getByRole("dialog", { name: "Vital signs" });
+  await page.getByRole("button", { name: "Add triage" }).click();
+  const dialog = page.getByRole("dialog", { name: "Triage" });
   const scale = dialog.getByRole("combobox", { name: "NEWS scale" });
   const output = dialog.locator("output");
   const result = dialog.locator(".vital-decision-support-result");
@@ -780,9 +782,9 @@ test("Mobile WEST scores the selected NEWS scale and syncs only a complete integ
   await expect(output).toHaveText("5 · Incomplete");
   await expect(result).toContainText("Orange · Provisional");
   await temperature.fill("37.0");
-  await dialog.getByRole("button", { name: "Add vital set" }).click();
+  await dialog.getByRole("button", { name: "Add triage" }).click();
   await expect(page.locator(".sync-status")).toHaveText("Pending sync");
-  await page.locator(".timeline-event-button").filter({ hasText: "Vital signs" }).first().click();
+  await page.locator(".timeline-event-button").filter({ hasText: "Triage" }).first().click();
   await expect(scale).toHaveValue("copd");
   await expect(output).toHaveText("5");
   await page.keyboard.press("Escape");
@@ -824,9 +826,9 @@ test("Mobile WEST repeat vitals preserve offline decisions and start fresh measu
 
   await context.setOffline(true);
   await page.evaluate(() => window.dispatchEvent(new Event("offline")));
-  const dialog = page.getByRole("dialog", { name: "Vital signs" });
-  const add = page.getByRole("button", { name: "Add vital signs" });
-  const save = dialog.getByRole("button", { name: "Add vital set" });
+  const dialog = page.getByRole("dialog", { name: "Triage" });
+  const add = page.getByRole("button", { name: "Add triage" });
+  const save = dialog.getByRole("button", { name: "Add triage" });
   const scale = dialog.getByRole("combobox", { name: "NEWS scale" });
   const override = dialog.getByRole("combobox", { name: "WEST override" });
   const systolic = dialog.getByRole("textbox", { name: /Systolic BP/ });
@@ -858,7 +860,7 @@ test("Mobile WEST repeat vitals preserve offline decisions and start fresh measu
   await page.getByRole("button", { name: "Save & close" }).click();
   await expect(page.getByRole("heading", { name: "Open reports" })).toBeVisible();
   await page.getByRole("button", { name: "Reopen report" }).click();
-  const rows = page.locator(".timeline-event-button").filter({ hasText: "Vital signs" });
+  const rows = page.locator(".timeline-event-button").filter({ hasText: "Triage" });
   await rows.first().click();
   await expect(override).toHaveValue("red");
   await expect(systolic).toHaveValue("");
@@ -890,7 +892,7 @@ test("Mobile WEST repeat vitals preserve offline decisions and start fresh measu
 test("Stationary Vitals uses the same WEST finalization rule while retaining its field editor", async ({ page }) => {
   test.skip(!serverBacked, "requires OPEN_TRIAGE_E2E_SERVER_MODE=true");
   await installRoutes(page, true, undefined, {
-    definition: { schemaVersion: 1, sections: [{ key: "vitals", name: "Vitals", fields: [
+    definition: { schemaVersion: 1, sections: [{ key: "eVitalsSection", fields: [
       { key: "measured", source: { kind: "nemsis", elementId: "eVitals.01" } },
       { key: "pain", source: { kind: "nemsis", elementId: "eVitals.27" } },
     ] }] }, catalogFields: {}, decisionSupport: westDecisionSupport,
@@ -898,8 +900,11 @@ test("Stationary Vitals uses the same WEST finalization rule while retaining its
   await page.goto("/");
   await page.getByRole("button", { name: "Open call", exact: true }).click();
   await page.getByRole("button", { name: "Stationary", exact: true }).click();
-  await page.locator('[data-group-id="eVitals.VitalGroup"]').getByRole("button", { name: /Add/ }).click();
-  const dialog = page.getByRole("dialog", { name: /Add Vital/ });
+  await expect(page.getByRole("heading", { level: 1, name: "Triage", exact: true })).toBeVisible();
+  const group = page.locator('[data-group-id="eVitals.VitalGroup"]');
+  await expect(group.getByRole("heading", { name: "Triage", exact: true })).toBeVisible();
+  await group.getByRole("button", { name: "Add triage", exact: true }).click();
+  const dialog = page.getByRole("dialog", { name: "Add triage", exact: true });
   const save = dialog.getByRole("button", { name: "Add row" });
   const override = dialog.getByRole("combobox", { name: "WEST override" });
   await save.click();
@@ -1021,12 +1026,12 @@ test("WEST history distinguishes each saved level and another browser converges 
   await expect(reportLevel).toHaveText("Latest WEST level · Red");
   await expect(timeline.locator(".west-level")).toHaveCount(1);
   const redRow = timeline.locator("li").filter({ hasText: "WEST · Red" });
-  await expect(redRow.getByRole("button", { name: /Vital signs/ })).toHaveAccessibleDescription("WEST · Red");
+  await expect(redRow.getByRole("button", { name: /Triage/ })).toHaveAccessibleDescription("WEST · Red");
   await expect(redRow.getByRole("img", { name: /Validation/ })).toBeVisible();
 
   await expect.poll(async () => Number((await encryptedRecords(page))[0]?.synchronizedRevision)).toBeGreaterThan(0);
-  await page.getByRole("button", { name: "Add vital signs" }).click();
-  const dialog = page.getByRole("dialog", { name: "Vital signs" });
+  await page.getByRole("button", { name: "Add triage" }).click();
+  const dialog = page.getByRole("dialog", { name: "Triage" });
   await expect(dialog.getByRole("status").and(dialog.locator(".vital-decision-support-result"))).toHaveText("Unassessed");
   await context.setOffline(true);
   await page.evaluate(() => window.dispatchEvent(new Event("offline")));
@@ -1034,7 +1039,7 @@ test("WEST history distinguishes each saved level and another browser converges 
   await expect(reportLevel).toHaveText("Latest WEST level · Red");
   await expect(timeline.locator(".west-level")).toHaveCount(1);
   await dialog.getByRole("combobox", { name: "WEST override" }).selectOption("green");
-  await dialog.getByRole("button", { name: "Add vital set" }).click();
+  await dialog.getByRole("button", { name: "Add triage" }).click();
   await expect(reportLevel).toHaveText("Latest WEST level · Green · Manual");
   await expect(timeline.locator(".west-level")).toHaveText(["WEST · Green · Manual", "WEST · Red"]);
   await expect(page.locator(".sync-status")).toHaveText("Pending sync");
@@ -1872,12 +1877,12 @@ test("the initial stale server poll cannot reverse a recovered queued edit alrea
   } finally { releasePoll(); releaseSave(); }
 });
 
-for (const { width, language, openCall, addVitals, overrideLabel, cancelLabel, unassessed, latest, manual,
+for (const { width, language, openCall, addTriage, overrideLabel, cancelLabel, unassessed, latest, manual,
   olderLevel, useDateTime, checklist, timeline } of [
-  { width: 320, language: "en", openCall: "Open call", addVitals: "Add vital signs", overrideLabel: "WEST override",
+  { width: 320, language: "en", openCall: "Open call", addTriage: "Add triage", overrideLabel: "WEST override",
     cancelLabel: "Cancel", unassessed: "Unassessed", latest: "Latest WEST level · Red", manual: "Orange · Manual",
     olderLevel: "WEST · Yellow", useDateTime: "Use date & time", checklist: "Checklist", timeline: "Timeline" },
-  { width: 390, language: "sv", openCall: "Öppna uppdrag", addVitals: "Lägg till vitalparametrar", overrideLabel: "Manuell WEST-färg",
+  { width: 390, language: "sv", openCall: "Öppna uppdrag", addTriage: "Lägg till triage", overrideLabel: "Manuell WEST-färg",
     cancelLabel: "Avbryt", unassessed: "Ej bedömd", latest: "Senaste WEST-nivå · Röd", manual: "Orange · Manuell",
     olderLevel: "WEST · Gul", useDateTime: "Använd datum och tid", checklist: "Checklista", timeline: "Tidslinje" },
 ]) {
@@ -1929,7 +1934,7 @@ for (const { width, language, openCall, addVitals, overrideLabel, cancelLabel, u
     await expect.poll(() => page.evaluate(() => window.scrollY)).toBeGreaterThan(0);
     await expectFrame("red", "rgb(193, 43, 54)");
 
-    const trigger = page.getByRole("button", { name: addVitals, exact: true });
+    const trigger = page.getByRole("button", { name: addTriage, exact: true });
     await trigger.click();
     const dialog = page.locator(".vital-dialog");
     const override = dialog.getByRole("combobox", { name: overrideLabel });
@@ -1981,7 +1986,9 @@ test("ordinary Mobile Vitals without WEST has no assessment frame", async ({ pag
   await installRoutes(page);
   await page.goto("/");
   await page.getByRole("button", { name: "Open call", exact: true }).click();
-  await page.getByRole("button", { name: "Add vital signs", exact: true }).click();
+  const add = page.getByRole("button", { name: "Add vital signs", exact: true });
+  await expect(add).toHaveText("Vitals");
+  await add.click();
   await expect(page.getByRole("dialog", { name: "Vital signs", exact: true })).toBeVisible();
   await expect(page.locator(".west-encounter-frame")).toHaveCount(0);
   await expect(page.getByRole("combobox", { name: "WEST override" })).toHaveCount(0);
