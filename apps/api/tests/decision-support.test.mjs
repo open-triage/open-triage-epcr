@@ -1,9 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import definition from "../../../defines/decision_support/west-a-2025.json" with { type: "json" };
+import definition from "../../../defines/decision_support/west-a-2025.sv.json" with { type: "json" };
 import { calculateDecisionSupportFindings, decisionSupportFindingResult, decisionSupportPhysiology, decisionSupportScale } from "@open-triage/contracts";
 import { validateDecisionSupportDefinition } from "../dist/forms/decision-support-definition.js";
-import { decisionSupportCatalogFields } from "../dist/forms/decision-support.js";
+import { decisionSupportCatalogFields, registeredDecisionSupportElements } from "../dist/forms/decision-support.js";
 
 test("validates the complete shipped WEST artifact and its provenance", () => {
   assert.equal(validateDecisionSupportDefinition(definition), definition);
@@ -32,7 +32,9 @@ test("catalog codes match the adult picker and field identities survive new vers
   const organizationId = "36f82a8d-2c39-45b3-92b7-52e45367a0f2";
   const fields = decisionSupportCatalogFields(definition, organizationId);
   const reloaded = decisionSupportCatalogFields({ ...definition, version: "new-version" }, organizationId);
-  assert.deepEqual(reloaded, fields);
+  for (const [name, field] of Object.entries(fields)) assert.equal(reloaded[name].id, field.id);
+  // A pin from another version must retain its own criteria.
+  assert.equal(reloaded.criteria.choices[0].label, definition.categories[0].criteria[0].text);
   assert.notEqual(decisionSupportCatalogFields(definition, "another-agency").criteria.id, fields.criteria.id);
   assert.ok(Object.values(fields).every((field) => field.correlatesTo === "eVitals.VitalGroup"));
   assert.ok(fields.physiologyScore.readOnly);
@@ -47,8 +49,25 @@ test("catalog codes match the adult picker and field identities survive new vers
   assert.ok(criteria.includes("trauma-alert.01.01"));
   assert.ok(!criteria.includes("trauma-alert.01.03"));
   assert.ok(!criteria.includes("gynaecology.04.01"));
+  const injury = fields.categories.choices.find(({ code }) => code === "trauma-injuries");
+  assert.equal(injury.label, "Trauma/injuries");
+  assert.equal(injury.localization.sv.label, "Trauma/skador");
+  const support = fields.criteria.choices.find(({ code }) => code === "trauma-alert.01.01");
+  assert.equal(support.label, "Ventilatory support needed (Level 1)");
+  assert.equal(support.localization.sv.label, "Behov av ventilationsstöd (Nivå 1)");
 });
 
+test("a catalog registered before translation displays English for matching Swedish choices", async () => {
+  const organizationId = "36f82a8d-2c39-45b3-92b7-52e45367a0f2";
+  const previous = decisionSupportCatalogFields({ ...definition, version: "previous" }, organizationId).criteria;
+  const historical = { ...previous.choices[0], localization: { schemaVersion: 1, sv: { label: "Older source wording" } } };
+  const row = { ...previous, choices: [historical, ...previous.choices.slice(1)] };
+  const [field] = await registeredDecisionSupportElements({ query: async () => [{ definition: row }] }, organizationId);
+  assert.deepEqual(field.choices[0], historical);
+  const choice = field.choices.find(({ code }) => code === "trauma-alert.01.01");
+  assert.equal(choice.label, "Ventilatory support needed (Level 1)");
+  assert.equal(choice.localization.sv.label, "Behov av ventilationsstöd (Nivå 1)");
+});
 test("evaluates shared adult WEST findings against measurement-local window boundaries", async () => {
   const {
     calculateDecisionSupportFindings, decisionSupportCategoryCriteria, decisionSupportFindingResult,

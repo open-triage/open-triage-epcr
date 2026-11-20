@@ -8,18 +8,20 @@ export function VitalDecisionSupportScale({ definition, assessment, language, on
   readonly language: string;
   readonly onScale: (scale: string) => void;
 }) {
-  const locale = language === "sv" ? "sv" : "en";
   const selector = definition.assessment.elements.newsScale;
   const scaleKey = decisionSupportScale(definition, assessment.scale);
   const scale = selector.values[scaleKey];
   if (!scale) return null;
   const score = assessment.calculation.physiology?.total;
-  const scoreLabel = definition.assessment.elements.physiologyScore.label[locale].replace("{scale}", scale.scoreName);
+  const scoreLabel = resolveMessage(language, "mobile.westScore", { scale: scale.scoreName });
   return <div className="vital-decision-support-controls vital-decision-support-scoring">
-    <label>{selector.label[locale]}
+    <label>{resolveMessage(language, "mobile.westNewsScale")}
       <select value={scaleKey} onChange={(event) => onScale(event.target.value)}>
-        {Object.entries(selector.values).map(([key, option]) =>
-          <option key={key} value={key}>{option.label[locale]}</option>)}
+        {Object.entries(selector.values).map(([key, option]) => {
+          const messageKey = `mobile.westScale.${key}`;
+          const label = resolveMessage(language, messageKey);
+          return <option key={key} value={key}>{label === messageKey ? option.label[language === "sv" ? "sv" : "en"] : label}</option>;
+        })}
       </select>
     </label>
     {score != null && <label>{scoreLabel}<output aria-label={scoreLabel}>{score}</output></label>}

@@ -108,6 +108,12 @@ export interface ClinicalDecisionSupportConfiguration {
   fields: Record<DecisionSupportFieldName, DecisionSupportCatalogElement>;
 }
 
+/** Only display a translation of the exact clinical version pinned to this encounter. */
+export function decisionSupportDefinitionForLanguage(pinned: DecisionSupportDefinition, language: string,
+  english: DecisionSupportDefinition): DecisionSupportDefinition {
+  return language !== "sv" && pinned.key === english.key && pinned.version === english.version ? english : pinned;
+}
+
 export function decisionSupportPickerCategories(categories: readonly DecisionSupportCategory[]): DecisionSupportCategory[] {
   return categories.flatMap((category) => {
     if (category.combineSubcategoriesInPicker || !category.subcategories) return [category];

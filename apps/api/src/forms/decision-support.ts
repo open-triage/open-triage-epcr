@@ -5,6 +5,7 @@ import { ConflictException, Logger } from "@nestjs/common";
 import {
   WEST_A_DECISION_SUPPORT_KEY,
   decisionSupportCategoryCriteria,
+  decisionSupportDefinitionForLanguage,
   decisionSupportPickerCategories,
   isSelectableDecisionSupportCriterion,
   type CatalogDraftCustomCodedElement,
@@ -38,7 +39,7 @@ const slugByField = {
 } satisfies Record<DecisionSupportFieldName, string>;
 const supportedNumericTypes = new Set(["integer", "decimal"]);
 
-let shippedWest: DecisionSupportDefinition | undefined;
+const shippedWest: Partial<Record<"sv" | "en", DecisionSupportDefinition>> = {};
 let labels: CatalogLabels | undefined;
 
 function invalidConfiguration(reason: string): ConflictException {
@@ -46,11 +47,11 @@ function invalidConfiguration(reason: string): ConflictException {
   return new ConflictException({ code: "clinical.decisionSupportInvalid" });
 }
 
-function shippedDefinition(key: string): DecisionSupportDefinition {
+function shippedDefinition(key: string, language: "sv" | "en" = "sv"): DecisionSupportDefinition {
   if (key !== WEST_A_DECISION_SUPPORT_KEY) throw invalidConfiguration(`Unsupported decision support system ${key}`);
   try {
-    shippedWest ??= validateDecisionSupportDefinition(JSON.parse(readFileSync(join(definitionsDirectory, "west-a-2025.json"), "utf8")));
-    return shippedWest;
+    const file = `${key}.${language}.json`;
+    return shippedWest[language] ??= validateDecisionSupportDefinition(JSON.parse(readFileSync(join(definitionsDirectory, file), "utf8")));
   } catch (error) {
     throw invalidConfiguration(`Unable to load the shipped decision support definition: ${String(error)}`);
   }
@@ -58,6 +59,27 @@ function shippedDefinition(key: string): DecisionSupportDefinition {
 
 function choice(code: string, label: string, swedishLabel: string): CodeChoice {
   return { code, label, localization: { schemaVersion: 1, sv: { label: swedishLabel, reviewedSource: { label } } } };
+}
+
+function findingLabels(definition: DecisionSupportDefinition, language: "en" | "sv") {
+  const categories = new Map<string, string>();
+  const criteria = new Map<string, string>();
+  const { noneOption } = definition.assessment.elements.criteria;
+  for (const category of decisionSupportPickerCategories(definition.categories)) {
+    categories.set(category.id, category.displayLabel ?? category.category);
+    for (const { criterion, labelSuffix } of decisionSupportCategoryCriteria(category)) {
+      if (!isSelectableDecisionSupportCriterion(criterion)) continue;
+      const label = criterion.displayLabel ?? criterion.text;
+      criteria.set(criterion.id, labelSuffix ? `${label} (${labelSuffix[language]})` : label);
+    }
+    criteria.set(`${category.id}.${noneOption.code}`, noneOption.label[language]);
+  }
+  return { categories, criteria };
+}
+
+function catalogFindingLabels(pinned: DecisionSupportDefinition) {
+  const translated = decisionSupportDefinitionForLanguage(pinned, "en", shippedDefinition(pinned.key, "en"));
+  return { english: findingLabels(translated, "en"), swedish: findingLabels(pinned, "sv") };
 }
 
 /** The catalog identity depends on the installation and field, not the currently shipped version. */
@@ -103,22 +125,15 @@ ClinicalDecisionSupportConfiguration["fields"] {
       permittedPertinentNegatives: [],
     };
   }
-  const categories = decisionSupportPickerCategories(definition.categories);
-  const { noneOption } = definition.assessment.elements.criteria;
+  const { english, swedish } = catalogFindingLabels(definition);
+  function findingField(field: "categories" | "criteria") {
+    return coded(field, "multiple", Array.from(swedish[field], ([code, label]) =>
+      choice(code, english[field].get(code) ?? label, label)));
+  }
   const scale = definition.assessment.elements.newsScale;
   return {
-    categories: coded("categories", "multiple", categories.map((category) => {
-      const label = category.displayLabel ?? category.category;
-      return choice(category.id, label, label);
-    })),
-    criteria: coded("criteria", "multiple", categories.flatMap((category) => [
-      ...decisionSupportCategoryCriteria(category).filter(({ criterion }) => isSelectableDecisionSupportCriterion(criterion)).map(({ criterion, labelSuffix }) => {
-        const label = criterion.displayLabel ?? criterion.text;
-        return choice(criterion.id, labelSuffix ? `${label} (${labelSuffix.en})` : label,
-          labelSuffix ? `${label} (${labelSuffix.sv})` : label);
-      }),
-      choice(`${category.id}.${noneOption.code}`, noneOption.label.en, noneOption.label.sv),
-    ])),
+    categories: findingField("categories"),
+    criteria: findingField("criteria"),
     noWarningCriteria: { ...base("noWarningCriteria", "single"), datatype: "boolean", constraints: {} },
     newsScale: coded("newsScale", "single", Object.entries(scale.values).map(([code, value]) =>
       choice(code, value.label.en, value.label.sv))),
@@ -223,5 +238,17 @@ Promise<DecisionSupportCatalogElement[]> {
   const rows = await manager.query<Array<{ definition: DecisionSupportCatalogElement }>>(`select definition
     from forms.custom_element_definition where organization_id=$1 and namespace=$2 order by slug`,
   [organizationId, DECISION_SUPPORT_NAMESPACE]);
-  return rows.map((row) => row.definition);
+  if (!rows.length) return [];
+  // Existing installations may have registered these choices before the English translation shipped.
+  const { english, swedish } = catalogFindingLabels(shippedDefinition(WEST_A_DECISION_SUPPORT_KEY));
+  return rows.map(({ definition }) => {
+    const field = definition.decisionSupportField;
+    if ((field !== "categories" && field !== "criteria") || definition.datatype !== "coded") return definition;
+    return { ...definition, choices: definition.choices.map((item) => {
+      const source = item.localization?.sv?.label;
+      const translation = english[field].get(item.code);
+      if (!source || source !== swedish[field].get(item.code) || !translation) return item;
+      return { ...item, ...choice(item.code, translation, source) };
+    }) };
+  });
 }

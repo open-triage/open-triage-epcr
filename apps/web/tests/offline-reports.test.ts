@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import type { ClinicalDecisionSupportConfiguration, ClinicianSession, EncounterDocument } from "@open-triage/contracts";
-import westDefinition from "../../../defines/decision_support/west-a-2025.json";
+import westDefinition from "../../../defines/decision_support/west-a-2025.sv.json";
 import syntheticEncounter from "../app/data/synthetic-encounter-document.json";
 import {
   acceptDraftChange,

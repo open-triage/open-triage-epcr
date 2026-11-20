@@ -1,10 +1,11 @@
 import { decisionSupportCategoryCriteria, decisionSupportCriterionLabel, decisionSupportPickerCategories, effectiveDecisionSupportColour, isTriageColour, type DecisionSupportDefinition,
   type DraftDecisionSupportAssessment, type TriageColour } from "@open-triage/contracts";
 import type { Ref } from "react";
+import { localizedDecisionSupportDefinition } from "../app/decision-support-localization";
 import { resolveMessage } from "../app/localization";
 
 export function VitalDecisionSupport({
-  definition, assessment, language, overrideRef, missingColour, onOverride,
+  definition: pinned, assessment, language, overrideRef, missingColour, onOverride,
 }: {
   readonly definition: DecisionSupportDefinition;
   readonly assessment: DraftDecisionSupportAssessment;
@@ -14,11 +15,12 @@ export function VitalDecisionSupport({
   readonly onOverride: (colour: TriageColour | null) => void;
 }) {
   const t = (key: string, params?: Record<string, string>) => resolveMessage(language, key, params);
+  const definition = localizedDecisionSupportDefinition(pinned, language);
   const locale = language === "sv" ? "sv" : "en";
   const { calculation, override } = assessment;
   const effective = effectiveDecisionSupportColour(calculation, override?.colour);
   const label = (colour: TriageColour | null) => colour ? t(`mobile.westColour.${colour}`)
-    : definition.assessment.result.unsupportedDraft.label[locale];
+    : t("mobile.westUnassessed");
   const calculationLabel = calculation.status === "provisional"
     ? t("mobile.westProvisional", { colour: label(calculation.colour) }) : label(calculation.colour);
   const driver = calculation.status === "unassessed" || !calculation.criterionCode ? undefined
@@ -51,6 +53,6 @@ export function VitalDecisionSupport({
         </select>
       </label>
     </div>
-    {missingColour && <p role="alert" id="vital-decision-support-required">{definition.assessment.result.finalization.message[locale]}</p>}
+    {missingColour && <p role="alert" id="vital-decision-support-required">{t("mobile.westColourRequired")}</p>}
   </div>;
 }

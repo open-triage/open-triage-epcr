@@ -2,9 +2,49 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
 
-const file = new URL("../defines/decision_support/west-a-2025.json", import.meta.url);
+const file = new URL("../defines/decision_support/west-a-2025.sv.json", import.meta.url);
 const definition = JSON.parse(readFileSync(file, "utf8"));
+const english = JSON.parse(readFileSync(new URL("west-a-2025.en.json", file), "utf8"));
 const tables = definition.scoreTables;
+
+test("the English WEST definition translates every category and finding and preserves all clinical rules", () => {
+  const translatedText = new Set(["category", "displayLabel", "text", "notes", "definition", "definitions",
+    "criterion_group", "cross_reference", "footnote", "observanda", "clarification", "examples", "extraction_notes", "triage_colors"]);
+  function textShape(value) {
+    if (Array.isArray(value)) return value.map(textShape);
+    if (typeof value === "string") {
+      assert.ok(value.trim());
+      return "<text>";
+    }
+    return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, textShape(item)]));
+  }
+  function rules(artifact) {
+    return JSON.parse(JSON.stringify(artifact, (key, value) => translatedText.has(key) ? textShape(value) : value));
+  }
+  const { language, ...translated } = english;
+  assert.equal(language, "en");
+  assert.deepEqual(rules(translated), rules(definition));
+
+  // Swedish sometimes places the week abbreviation or GCS between the comparator and the number.
+  function thresholds(text) {
+    return Array.from(text.matchAll(/([<>≤≥])\s*(?:v\s*|GCS\s*)?(\d+(?:[.,]\d+)?)/g),
+      ([, operator, value]) => operator + Number(value.replace(",", "."))).sort();
+  }
+  function compareLabels(original, localized) {
+    original.forEach((category, index) => {
+      const other = localized[index];
+      if (category.id !== "diabetes") assert.notEqual(other.displayLabel ?? other.category, category.displayLabel ?? category.category, category.id);
+      category.criteria.forEach((row, i) => {
+        const source = row.displayLabel ?? row.text;
+        const label = other.criteria[i].displayLabel ?? other.criteria[i].text;
+        assert.notEqual(label, source, row.id);
+        assert.deepEqual(thresholds(label), thresholds(source), row.id);
+      });
+      compareLabels(category.subcategories ?? [], other.subcategories ?? []);
+    });
+  }
+  compareLabels(definition.categories, english.categories);
+});
 
 test("WEST selections belong to the vital group and the NEWS scale defaults to Standard", () => {
   const assessment = definition.assessment;

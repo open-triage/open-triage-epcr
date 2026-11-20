@@ -1,0 +1,2663 @@
+{
+  "language": "en",
+  "schemaVersion": 1,
+  "key": "west-a-2025",
+  "name": "WEST-A",
+  "version": "1.0.0-draft.4",
+  "catalogKey": "nemsis-3.5.1",
+  "sources": {
+    "criteria": {
+      "filename": "WEST A 2025 Östra.pdf",
+      "title": "WEST - A, Adult Östra/SU",
+      "version": "2025:02:01",
+      "language": "sv",
+      "attachment": "west_a_2025_triage.json",
+      "url": "https://mellanarkiv-offentlig.vgregion.se/alfresco/s/archive/stream/public/v1/source/available/sofia/su1226-506079272-668/surrogate/WEST%20A%202025%20%C3%96stra.pdf"
+    },
+    "scores": {
+      "title": "WEST samt hänvisningsstöd SkaS",
+      "edition": "VGR 2025:1",
+      "url": "https://mellanarkiv-offentlig.vgregion.se/alfresco/s/archive/stream/public/v1/source/available/sofia/skas13221-468498705-9/surrogate/WEST%20samt%20h%C3%A4nvisningsst%C3%B6d%20SkaS.pdf",
+      "news2PdfPage": 10,
+      "onews2PdfPage": 24
+    },
+    "scale2": {
+      "url": "https://www.rcp.ac.uk/media/eczf5mvm/news2-chart-3_news-observation-chart_2022_0_0.pdf",
+      "page": 1
+    },
+    "obstetricBands": {
+      "title": "Swedish obstetric NEWS2 chart by Hein, Lindroos and Åmark, reproduced in the 2025 SFOG course",
+      "scope": "Resolve the four overlapping endpoints in the 2025 WEST ONEWS2 table. WEST defines pathway eligibility and colour thresholds.",
+      "url": "https://www.sfog.se/wp-content/uploads/2025/04/5-riskbedoemning-news-o-joanna-frykman-st-kurs-komplicerad-graviditet-25.pdf",
+      "authorChartUrl": "https://sfai.se/wp-content/uploads/2019/05/6.Hein-Obstetrisk-NEWS.pdf"
+    }
+  },
+  "activation": {
+    "adminSetting": "decisionSupportSystem",
+    "value": "west-a-2025",
+    "scope": "installation",
+    "activeByDefault": false,
+    "pinVersionOnEncounter": true
+  },
+  "assessment": {
+    "group": "eVitals.VitalGroup",
+    "orderBy": "measurementInstant",
+    "scope": "WEST-A adult pathway",
+    "colourPriority": [
+      "green",
+      "yellow",
+      "orange",
+      "red"
+    ],
+    "elements": {
+      "categories": {
+        "kind": "custom",
+        "multiple": true,
+        "pickerLayout": "flat",
+        "documentWhen": "atLeastOneCriterionOrNoneOptionSelected"
+      },
+      "criteria": {
+        "kind": "custom",
+        "multiple": true,
+        "filterOptionsBy": "categories",
+        "selectedBy": "clinician",
+        "retainSelectionsAcrossCategories": true,
+        "orderBy": "descendingSeverity",
+        "displaySeverity": true,
+        "noneOption": {
+          "code": "none",
+          "label": {
+            "en": "No criteria met",
+            "sv": "Inga kriterier uppfyllda"
+          },
+          "scope": "category",
+          "exclusiveWithinCategory": true,
+          "triageColour": null
+        }
+      },
+      "noWarningCriteria": {
+        "kind": "custom",
+        "type": "explicitBoolean"
+      },
+      "newsScale": {
+        "kind": "custom",
+        "type": "singleSelect",
+        "label": {
+          "en": "NEWS scale",
+          "sv": "NEWS-skala"
+        },
+        "defaultValue": "standard",
+        "selectedBy": "clinician",
+        "values": {
+          "standard": {
+            "label": {
+              "en": "Standard",
+              "sv": "Standard"
+            },
+            "scoreName": "NEWS2",
+            "tablesByInput": {
+              "respiratoryRate": "respirations",
+              "spo2": "saturation1",
+              "oxygen": "oxygen",
+              "systolic": "systolic",
+              "heartRate": "pulse",
+              "consciousness": "acvpu",
+              "temperature": "temperature"
+            },
+            "colourRules": "adult"
+          },
+          "obstetric": {
+            "label": {
+              "en": "Obstetric",
+              "sv": "Obstetrisk"
+            },
+            "scoreName": "ONEWS2",
+            "tablesByInput": {
+              "respiratoryRate": "obRespirations",
+              "spo2": "obSaturation",
+              "oxygen": "obOxygen",
+              "systolic": "obSystolic",
+              "diastolic": "obDiastolic",
+              "heartRate": "obPulse",
+              "consciousness": "acvpu",
+              "temperature": "obTemperature"
+            },
+            "colourRules": "obstetric"
+          },
+          "copd": {
+            "label": {
+              "en": "COPD",
+              "sv": "KOL"
+            },
+            "scoreName": "NEWS2",
+            "tablesByInput": {
+              "respiratoryRate": "respirations",
+              "spo2": "saturation2",
+              "oxygen": "oxygen",
+              "systolic": "systolic",
+              "heartRate": "pulse",
+              "consciousness": "acvpu",
+              "temperature": "temperature"
+            },
+            "colourRules": "adult",
+            "indication": "prescribed NEWS2 SpO2 Scale 2"
+          }
+        }
+      },
+      "physiologyScore": {
+        "kind": "calculated",
+        "catalog": "custom",
+        "type": "integer",
+        "label": {
+          "en": "{scale} score",
+          "sv": "{scale}-poäng"
+        },
+        "readOnly": true,
+        "visibleWhen": "allScaleComponentsScored",
+        "scaleElement": "newsScale"
+      },
+      "calculatedColour": {
+        "kind": "calculated",
+        "type": "triageColour"
+      },
+      "calculationStatus": {
+        "kind": "calculated",
+        "options": [
+          "established",
+          "provisional",
+          "unassessed"
+        ]
+      },
+      "overrideColour": {
+        "kind": "custom",
+        "selectedBy": "clinician",
+        "type": "triageColour"
+      },
+      "effectiveColour": {
+        "kind": "calculated",
+        "firstAvailable": [
+          "overrideColour",
+          "calculatedColour"
+        ]
+      }
+    },
+    "carryFromPrecedingMeasurement": [
+      "categories",
+      "criteria",
+      "overrideColour",
+      "newsScale"
+    ],
+    "keepSourceMeasurementId": true,
+    "snapshotOnCreation": true,
+    "editingHistoryPropagates": false,
+    "carryObservations": false,
+    "result": {
+      "combine": "mostUrgent",
+      "inputs": [
+        "selectedClinicalCriteria",
+        "physiologyColour"
+      ],
+      "numericTotalRequiresEveryComponent": true,
+      "partialScoreColour": "lowerBoundFromKnownPointsAndConfirmedCriteria",
+      "provisionalLabel": {
+        "en": "Provisional",
+        "sv": "Preliminär"
+      },
+      "unsupportedDraft": {
+        "indicatorColour": "gray",
+        "label": {
+          "en": "Unassessed",
+          "sv": "Ej bedömd"
+        }
+      },
+      "finalization": {
+        "requiredElement": "effectiveColour",
+        "onMissing": "keepDraft",
+        "message": {
+          "en": "Enter a supporting finding or measurement, or choose a WEST color to save.",
+          "sv": "Ange fynd eller mätvärden som ger en triagefärg eller välj en WEST-färg för att spara."
+        }
+      },
+      "greenRequires": [
+        "completePhysiology",
+        "explicitNoWarningCriteria"
+      ],
+      "redIsDefinitiveWithIncompleteInputs": true,
+      "overrideAllowed": [
+        "green",
+        "yellow",
+        "orange",
+        "red"
+      ],
+      "overridePersistsWhenCalculationChanges": true,
+      "flagChangedCalculationUnderOverride": true,
+      "report": "effectiveColourAndStatusOfLatestSavedMeasurement",
+      "overrideProvenance": [
+        "enteredBy",
+        "enteredAt",
+        "inheritedFromMeasurement",
+        "calculatedColourWhenSelected"
+      ],
+      "explicitNoWarningCriteria": "An explicit entry-wide assessment or a category-specific No criteria met selection for every documented category.",
+      "mobileIndicators": {
+        "encounterBorder": {
+          "source": "latestMeasurementEffectiveColour",
+          "previewLatestDraft": true
+        },
+        "vitalTimelineRow": {
+          "source": "measurementEffectiveColour",
+          "showStatusLabel": true
+        }
+      }
+    },
+    "optionSemantics": {
+      "cross_reference": "navigateToCategoryWithoutApplyingRowColour",
+      "time_window": {
+        "clock": "measurementLocalTime",
+        "windows": {
+          "07-16": {
+            "startInclusive": "07:00",
+            "endExclusive": "16:00"
+          }
+        }
+      },
+      "paediatricRows": "retain source rows, omit from adult choices",
+      "emptyCategory": "Keep an unanswered category in the picker only. Document a category when it has a selected finding or its explicit No criteria met option.",
+      "greenCriterion": "also document absence of higher warning criteria before showing calculated green"
+    }
+  },
+  "inputs": {
+    "respiratoryRate": {
+      "unit": "/min",
+      "precision": 0,
+      "element": "eVitals.14",
+      "minValue": 0,
+      "maxValue": 300
+    },
+    "spo2": {
+      "unit": "%",
+      "precision": 0,
+      "element": "eVitals.12",
+      "minValue": 0,
+      "maxValue": 100
+    },
+    "oxygen": {
+      "values": [
+        "air",
+        "supplemental"
+      ],
+      "explicit": true
+    },
+    "systolic": {
+      "unit": "mmHg",
+      "precision": 0,
+      "element": "eVitals.06",
+      "minValue": 0,
+      "maxValue": 500
+    },
+    "diastolic": {
+      "unit": "mmHg",
+      "precision": 0,
+      "element": "eVitals.07",
+      "minValue": 0,
+      "maxValue": 500,
+      "nonNumericValue": "Palpated pressure does not supply a numeric diastolic component."
+    },
+    "heartRate": {
+      "unit": "/min",
+      "precision": 0,
+      "element": "eVitals.10",
+      "preferMeasuredHeartRateOverPulse": true,
+      "minValue": 0,
+      "maxValue": 500
+    },
+    "consciousness": {
+      "values": [
+        "A",
+        "C",
+        "V",
+        "P",
+        "U"
+      ],
+      "C": "new or worsening confusion",
+      "explicit": true
+    },
+    "temperature": {
+      "unit": "°C",
+      "precision": 1,
+      "element": "eVitals.24",
+      "minValue": 0,
+      "maxValue": 50
+    }
+  },
+  "scoreTables": {
+    "respirations": {
+      "bands": [
+        {
+          "minInclusive": null,
+          "maxInclusive": 8,
+          "points": 3
+        },
+        {
+          "minInclusive": 9,
+          "maxInclusive": 11,
+          "points": 1
+        },
+        {
+          "minInclusive": 12,
+          "maxInclusive": 20,
+          "points": 0
+        },
+        {
+          "minInclusive": 21,
+          "maxInclusive": 24,
+          "points": 2
+        },
+        {
+          "minInclusive": 25,
+          "maxInclusive": null,
+          "points": 3
+        }
+      ]
+    },
+    "saturation1": {
+      "bands": [
+        {
+          "minInclusive": null,
+          "maxInclusive": 91,
+          "points": 3
+        },
+        {
+          "minInclusive": 92,
+          "maxInclusive": 93,
+          "points": 2
+        },
+        {
+          "minInclusive": 94,
+          "maxInclusive": 95,
+          "points": 1
+        },
+        {
+          "minInclusive": 96,
+          "maxInclusive": 100,
+          "points": 0
+        }
+      ]
+    },
+    "saturation2": {
+      "branchOn": "oxygen",
+      "branches": {
+        "air": {
+          "bands": [
+            {
+              "minInclusive": null,
+              "maxInclusive": 83,
+              "points": 3
+            },
+            {
+              "minInclusive": 84,
+              "maxInclusive": 85,
+              "points": 2
+            },
+            {
+              "minInclusive": 86,
+              "maxInclusive": 87,
+              "points": 1
+            },
+            {
+              "minInclusive": 88,
+              "maxInclusive": 92,
+              "points": 0
+            },
+            {
+              "minInclusive": 93,
+              "maxInclusive": 100,
+              "points": 0
+            }
+          ]
+        },
+        "supplemental": {
+          "bands": [
+            {
+              "minInclusive": null,
+              "maxInclusive": 83,
+              "points": 3
+            },
+            {
+              "minInclusive": 84,
+              "maxInclusive": 85,
+              "points": 2
+            },
+            {
+              "minInclusive": 86,
+              "maxInclusive": 87,
+              "points": 1
+            },
+            {
+              "minInclusive": 88,
+              "maxInclusive": 92,
+              "points": 0
+            },
+            {
+              "minInclusive": 93,
+              "maxInclusive": 94,
+              "points": 1
+            },
+            {
+              "minInclusive": 95,
+              "maxInclusive": 96,
+              "points": 2
+            },
+            {
+              "minInclusive": 97,
+              "maxInclusive": 100,
+              "points": 3
+            }
+          ]
+        }
+      }
+    },
+    "oxygen": {
+      "pointsByValue": {
+        "air": 0,
+        "supplemental": 2
+      }
+    },
+    "systolic": {
+      "bands": [
+        {
+          "minInclusive": null,
+          "maxInclusive": 90,
+          "points": 3
+        },
+        {
+          "minInclusive": 91,
+          "maxInclusive": 100,
+          "points": 2
+        },
+        {
+          "minInclusive": 101,
+          "maxInclusive": 110,
+          "points": 1
+        },
+        {
+          "minInclusive": 111,
+          "maxInclusive": 219,
+          "points": 0
+        },
+        {
+          "minInclusive": 220,
+          "maxInclusive": null,
+          "points": 3
+        }
+      ]
+    },
+    "pulse": {
+      "bands": [
+        {
+          "minInclusive": null,
+          "maxInclusive": 40,
+          "points": 3
+        },
+        {
+          "minInclusive": 41,
+          "maxInclusive": 50,
+          "points": 1
+        },
+        {
+          "minInclusive": 51,
+          "maxInclusive": 90,
+          "points": 0
+        },
+        {
+          "minInclusive": 91,
+          "maxInclusive": 110,
+          "points": 1
+        },
+        {
+          "minInclusive": 111,
+          "maxInclusive": 130,
+          "points": 2
+        },
+        {
+          "minInclusive": 131,
+          "maxInclusive": null,
+          "points": 3
+        }
+      ]
+    },
+    "acvpu": {
+      "pointsByValue": {
+        "A": 0,
+        "C": 3,
+        "V": 3,
+        "P": 3,
+        "U": 3
+      }
+    },
+    "temperature": {
+      "bands": [
+        {
+          "minInclusive": null,
+          "maxInclusive": 35,
+          "points": 3
+        },
+        {
+          "minInclusive": 35.1,
+          "maxInclusive": 36,
+          "points": 1
+        },
+        {
+          "minInclusive": 36.1,
+          "maxInclusive": 38,
+          "points": 0
+        },
+        {
+          "minInclusive": 38.1,
+          "maxInclusive": 39,
+          "points": 1
+        },
+        {
+          "minInclusive": 39.1,
+          "maxInclusive": null,
+          "points": 2
+        }
+      ]
+    },
+    "obRespirations": {
+      "bands": [
+        {
+          "minInclusive": null,
+          "maxInclusive": 9,
+          "points": 3
+        },
+        {
+          "minInclusive": 10,
+          "maxInclusive": 20,
+          "points": 0
+        },
+        {
+          "minInclusive": 21,
+          "maxInclusive": 29,
+          "points": 2
+        },
+        {
+          "minInclusive": 30,
+          "maxInclusive": null,
+          "points": 3
+        }
+      ]
+    },
+    "obSaturation": {
+      "bands": [
+        {
+          "minInclusive": null,
+          "maxInclusive": 95,
+          "points": 3
+        },
+        {
+          "minInclusive": 96,
+          "maxInclusive": 100,
+          "points": 0
+        }
+      ]
+    },
+    "obOxygen": {
+      "pointsByValue": {
+        "air": 0,
+        "supplemental": 3
+      }
+    },
+    "obSystolic": {
+      "bands": [
+        {
+          "minInclusive": null,
+          "maxInclusive": 79,
+          "points": 3
+        },
+        {
+          "minInclusive": 80,
+          "maxInclusive": 89,
+          "points": 2
+        },
+        {
+          "minInclusive": 90,
+          "maxInclusive": 139,
+          "points": 0
+        },
+        {
+          "minInclusive": 140,
+          "maxInclusive": 149,
+          "points": 1
+        },
+        {
+          "minInclusive": 150,
+          "maxInclusive": 159,
+          "points": 2
+        },
+        {
+          "minInclusive": 160,
+          "maxInclusive": null,
+          "points": 3
+        }
+      ]
+    },
+    "obDiastolic": {
+      "bands": [
+        {
+          "minInclusive": null,
+          "maxInclusive": 89,
+          "points": 0
+        },
+        {
+          "minInclusive": 90,
+          "maxInclusive": 99,
+          "points": 1
+        },
+        {
+          "minInclusive": 100,
+          "maxInclusive": 109,
+          "points": 2
+        },
+        {
+          "minInclusive": 110,
+          "maxInclusive": null,
+          "points": 3
+        }
+      ]
+    },
+    "obPulse": {
+      "bands": [
+        {
+          "minInclusive": null,
+          "maxInclusive": 59,
+          "points": 3
+        },
+        {
+          "minInclusive": 60,
+          "maxInclusive": 110,
+          "points": 0
+        },
+        {
+          "minInclusive": 111,
+          "maxInclusive": 129,
+          "points": 2
+        },
+        {
+          "minInclusive": 130,
+          "maxInclusive": null,
+          "points": 3
+        }
+      ]
+    },
+    "obTemperature": {
+      "bands": [
+        {
+          "minInclusive": null,
+          "maxInclusive": 35,
+          "points": 3
+        },
+        {
+          "minInclusive": 35.1,
+          "maxInclusive": 36,
+          "points": 1
+        },
+        {
+          "minInclusive": 36.1,
+          "maxInclusive": 37.9,
+          "points": 0
+        },
+        {
+          "minInclusive": 38,
+          "maxInclusive": 38.9,
+          "points": 1
+        },
+        {
+          "minInclusive": 39,
+          "maxInclusive": null,
+          "points": 3
+        }
+      ]
+    }
+  },
+  "colourRules": {
+    "evaluation": "firstMatchingRule",
+    "adult": [
+      {
+        "colour": "red",
+        "minTotal": 7
+      },
+      {
+        "colour": "orange",
+        "minTotal": 5
+      },
+      {
+        "colour": "yellow",
+        "anyComponentAtLeast": 3
+      },
+      {
+        "colour": "green",
+        "minTotal": 0
+      }
+    ],
+    "obstetric": [
+      {
+        "colour": "red",
+        "minTotal": 6
+      },
+      {
+        "colour": "orange",
+        "anyComponentAtLeast": 3
+      },
+      {
+        "colour": "orange",
+        "minTotal": 4
+      },
+      {
+        "colour": "yellow",
+        "minTotal": 1
+      },
+      {
+        "colour": "green",
+        "minTotal": 0
+      }
+    ]
+  },
+  "triage_colors": {
+    "red": "Red",
+    "orange": "Orange",
+    "yellow": "Yellow",
+    "green": "Green"
+  },
+  "extraction_notes": [
+    "Clinical categories and care needs/processes come from pages 10–48. NEWS2, ONEWS2, GCS, mNIHSS, monitoring, orders, and SBAR are supporting materials and are not separate clinical categories.",
+    "The category pages are the source for criteria. The overviews on pages 3–5 sometimes differ from the category pages. Differences are retained unless a resolution is recorded. Trauma alert colors come from page 3.",
+    "Line breaks and extra spaces have been normalized. Clinical conditions and thresholds in the findings have not been converted into automated decision rules.",
+    "An empty criteria list means that the category has no color-coded criteria of its own or that its criteria appear in subcategories."
+  ],
+  "categories": [
+    {
+      "category": "Allergy",
+      "source_pages": [
+        10
+      ],
+      "criteria": [
+        {
+          "text": "Stridor, a threatened or obstructed airway, or an endotracheal tube or laryngeal mask in place",
+          "triage_color": "red",
+          "source_page": 10,
+          "id": "allergy.01"
+        },
+        {
+          "text": "Acute, potentially serious allergic reaction",
+          "triage_color": "orange",
+          "source_page": 10,
+          "id": "allergy.02"
+        },
+        {
+          "text": "Bite from a venomous animal",
+          "triage_color": "yellow",
+          "source_page": 10,
+          "id": "allergy.03"
+        }
+      ],
+      "id": "allergy",
+      "displayLabel": "Allergy"
+    },
+    {
+      "category": "Blood pressure",
+      "source_pages": [
+        11
+      ],
+      "criteria": [],
+      "notes": "The color table lists no warning signs specific to this category. Use clinical judgment and the other triage components. An empty list does not imply green priority.",
+      "id": "blood-pressure",
+      "displayLabel": "Blood pressure"
+    },
+    {
+      "category": "Bleeding/anemia",
+      "source_pages": [
+        12
+      ],
+      "criteria": [
+        {
+          "text": "Major uncontrolled bleeding",
+          "triage_color": "red",
+          "source_page": 12,
+          "id": "bleeding.01"
+        },
+        {
+          "text": "Hematemesis or ongoing melena",
+          "triage_color": "orange",
+          "source_page": 12,
+          "id": "bleeding.02"
+        },
+        {
+          "text": "Major bleeding, now controlled",
+          "triage_color": "yellow",
+          "source_page": 12,
+          "id": "bleeding.03"
+        },
+        {
+          "text": "Hematemesis or ongoing melena with a pulse >120/min",
+          "triage_color": "red",
+          "source_page": 12,
+          "id": "bleeding.04"
+        },
+        {
+          "text": "Posterior nosebleed or postoperative tonsillar bleeding",
+          "triage_color": "orange",
+          "source_page": 12,
+          "id": "bleeding.05"
+        },
+        {
+          "text": "Hemoglobin <60 g/L without ongoing bleeding",
+          "triage_color": "yellow",
+          "source_page": 12,
+          "id": "bleeding.06"
+        },
+        {
+          "text": "Heavy vaginal bleeding soaking through several overnight pads per hour",
+          "triage_color": "orange",
+          "source_page": 12,
+          "id": "bleeding.07"
+        }
+      ],
+      "id": "bleeding",
+      "displayLabel": "Bleeding/anemia"
+    },
+    {
+      "category": "Chest pain",
+      "source_pages": [
+        13
+      ],
+      "criteria": [
+        {
+          "text": "Chest pain with ST elevation or new bundle branch block",
+          "triage_color": "red",
+          "source_page": 13,
+          "id": "chest-pain.01"
+        },
+        {
+          "text": "Chest pain with new ECG changes",
+          "triage_color": "orange",
+          "source_page": 13,
+          "id": "chest-pain.02"
+        },
+        {
+          "text": "Ongoing chest pain with low suspicion of a serious cause and no clear tenderness on palpation",
+          "triage_color": "yellow",
+          "source_page": 13,
+          "id": "chest-pain.03"
+        },
+        {
+          "text": "Chest pain with syncope or ongoing autonomic symptoms",
+          "triage_color": "red",
+          "source_page": 13,
+          "id": "chest-pain.04"
+        },
+        {
+          "text": "Ongoing chest pain with suspected acute coronary syndrome or another serious cause",
+          "triage_color": "orange",
+          "source_page": 13,
+          "id": "chest-pain.05"
+        },
+        {
+          "text": "Chest pain within the past 24 hours, now resolved, with suspected acute coronary syndrome or another serious cause",
+          "triage_color": "yellow",
+          "source_page": 13,
+          "id": "chest-pain.06"
+        },
+        {
+          "text": "Chest pain related to breathing, with a suspected serious cause",
+          "triage_color": "yellow",
+          "source_page": 13,
+          "id": "chest-pain.07"
+        }
+      ],
+      "id": "chest-pain",
+      "displayLabel": "Chest pain"
+    },
+    {
+      "category": "Abdominal pain",
+      "source_pages": [
+        14
+      ],
+      "criteria": [
+        {
+          "text": "Sudden, severe (level 3), constant abdominal pain with systolic BP <90 mmHg and/or pulse >120/min",
+          "triage_color": "red",
+          "source_page": 14,
+          "id": "abdominal-pain.01"
+        },
+        {
+          "text": "Sudden, severe abdominal pain (level 3) or autonomic symptoms",
+          "triage_color": "orange",
+          "source_page": 14,
+          "id": "abdominal-pain.02"
+        },
+        {
+          "text": "Ongoing vomiting",
+          "triage_color": "yellow",
+          "source_page": 14,
+          "id": "abdominal-pain.03"
+        }
+      ],
+      "id": "abdominal-pain",
+      "displayLabel": "Abdominal pain"
+    },
+    {
+      "category": "Diabetes",
+      "source_pages": [
+        15
+      ],
+      "criteria": [
+        {
+          "text": "Hypoglycemia with blood glucose <2.5 mmol/L",
+          "triage_color": "red",
+          "source_page": 15,
+          "id": "diabetes.01"
+        },
+        {
+          "text": "Hyperglycemia with blood glucose >11 mmol/L plus respiratory rate ≥22/min or metabolic acidosis",
+          "triage_color": "orange",
+          "source_page": 15,
+          "id": "diabetes.02"
+        }
+      ],
+      "id": "diabetes",
+      "displayLabel": "Diabetes"
+    },
+    {
+      "category": "Diarrhea/vomiting",
+      "source_pages": [
+        16
+      ],
+      "criteria": [
+        {
+          "text": "Ongoing vomiting",
+          "triage_color": "yellow",
+          "source_page": 16,
+          "id": "diarrhoea.01"
+        }
+      ],
+      "id": "diarrhoea",
+      "displayLabel": "Diarrhea/vomiting"
+    },
+    {
+      "category": "Shortness of breath",
+      "source_pages": [
+        17
+      ],
+      "criteria": [
+        {
+          "text": "Shortness of breath with froth at the airway",
+          "triage_color": "red",
+          "source_page": 17,
+          "id": "dyspnoea.01"
+        },
+        {
+          "text": "Acute severe shortness of breath, visibly labored breathing, cyanosis, or exhaustion",
+          "triage_color": "orange",
+          "source_page": 17,
+          "id": "dyspnoea.02"
+        },
+        {
+          "text": "Severe shortness of breath with ST elevation or new bundle branch block",
+          "triage_color": "red",
+          "source_page": 17,
+          "id": "dyspnoea.03"
+        },
+        {
+          "text": "New shortness of breath with new ECG changes",
+          "triage_color": "orange",
+          "source_page": 17,
+          "id": "dyspnoea.04"
+        }
+      ],
+      "id": "dyspnoea",
+      "displayLabel": "Shortness of breath"
+    },
+    {
+      "category": "Limb problems",
+      "source_pages": [
+        18
+      ],
+      "criteria": [
+        {
+          "text": "Acute limb ischemia (pale, cold limb)",
+          "triage_color": "orange",
+          "source_page": 18,
+          "id": "extremity.01"
+        },
+        {
+          "text": "Limb pain or swelling with new shortness of breath",
+          "triage_color": "yellow",
+          "source_page": 18,
+          "id": "extremity.02"
+        },
+        {
+          "text": "Swelling within a single red joint with fever or suspected infection",
+          "triage_color": "yellow",
+          "source_page": 18,
+          "id": "extremity.03"
+        }
+      ],
+      "id": "extremity",
+      "displayLabel": "Limb problems"
+    },
+    {
+      "category": "Pregnancy from 18 weeks (18+0)/postpartum",
+      "source_pages": [
+        19
+      ],
+      "criteria": [
+        {
+          "text": "Heavy vaginal bleeding in pregnancy, soaking through several overnight pads per hour",
+          "triage_color": "red",
+          "source_page": 19,
+          "id": "pregnancy-postpartum.01"
+        },
+        {
+          "text": "Moderate vaginal bleeding in pregnancy (more than a heavy period)",
+          "triage_color": "orange",
+          "source_page": 19,
+          "id": "pregnancy-postpartum.02"
+        },
+        {
+          "text": "Ongoing or previous seizure during pregnancy or up to 2 weeks after delivery",
+          "triage_color": "red",
+          "source_page": 19,
+          "id": "pregnancy-postpartum.03"
+        },
+        {
+          "text": "Severe abdominal pain in pregnancy, persistent or intermittent",
+          "triage_color": "orange",
+          "source_page": 19,
+          "id": "pregnancy-postpartum.04"
+        },
+        {
+          "text": "Suspected infection in pregnancy or in association with planned termination or miscarriage. Consult gynecology.",
+          "triage_color": "yellow",
+          "source_page": 19,
+          "id": "pregnancy-postpartum.05"
+        },
+        {
+          "text": "Rapid onset of severe abdominal pain in pregnancy",
+          "triage_color": "red",
+          "source_page": 19,
+          "id": "pregnancy-postpartum.06"
+        },
+        {
+          "text": "Headache, abdominal pain, chest pain, or vomiting in pregnancy with BP >140/90 mmHg (preeclampsia)",
+          "triage_color": "orange",
+          "source_page": 19,
+          "id": "pregnancy-postpartum.07"
+        },
+        {
+          "text": "Pregnancy with systolic BP >160 mmHg or diastolic BP >110 mmHg",
+          "triage_color": "red",
+          "source_page": 19,
+          "id": "pregnancy-postpartum.08"
+        },
+        {
+          "text": "Fever >38 °C within 14 days after delivery",
+          "triage_color": "orange",
+          "source_page": 19,
+          "id": "pregnancy-postpartum.09"
+        },
+        {
+          "text": "Abdominal trauma during pregnancy",
+          "triage_color": "orange",
+          "source_page": 19,
+          "id": "pregnancy-postpartum.10"
+        }
+      ],
+      "id": "pregnancy-postpartum",
+      "displayLabel": "Pregnancy from 18 weeks (18+0)/postpartum"
+    },
+    {
+      "category": "Gynecologic presentations (age 16 and over)",
+      "source_pages": [
+        21,
+        22
+      ],
+      "criteria": [],
+      "subcategories": [
+        {
+          "category": "Pregnancy through 17 weeks + 6 days",
+          "source_pages": [
+            21,
+            22
+          ],
+          "criteria": [
+            {
+              "text": "Sudden lower abdominal pain and shock, with or without heavy vaginal bleeding",
+              "triage_color": "red",
+              "source_page": 21,
+              "id": "gynaecology.01.01"
+            },
+            {
+              "text": "Severe lower abdominal pain and pulse >120/min despite analgesia, with or without heavy vaginal bleeding",
+              "triage_color": "orange",
+              "source_page": 21,
+              "id": "gynaecology.01.02"
+            },
+            {
+              "text": "Fever with chills",
+              "triage_color": "orange",
+              "source_page": 21,
+              "id": "gynaecology.01.03"
+            },
+            {
+              "text": "Lower abdominal pain",
+              "triage_color": "yellow",
+              "source_page": 21,
+              "id": "gynaecology.01.04"
+            },
+            {
+              "text": "Ongoing miscarriage at >10 weeks by ultrasound",
+              "triage_color": "yellow",
+              "source_page": 21,
+              "id": "gynaecology.01.05"
+            },
+            {
+              "text": "Fever or elevated CRP with lower abdominal pain or bleeding",
+              "triage_color": "yellow",
+              "source_page": 21,
+              "id": "gynaecology.01.06"
+            },
+            {
+              "text": "Abdominal swelling, abdominal pain, and increased respiratory rate after starting IVF treatment***",
+              "triage_color": "yellow",
+              "source_page": 21,
+              "id": "gynaecology.01.07"
+            },
+            {
+              "text": "Referral from a gynecologist for suspected ectopic pregnancy without the symptoms listed above",
+              "triage_color": "green",
+              "source_page": 22,
+              "time_window": "07-16",
+              "id": "gynaecology.01.08"
+            },
+            {
+              "text": "Lower abdominal discomfort to one side, with or without light vaginal bleeding, when an intrauterine pregnancy has not been confirmed",
+              "triage_color": "green",
+              "source_page": 22,
+              "time_window": "07-16",
+              "id": "gynaecology.01.09"
+            },
+            {
+              "text": "Central lower abdominal discomfort with diminishing pregnancy symptoms at >10 weeks",
+              "triage_color": "green",
+              "source_page": 22,
+              "time_window": "07-16",
+              "id": "gynaecology.01.10"
+            },
+            {
+              "text": "Other bleeding in early pregnancy (Barium guideline on bleeding during pregnancy)",
+              "triage_color": "green",
+              "source_page": 22,
+              "time_window": "07-16",
+              "id": "gynaecology.01.11"
+            }
+          ],
+          "id": "gynaecology.01",
+          "displayLabel": "Gynecology 16+ · Pregnancy through 17 weeks + 6 days"
+        },
+        {
+          "category": "Nausea/vomiting of pregnancy",
+          "source_pages": [
+            21,
+            22
+          ],
+          "criteria": [
+            {
+              "text": "PUQE score 13–15 despite treatment, with symptoms that cannot wait until the next day",
+              "triage_color": "yellow",
+              "source_page": 21,
+              "id": "gynaecology.02.01"
+            },
+            {
+              "text": "PUQE score <13. Give advice at triage and refer to primary care.",
+              "triage_color": "green",
+              "source_page": 22,
+              "time_window": "07-16",
+              "id": "gynaecology.02.02"
+            }
+          ],
+          "id": "gynaecology.02",
+          "displayLabel": "Gynecology 16+ · Nausea/vomiting of pregnancy"
+        },
+        {
+          "category": "Not pregnant, abdominal pain/bleeding",
+          "source_pages": [
+            21,
+            22
+          ],
+          "criteria": [
+            {
+              "text": "Bleeding with shock",
+              "triage_color": "red",
+              "source_page": 21,
+              "id": "gynaecology.03.01"
+            },
+            {
+              "text": "Pulse >120/min or severe pain despite analgesia",
+              "triage_color": "orange",
+              "source_page": 21,
+              "id": "gynaecology.03.02"
+            },
+            {
+              "text": "Fever and lower abdominal symptoms with elevated CRP",
+              "triage_color": "yellow",
+              "source_page": 21,
+              "id": "gynaecology.03.03"
+            },
+            {
+              "text": "Heavy vaginal bleeding soaking through several overnight pads per hour",
+              "triage_color": "orange",
+              "source_page": 21,
+              "id": "gynaecology.03.04",
+              "sourceTriageColour": "yellow",
+              "resolutionId": "gynaecology"
+            },
+            {
+              "text": "Known endometriosis or ongoing evaluation for severe dysmenorrhea, with other causes of pain excluded and symptoms uncontrolled by measures available at home",
+              "triage_color": "yellow",
+              "source_page": 21,
+              "id": "gynaecology.03.05"
+            },
+            {
+              "text": "Several days of lower abdominal pain with vaginal discharge or bleeding",
+              "triage_color": "green",
+              "source_page": 22,
+              "time_window": "07-16",
+              "id": "gynaecology.03.06"
+            },
+            {
+              "text": "Ring pessary has fallen out, causing disabling prolapse",
+              "triage_color": "green",
+              "source_page": 22,
+              "time_window": "07-16",
+              "id": "gynaecology.03.07"
+            }
+          ],
+          "id": "gynaecology.03",
+          "displayLabel": "Gynecology 16+ · Not pregnant, abdominal pain/bleeding"
+        },
+        {
+          "category": "Postoperative problems",
+          "source_pages": [
+            21,
+            22
+          ],
+          "criteria": [
+            {
+              "text": "Postoperative infection. See infection.",
+              "triage_color": "red",
+              "source_page": 21,
+              "cross_reference": "Infection/fever/sepsis",
+              "id": "gynaecology.04.01",
+              "navigateToCategory": "infection"
+            },
+            {
+              "text": "Postoperative infection. See infection.",
+              "triage_color": "orange",
+              "source_page": 21,
+              "cross_reference": "Infection/fever/sepsis",
+              "id": "gynaecology.04.02",
+              "navigateToCategory": "infection"
+            },
+            {
+              "text": "Postoperative infection. See infection.",
+              "triage_color": "yellow",
+              "source_page": 21,
+              "cross_reference": "Infection/fever/sepsis",
+              "id": "gynaecology.04.03",
+              "navigateToCategory": "infection"
+            },
+            {
+              "text": "Bleeding from the suture site",
+              "triage_color": "yellow",
+              "source_page": 21,
+              "id": "gynaecology.04.04"
+            },
+            {
+              "text": "Vaginal cuff dehiscence**",
+              "triage_color": "yellow",
+              "source_page": 21,
+              "id": "gynaecology.04.05"
+            },
+            {
+              "text": "Pain despite analgesia that cannot wait until the next day",
+              "triage_color": "yellow",
+              "source_page": 21,
+              "id": "gynaecology.04.06"
+            },
+            {
+              "text": "Postoperative complication with discomfort or mild pain related to surgery",
+              "triage_color": "green",
+              "source_page": 22,
+              "time_window": "07-16",
+              "id": "gynaecology.04.07"
+            }
+          ],
+          "id": "gynaecology.04",
+          "displayLabel": "Gynecology 16+ · Postoperative problems"
+        },
+        {
+          "category": "Urinary retention",
+          "source_pages": [
+            21,
+            22
+          ],
+          "criteria": [
+            {
+              "text": "Severe abdominal pain",
+              "triage_color": "orange",
+              "source_page": 21,
+              "id": "gynaecology.05.01"
+            },
+            {
+              "text": "Has not urinated for 6 hours",
+              "triage_color": "orange",
+              "source_page": 21,
+              "id": "gynaecology.05.02"
+            },
+            {
+              "text": "Difficulty emptying the bladder, with or without a ring pessary",
+              "triage_color": "yellow",
+              "source_page": 21,
+              "id": "gynaecology.05.03"
+            },
+            {
+              "text": "Ring pessary has fallen out, causing functionally limiting prolapse",
+              "triage_color": "green",
+              "source_page": 22,
+              "time_window": "07-16",
+              "id": "gynaecology.05.04"
+            }
+          ],
+          "id": "gynaecology.05",
+          "displayLabel": "Gynecology 16+ · Urinary retention"
+        },
+        {
+          "category": "Bartholinitis/vulvar abscess and local infection",
+          "source_pages": [
+            21,
+            22
+          ],
+          "criteria": [
+            {
+              "text": "Marked pain, difficulty sitting or moving, and fever",
+              "triage_color": "yellow",
+              "source_page": 21,
+              "id": "gynaecology.06.01"
+            },
+            {
+              "text": "Difficulty urinating",
+              "triage_color": "yellow",
+              "source_page": 21,
+              "id": "gynaecology.06.02"
+            },
+            {
+              "text": "Bartholinitis or vulvar abscess without the marked symptoms above",
+              "triage_color": "green",
+              "source_page": 22,
+              "time_window": "07-16",
+              "id": "gynaecology.06.03"
+            },
+            {
+              "text": "Word catheter fell out <6 hours after insertion",
+              "triage_color": "green",
+              "source_page": 22,
+              "time_window": "07-16",
+              "id": "gynaecology.06.04"
+            }
+          ],
+          "id": "gynaecology.06",
+          "displayLabel": "Gynecology 16+ · Bartholinitis/vulvar abscess and local infection"
+        }
+      ],
+      "notes": [
+        "The green criteria are headed GREEN 07–16. The separate referral table for antenatal care, primary care, and outpatient gynecology on page 22 has no explicit triage color and is excluded from the color-coded criteria.",
+        "Three color rows refer postoperative infection to the infection category. These are cross-references and do not assign all three colors to postoperative infection.",
+        "In the original, page 22 is labeled 1/2 although it is the continuation page."
+      ],
+      "definitions": {
+        "**": "The vaginal cuff is sutured during hysterectomy. It can rupture spontaneously or after vaginal penetration. Bleeding and pain are uncommon, but assessment is needed because of the risk of bowel prolapse or infection.",
+        "***": "Ovarian hyperstimulation syndrome (OHSS) can develop after starting IVF treatment, before or after embryo transfer. See the Barium guideline on OHSS."
+      },
+      "id": "gynaecology",
+      "displayLabel": "Gynecologic presentations (age 16 and over)"
+    },
+    {
+      "category": "Heart rhythm",
+      "source_pages": [
+        23
+      ],
+      "criteria": [
+        {
+          "text": "Wide-complex tachycardia as the reason for presentation",
+          "triage_color": "orange",
+          "source_page": 23,
+          "id": "arrhythmia.01"
+        }
+      ],
+      "id": "arrhythmia",
+      "displayLabel": "Heart rhythm"
+    },
+    {
+      "category": "Cardiac arrest/airway obstruction",
+      "source_pages": [
+        24
+      ],
+      "criteria": [
+        {
+          "text": "Cardiac arrest, ongoing or resuscitated",
+          "triage_color": "red",
+          "source_page": 24,
+          "id": "cardiac-arrest.01"
+        },
+        {
+          "text": "Stridor, a threatened or obstructed airway, or an endotracheal tube or laryngeal mask in place",
+          "triage_color": "red",
+          "source_page": 24,
+          "id": "cardiac-arrest.02"
+        }
+      ],
+      "id": "cardiac-arrest",
+      "displayLabel": "Cardiac arrest/airway obstruction"
+    },
+    {
+      "category": "Skin",
+      "source_pages": [
+        25
+      ],
+      "criteria": [],
+      "notes": "The color table lists no warning signs specific to this category. Use clinical judgment and the other triage components. An empty list does not imply green priority.",
+      "id": "skin",
+      "displayLabel": "Skin"
+    },
+    {
+      "category": "Headache",
+      "source_pages": [
+        26
+      ],
+      "criteria": [
+        {
+          "text": "Abrupt onset of intense headache",
+          "triage_color": "orange",
+          "source_page": 26,
+          "id": "headache.01"
+        }
+      ],
+      "id": "headache",
+      "displayLabel": "Headache"
+    },
+    {
+      "category": "Infection/fever/sepsis",
+      "source_pages": [
+        27
+      ],
+      "criteria": [
+        {
+          "text": "Suspected infection with NEWS2 ≥7",
+          "triage_color": "red",
+          "source_page": 27,
+          "id": "infection.01"
+        },
+        {
+          "text": "Suspected infection with NEWS2 5–6",
+          "triage_color": "orange",
+          "source_page": 27,
+          "id": "infection.02"
+        },
+        {
+          "text": "Infection with fever, systemic illness, and neck stiffness, meningism, or petechiae",
+          "triage_color": "red",
+          "source_page": 27,
+          "id": "infection.03"
+        },
+        {
+          "text": "Suspected infection during chemotherapy or in an immunosuppressed patient",
+          "triage_color": "orange",
+          "source_page": 27,
+          "id": "infection.04"
+        }
+      ],
+      "id": "infection",
+      "displayLabel": "Infection/fever/sepsis"
+    },
+    {
+      "category": "Poisoning",
+      "source_pages": [
+        28
+      ],
+      "criteria": [
+        {
+          "text": "Stridor, a threatened or obstructed airway, or an endotracheal tube or laryngeal mask in place",
+          "triage_color": "red",
+          "source_page": 28,
+          "id": "intoxication.01"
+        },
+        {
+          "text": "Acute severe poisoning or poisoning with suicidal intent",
+          "triage_color": "orange",
+          "source_page": 28,
+          "id": "intoxication.02"
+        },
+        {
+          "text": "Venomous snake bite",
+          "triage_color": "yellow",
+          "source_page": 28,
+          "id": "intoxication.03"
+        },
+        {
+          "text": "Unconscious",
+          "triage_color": "red",
+          "source_page": 28,
+          "id": "intoxication.04"
+        },
+        {
+          "text": "New reduction in level of consciousness",
+          "triage_color": "orange",
+          "source_page": 28,
+          "id": "intoxication.05"
+        },
+        {
+          "text": "New confusion",
+          "triage_color": "orange",
+          "source_page": 28,
+          "id": "intoxication.06"
+        }
+      ],
+      "id": "intoxication",
+      "displayLabel": "Poisoning"
+    },
+    {
+      "category": "Complications of surgery, casts, or other procedures",
+      "source_pages": [
+        29
+      ],
+      "criteria": [],
+      "notes": "The color table lists no warning signs specific to this category. Use clinical judgment and the other triage components. An empty list does not imply green priority.",
+      "id": "postoperative",
+      "displayLabel": "Complications of surgery, casts, or other procedures"
+    },
+    {
+      "category": "Liver disease",
+      "source_pages": [
+        30
+      ],
+      "criteria": [],
+      "notes": "The color table lists no warning signs specific to this category. Use clinical judgment and the other triage components. An empty list does not imply green priority.",
+      "id": "liver",
+      "displayLabel": "Liver disease"
+    },
+    {
+      "category": "Groin",
+      "source_pages": [
+        31
+      ],
+      "criteria": [
+        {
+          "text": "Incarcerated inguinal hernia",
+          "triage_color": "orange",
+          "source_page": 31,
+          "id": "groin.01"
+        }
+      ],
+      "id": "groin",
+      "displayLabel": "Groin"
+    },
+    {
+      "category": "Altered level of consciousness",
+      "source_pages": [
+        32
+      ],
+      "criteria": [
+        {
+          "text": "Unconscious",
+          "triage_color": "red",
+          "source_page": 32,
+          "id": "consciousness.01"
+        },
+        {
+          "text": "New reduction in level of consciousness",
+          "triage_color": "orange",
+          "source_page": 32,
+          "id": "consciousness.02"
+        },
+        {
+          "text": "New confusion",
+          "triage_color": "orange",
+          "source_page": 32,
+          "id": "consciousness.03"
+        }
+      ],
+      "id": "consciousness",
+      "displayLabel": "Altered level of consciousness"
+    },
+    {
+      "category": "Neurologic symptoms/dizziness/seizures",
+      "source_pages": [
+        33
+      ],
+      "criteria": [
+        {
+          "text": "Suspected stroke with symptoms for ≤4.5 hours and mNIHSS ≥1",
+          "triage_color": "red",
+          "source_page": 33,
+          "id": "neurological.01"
+        },
+        {
+          "text": "New reduction in level of consciousness",
+          "triage_color": "orange",
+          "source_page": 33,
+          "id": "neurological.02"
+        },
+        {
+          "text": "Suspected stroke with symptoms for >24 hours and mNIHSS ≥2",
+          "triage_color": "yellow",
+          "source_page": 33,
+          "id": "neurological.03"
+        },
+        {
+          "text": "Suspected stroke with symptoms for 4.5–24 hours or unknown onset, and mNIHSS ≥2",
+          "triage_color": "red",
+          "source_page": 33,
+          "id": "neurological.04"
+        },
+        {
+          "text": "Suspected stroke with symptoms for 4.5–24 hours or unknown onset, and mNIHSS of 1",
+          "triage_color": "yellow",
+          "source_page": 33,
+          "id": "neurological.05"
+        },
+        {
+          "text": "Acute-onset dizziness with symptoms for ≤4.5 hours and mNIHSS ≥1",
+          "triage_color": "red",
+          "source_page": 33,
+          "id": "neurological.06"
+        },
+        {
+          "text": "Acute-onset dizziness with symptoms for >24 hours and mNIHSS ≥2",
+          "triage_color": "yellow",
+          "source_page": 33,
+          "id": "neurological.07"
+        },
+        {
+          "text": "Ongoing seizures",
+          "triage_color": "red",
+          "source_page": 33,
+          "id": "neurological.08"
+        },
+        {
+          "text": "Acute-onset dizziness with symptoms for 4.5–24 hours or unknown onset, and mNIHSS of 1",
+          "triage_color": "yellow",
+          "source_page": 33,
+          "id": "neurological.09"
+        },
+        {
+          "text": "TIA within the past 24 hours, now symptom-free",
+          "triage_color": "yellow",
+          "source_page": 33,
+          "id": "neurological.10"
+        }
+      ],
+      "id": "neurological",
+      "displayLabel": "Neurologic symptoms/dizziness/seizures"
+    },
+    {
+      "category": "Nonspecific illness",
+      "source_pages": [
+        35
+      ],
+      "criteria": [
+        {
+          "text": "Potassium ≥6.0 mmol/L with ECG changes",
+          "triage_color": "red",
+          "source_page": 35,
+          "id": "nonspecific.01"
+        },
+        {
+          "text": "Known Addison’s disease or adrenal insufficiency",
+          "triage_color": "orange",
+          "source_page": 35,
+          "id": "nonspecific.02"
+        }
+      ],
+      "id": "nonspecific",
+      "displayLabel": "Nonspecific illness"
+    },
+    {
+      "category": "Psychiatric symptoms",
+      "source_pages": [
+        36,
+        37
+      ],
+      "criteria": [
+        {
+          "text": "Ongoing suicide attempt or suspected serious physical harm from injury or substance ingestion. Assess in a medical emergency department.",
+          "triage_color": "red",
+          "source_page": 36,
+          "id": "psychiatric.01"
+        },
+        {
+          "text": "Ongoing violence, acting out, or other behavior requiring physical intervention",
+          "triage_color": "red",
+          "source_page": 36,
+          "id": "psychiatric.02"
+        },
+        {
+          "text": "Delirium tremens",
+          "triage_color": "red",
+          "source_page": 36,
+          "id": "psychiatric.03"
+        },
+        {
+          "text": "Current suicidal intent with imminent risk of acting",
+          "triage_color": "orange",
+          "source_page": 36,
+          "id": "psychiatric.04"
+        },
+        {
+          "text": "Physically threatening behavior",
+          "triage_color": "orange",
+          "source_page": 36,
+          "id": "psychiatric.05"
+        },
+        {
+          "text": "Eating disorder with metabolic disturbance confirmed by blood gas pH, base excess, or lactate, or declining consciousness within the past 12 hours",
+          "triage_color": "orange",
+          "source_page": 36,
+          "id": "psychiatric.06"
+        },
+        {
+          "text": "Catatonia",
+          "triage_color": "orange",
+          "source_page": 36,
+          "id": "psychiatric.07"
+        },
+        {
+          "text": "Withdrawal with physical signs and risk of seizures and delirium tremens",
+          "triage_color": "orange",
+          "source_page": 36,
+          "id": "psychiatric.08"
+        },
+        {
+          "text": "Ongoing self-harm",
+          "triage_color": "yellow",
+          "source_page": 36,
+          "id": "psychiatric.09"
+        },
+        {
+          "text": "Other suicidality at step 5 or higher on the suicide ladder (suicidstegen)",
+          "triage_color": "yellow",
+          "source_page": 36,
+          "id": "psychiatric.10"
+        },
+        {
+          "text": "Verbally threatening behavior",
+          "triage_color": "yellow",
+          "source_page": 36,
+          "id": "psychiatric.11"
+        },
+        {
+          "text": "New or worsening eating disorder with inability to care for oneself",
+          "triage_color": "yellow",
+          "source_page": 36,
+          "id": "psychiatric.12"
+        },
+        {
+          "text": "Person in custody or detention",
+          "triage_color": "yellow",
+          "source_page": 36,
+          "id": "psychiatric.13"
+        },
+        {
+          "text": "New disturbance of reality perception or behavior",
+          "triage_color": "yellow",
+          "source_page": 36,
+          "id": "psychiatric.14"
+        },
+        {
+          "text": "Marked inhibition",
+          "triage_color": "yellow",
+          "source_page": 36,
+          "id": "psychiatric.15"
+        },
+        {
+          "text": "Confusion or dissociation",
+          "triage_color": "yellow",
+          "source_page": 36,
+          "id": "psychiatric.16"
+        }
+      ],
+      "notes": [
+        "A patient with medication poisoning that can cause organ damage should be assessed in a medical emergency department.",
+        "Page 37 clarifies the warning signs. The explanations are retained separately."
+      ],
+      "clarifications": [
+        {
+          "triage_color": "red",
+          "text": "Suicide attempt. Assess the level of observation required and assess using NEWS2.",
+          "source_page": 37
+        },
+        {
+          "triage_color": "orange",
+          "text": "Self-harm with a strong wish to die now, or a threat of a suicide attempt in progress. Inform the nurse in charge immediately. Assess the level of observation required. Do not leave the patient alone. Are means of suicide available?",
+          "source_page": 37
+        },
+        {
+          "triage_color": "yellow",
+          "text": "Self-harm. The patient intentionally injures themselves in the emergency department.",
+          "source_page": 37
+        },
+        {
+          "triage_color": "red",
+          "text": "Ongoing violence. The patient attacks people or objects, for example by kicking, hitting, throwing or knocking things down, or smashing windows. Contact a physician immediately. Consider compulsory measures.",
+          "source_page": 37
+        },
+        {
+          "triage_color": "orange",
+          "text": "Physically threatening behavior. Clear intent to threaten another person physically, for example through an aggressive stance, grabbing their clothes, or raising a hand threateningly. Contact a physician. Offer sedative medication and assess the level of observation required.",
+          "source_page": 37
+        },
+        {
+          "triage_color": "yellow",
+          "text": "Verbally threatening behavior. An outburst that goes beyond raising the voice and is intended to humiliate or frighten another person. Offer sedative medication and assess the level of observation required.",
+          "source_page": 37
+        },
+        {
+          "triage_color": "red",
+          "text": "Delirium tremens is a serious medical condition requiring treatment. Contact a physician immediately if suspected. Onset is usually 2–4 days after stopping alcohol. Signs include picking at objects, delusions, marked agitation, confusion, and visual or auditory hallucinations. Assess using NEWS2. Elevated pulse, blood pressure, and temperature are common.",
+          "source_page": 37
+        },
+        {
+          "triage_color": "orange",
+          "text": "Marked withdrawal symptoms with physical signs and risk of seizures and delirium tremens. Contact a physician. Use a single room, offer sedative medication, and assess the level of observation required.",
+          "source_page": 37
+        },
+        {
+          "triage_color": "yellow",
+          "text": "New behavioral disturbance. Hallucinations and delusions may be new or reflect worsening psychosis. Confusion develops over hours to days. Mania may present with marked overactivity, pressured speech, and disinhibition. Other signs include marked anxiety, emotional lability, inhibition, or dissociation.",
+          "source_page": 37
+        }
+      ],
+      "id": "psychiatric",
+      "displayLabel": "Psychiatric symptoms"
+    },
+    {
+      "category": "Rectal symptoms",
+      "source_pages": [
+        38
+      ],
+      "criteria": [],
+      "notes": "The color table lists no warning signs specific to this category. Use clinical judgment and the other triage components. An empty list does not imply green priority.",
+      "id": "rectal",
+      "displayLabel": "Rectal symptoms"
+    },
+    {
+      "category": "Back pain",
+      "source_pages": [
+        39
+      ],
+      "criteria": [
+        {
+          "text": "Back pain with new saddle anesthesia or incontinence",
+          "triage_color": "orange",
+          "source_page": 39,
+          "id": "back.01"
+        }
+      ],
+      "id": "back",
+      "displayLabel": "Back pain"
+    },
+    {
+      "category": "Syncope",
+      "source_pages": [
+        40
+      ],
+      "criteria": [
+        {
+          "text": "Syncope without any warning symptoms",
+          "triage_color": "orange",
+          "source_page": 40,
+          "id": "syncope.01"
+        }
+      ],
+      "id": "syncope",
+      "displayLabel": "Syncope"
+    },
+    {
+      "category": "Male genital symptoms",
+      "source_pages": [
+        41
+      ],
+      "criteria": [
+        {
+          "text": "Sudden, severe, persistent genital or scrotal pain",
+          "triage_color": "orange",
+          "source_page": 41,
+          "id": "male-genital.01"
+        }
+      ],
+      "id": "male-genital",
+      "displayLabel": "Male genital symptoms"
+    },
+    {
+      "category": "Urinary symptoms",
+      "source_pages": [
+        42
+      ],
+      "criteria": [
+        {
+          "text": "Obstructed urinary outflow",
+          "triage_color": "yellow",
+          "source_page": 42,
+          "id": "urinary.01"
+        }
+      ],
+      "id": "urinary",
+      "displayLabel": "Urinary symptoms"
+    },
+    {
+      "category": "Trauma/injuries",
+      "source_pages": [
+        3,
+        43,
+        44
+      ],
+      "criteria": [],
+      "subcategories": [
+        {
+          "category": "Trauma/injuries meeting trauma alert criteria",
+          "source_pages": [
+            3,
+            43
+          ],
+          "criteria": [],
+          "subcategories": [
+            {
+              "category": "Level 1",
+              "source_pages": [
+                3,
+                43
+              ],
+              "criteria": [
+                {
+                  "text": "Ventilatory support needed",
+                  "triage_color": "red",
+                  "source_page": 43,
+                  "criterion_group": "Breathing",
+                  "color_source_page": 3,
+                  "id": "trauma-alert.01.01"
+                },
+                {
+                  "text": "Respiratory rate <10 or >29/min",
+                  "triage_color": "red",
+                  "source_page": 43,
+                  "criterion_group": "Breathing",
+                  "color_source_page": 3,
+                  "id": "trauma-alert.01.02"
+                },
+                {
+                  "text": "Respiratory compromise",
+                  "triage_color": "red",
+                  "source_page": 43,
+                  "criterion_group": "Breathing — children",
+                  "color_source_page": 3,
+                  "id": "trauma-alert.01.03",
+                  "population": "paediatric"
+                },
+                {
+                  "text": "BP <90 mmHg or no palpable radial pulse",
+                  "triage_color": "red",
+                  "source_page": 43,
+                  "criterion_group": "Circulation",
+                  "color_source_page": 3,
+                  "id": "trauma-alert.01.04"
+                },
+                {
+                  "text": "Capillary refill >2 seconds",
+                  "triage_color": "red",
+                  "source_page": 43,
+                  "criterion_group": "Circulation — children",
+                  "color_source_page": 3,
+                  "id": "trauma-alert.01.05",
+                  "population": "paediatric",
+                  "displayLabel": "Capillary refill >2 seconds"
+                },
+                {
+                  "text": "Pulse <90 or >190/min at age 0–1 year",
+                  "triage_color": "red",
+                  "source_page": 43,
+                  "criterion_group": "Circulation — children",
+                  "color_source_page": 3,
+                  "id": "trauma-alert.01.06",
+                  "population": "paediatric"
+                },
+                {
+                  "text": "Pulse <70 or >160/min at age 1–5 years",
+                  "triage_color": "red",
+                  "source_page": 43,
+                  "criterion_group": "Circulation — children",
+                  "color_source_page": 3,
+                  "id": "trauma-alert.01.07",
+                  "population": "paediatric"
+                },
+                {
+                  "text": "RLS ≥3 or GCS ≤13",
+                  "triage_color": "red",
+                  "source_page": 43,
+                  "criterion_group": "Neurology",
+                  "color_source_page": 3,
+                  "id": "trauma-alert.01.08"
+                },
+                {
+                  "text": "Penetrating injury to the head, neck, torso, or limbs above the elbow or knee, excluding superficial cuts*",
+                  "triage_color": "red",
+                  "source_page": 43,
+                  "criterion_group": "Anatomic criteria",
+                  "color_source_page": 3,
+                  "id": "trauma-alert.01.09"
+                },
+                {
+                  "text": "Open skull injury or depressed skull fracture*",
+                  "triage_color": "red",
+                  "source_page": 43,
+                  "criterion_group": "Anatomic criteria",
+                  "color_source_page": 3,
+                  "id": "trauma-alert.01.10"
+                },
+                {
+                  "text": "Facial or neck injury with a threatened airway",
+                  "triage_color": "red",
+                  "source_page": 43,
+                  "criterion_group": "Anatomic criteria",
+                  "color_source_page": 3,
+                  "id": "trauma-alert.01.11"
+                },
+                {
+                  "text": "Unstable or deformed chest wall*",
+                  "triage_color": "red",
+                  "source_page": 43,
+                  "criterion_group": "Anatomic criteria",
+                  "color_source_page": 3,
+                  "id": "trauma-alert.01.12"
+                },
+                {
+                  "text": "Severe pelvic pain (suspected pelvic fracture)*",
+                  "triage_color": "red",
+                  "source_page": 43,
+                  "criterion_group": "Anatomic criteria",
+                  "color_source_page": 3,
+                  "id": "trauma-alert.01.13"
+                },
+                {
+                  "text": "Suspected spinal cord injury*",
+                  "triage_color": "red",
+                  "source_page": 43,
+                  "criterion_group": "Anatomic criteria",
+                  "color_source_page": 3,
+                  "id": "trauma-alert.01.14"
+                },
+                {
+                  "text": "≥2 long-bone fractures",
+                  "triage_color": "red",
+                  "source_page": 43,
+                  "criterion_group": "Anatomic criteria",
+                  "color_source_page": 3,
+                  "id": "trauma-alert.01.15"
+                },
+                {
+                  "text": "Amputation proximal to the hand or foot*",
+                  "triage_color": "red",
+                  "source_page": 43,
+                  "criterion_group": "Anatomic criteria",
+                  "color_source_page": 3,
+                  "id": "trauma-alert.01.16"
+                },
+                {
+                  "text": "Major external bleeding",
+                  "triage_color": "red",
+                  "source_page": 43,
+                  "criterion_group": "Anatomic criteria",
+                  "color_source_page": 3,
+                  "id": "trauma-alert.01.17"
+                },
+                {
+                  "text": "Burns covering ≥18% of body surface area or inhalation injury*",
+                  "triage_color": "red",
+                  "source_page": 43,
+                  "criterion_group": "Anatomic criteria",
+                  "color_source_page": 3,
+                  "id": "trauma-alert.01.18"
+                }
+              ],
+              "id": "trauma-alert.01",
+              "criterionLabelSuffix": {
+                "en": "Level 1",
+                "sv": "Nivå 1"
+              },
+              "displayLabel": "Level 1"
+            },
+            {
+              "category": "Level 2",
+              "source_pages": [
+                3,
+                43
+              ],
+              "criteria": [
+                {
+                  "text": "Car crash at >50 km/h without a seat belt",
+                  "triage_color": "red",
+                  "source_page": 43,
+                  "criterion_group": "Mechanism of injury",
+                  "color_source_page": 3,
+                  "id": "trauma-alert.02.01"
+                },
+                {
+                  "text": "Ejected from a vehicle",
+                  "triage_color": "red",
+                  "source_page": 43,
+                  "criterion_group": "Mechanism of injury",
+                  "color_source_page": 3,
+                  "id": "trauma-alert.02.02"
+                },
+                {
+                  "text": "Entrapment requiring >20 minutes for extrication",
+                  "triage_color": "red",
+                  "source_page": 43,
+                  "criterion_group": "Mechanism of injury",
+                  "color_source_page": 3,
+                  "id": "trauma-alert.02.03"
+                },
+                {
+                  "text": "Motorcycle crash (or equivalent) at >35 km/h",
+                  "triage_color": "red",
+                  "source_page": 43,
+                  "criterion_group": "Mechanism of injury",
+                  "color_source_page": 3,
+                  "id": "trauma-alert.02.04"
+                },
+                {
+                  "text": "Fall from >5 m",
+                  "triage_color": "red",
+                  "source_page": 43,
+                  "criterion_group": "Mechanism of injury",
+                  "color_source_page": 3,
+                  "id": "trauma-alert.02.05"
+                },
+                {
+                  "text": "Struck or run over by a motor vehicle",
+                  "triage_color": "red",
+                  "source_page": 43,
+                  "criterion_group": "Mechanism of injury — children",
+                  "color_source_page": 3,
+                  "id": "trauma-alert.02.06",
+                  "population": "paediatric"
+                },
+                {
+                  "text": "Fall from >3 m",
+                  "triage_color": "red",
+                  "source_page": 43,
+                  "criterion_group": "Mechanism of injury — children",
+                  "color_source_page": 3,
+                  "id": "trauma-alert.02.07",
+                  "population": "paediatric"
+                }
+              ],
+              "clarification": "A level 2 alert is triggered when the mechanism suggests that an unprotected patient sustained high-energy trauma and serious injury is possible despite stable vital signs.",
+              "examples": [
+                "Thrown from a galloping horse",
+                "Kicked or trampled by a horse on the abdomen, chest, head, or pelvis",
+                "Skier, sledder, or cyclist striking a fixed object at >35 km/h",
+                "Collision at >35 km/h on a ski slope",
+                "Personal watercraft or water-skiing accident",
+                "Snowmobile or ATV accident"
+              ],
+              "id": "trauma-alert.02",
+              "criterionLabelSuffix": {
+                "en": "Level 2",
+                "sv": "Nivå 2"
+              },
+              "displayLabel": "Level 2"
+            },
+            {
+              "category": "Level 3",
+              "source_pages": [
+                3,
+                43
+              ],
+              "criteria": [
+                {
+                  "text": "Fall from >3 m",
+                  "triage_color": "yellow",
+                  "source_page": 43,
+                  "criterion_group": "Mechanism of injury",
+                  "color_source_page": 3,
+                  "id": "trauma-alert.03.01"
+                },
+                {
+                  "text": "Traffic collision with a suspected high-energy mechanism",
+                  "triage_color": "yellow",
+                  "source_page": 43,
+                  "criterion_group": "Mechanism of injury",
+                  "color_source_page": 3,
+                  "id": "trauma-alert.03.02"
+                },
+                {
+                  "text": "Motorcycle or moped crash at >35 km/h",
+                  "triage_color": "yellow",
+                  "source_page": 43,
+                  "criterion_group": "Mechanism of injury",
+                  "color_source_page": 3,
+                  "id": "trauma-alert.03.03"
+                },
+                {
+                  "text": "Horse-related accident",
+                  "triage_color": "yellow",
+                  "source_page": 43,
+                  "criterion_group": "Mechanism of injury",
+                  "color_source_page": 3,
+                  "id": "trauma-alert.03.04"
+                },
+                {
+                  "text": "Unprotected road user",
+                  "triage_color": "yellow",
+                  "source_page": 43,
+                  "criterion_group": "Mechanism of injury",
+                  "color_source_page": 3,
+                  "id": "trauma-alert.03.05"
+                }
+              ],
+              "id": "trauma-alert.03",
+              "criterionLabelSuffix": {
+                "en": "Level 3",
+                "sv": "Nivå 3"
+              },
+              "displayLabel": "Level 3"
+            }
+          ],
+          "notes": "National trauma alert criteria apply when the mechanism of injury affects multiple organ systems. Levels 1 and 2 are red and level 3 is yellow, as shown on page 3.",
+          "observanda": [
+            "Progressive deterioration in a patient with suspected serious injury",
+            "Increased bleeding risk (blood-thinning medication)",
+            "Age <5 years or >60 years",
+            "Serious underlying illness",
+            "Hypothermia <35 °C",
+            "Under the influence of drugs",
+            "Pregnancy"
+          ],
+          "footnote": "*Consider direct transport in VGR to RTC Sahlgrenska SU/S or DBUS SU if the patient’s physiology and the transport distance permit. Have a low threshold for upgrading the alert if a cautionary feature is present.",
+          "id": "trauma-alert",
+          "combineSubcategoriesInPicker": true,
+          "displayLabel": "Trauma/injuries meeting trauma alert criteria"
+        },
+        {
+          "category": "Trauma/injuries below trauma alert criteria",
+          "source_pages": [
+            44
+          ],
+          "criteria": [
+            {
+              "text": "Hanging or strangulation",
+              "triage_color": "red",
+              "source_page": 44,
+              "id": "trauma.01"
+            },
+            {
+              "text": "Penetrating or chemical eye injury",
+              "triage_color": "red",
+              "source_page": 44,
+              "id": "trauma.02"
+            },
+            {
+              "text": "Abdominal or chest trauma with increasing pain or girth, obstructed urinary outflow, or hematuria",
+              "triage_color": "red",
+              "source_page": 44,
+              "id": "trauma.03"
+            },
+            {
+              "text": "Fracture with suspected vascular injury (impaired distal circulation, pale and cold limb) or nerve injury",
+              "triage_color": "red",
+              "source_page": 44,
+              "id": "trauma.04"
+            },
+            {
+              "text": "Drowning or diving accident",
+              "triage_color": "red",
+              "source_page": 44,
+              "id": "trauma.05"
+            },
+            {
+              "text": "Chemical accident or radiation injury",
+              "triage_color": "red",
+              "source_page": 44,
+              "id": "trauma.06"
+            },
+            {
+              "text": "High-voltage electrical injury or lightning strike",
+              "triage_color": "red",
+              "source_page": 44,
+              "id": "trauma.07"
+            },
+            {
+              "text": "Head trauma with GCS ≤14, or GCS 15 with at least one of the following findings — bleeding risk (warfarin, a direct oral anticoagulant, dual antiplatelet therapy, or hemophilia), seizure, neurologic abnormality, or a CSF shunt",
+              "triage_color": "orange",
+              "source_page": 44,
+              "id": "trauma.08"
+            },
+            {
+              "text": "Abdominal or chest trauma with autonomic symptoms",
+              "triage_color": "orange",
+              "source_page": 44,
+              "id": "trauma.09"
+            },
+            {
+              "text": "Joint dislocation (excluding fingers and toes), prosthetic joint dislocation, or fracture-dislocation",
+              "triage_color": "orange",
+              "source_page": 44,
+              "id": "trauma.10"
+            },
+            {
+              "text": "Open, displaced, or proximal femoral fracture",
+              "triage_color": "orange",
+              "source_page": 44,
+              "id": "trauma.11"
+            },
+            {
+              "text": "Thermal or chemical burn covering 5–18% of body surface area, or a circumferential burn",
+              "triage_color": "orange",
+              "source_page": 44,
+              "id": "trauma.12"
+            },
+            {
+              "text": "Head trauma with GCS 15 and loss of consciousness, amnesia, or repeated vomiting",
+              "triage_color": "yellow",
+              "source_page": 44,
+              "id": "trauma.13"
+            },
+            {
+              "text": "GCS 15, age ≥65 years, and taking antiplatelet medication",
+              "triage_color": "yellow",
+              "source_page": 44,
+              "id": "trauma.14"
+            },
+            {
+              "text": "Neck injury with tenderness on palpation over the spine",
+              "triage_color": "yellow",
+              "source_page": 44,
+              "id": "trauma.15"
+            },
+            {
+              "text": "Injury with pain out of proportion",
+              "triage_color": "yellow",
+              "source_page": 44,
+              "id": "trauma.16"
+            },
+            {
+              "text": "Strong suspicion of fracture <48 hours after injury",
+              "triage_color": "yellow",
+              "source_page": 44,
+              "id": "trauma.17"
+            }
+          ],
+          "notes": "Identical yellow wording about pain out of proportion occurs in four rows of the original and is included once. The Swedish source retains its incomplete parenthesis and typographical errors.",
+          "id": "trauma",
+          "displayLabel": "Trauma/injuries below trauma alert criteria"
+        }
+      ],
+      "id": "trauma-injuries",
+      "combineSubcategoriesInPicker": true
+    },
+    {
+      "category": "Eyes and ears",
+      "source_pages": [
+        45
+      ],
+      "criteria": [
+        {
+          "text": "Obstructed or threatened airway. For injury, see trauma.",
+          "triage_color": "red",
+          "source_page": 45,
+          "id": "eye-ear.01"
+        },
+        {
+          "text": "Swallowed a button battery or ≥2 magnets",
+          "triage_color": "orange",
+          "source_page": 45,
+          "id": "eye-ear.02"
+        },
+        {
+          "text": "Esophageal obstruction with inability to swallow saliva",
+          "triage_color": "yellow",
+          "source_page": 45,
+          "id": "eye-ear.03"
+        },
+        {
+          "text": "Penetrating or chemical eye injury. See trauma.",
+          "triage_color": "red",
+          "source_page": 45,
+          "id": "eye-ear.04"
+        }
+      ],
+      "id": "eye-ear",
+      "displayLabel": "Eyes and ears"
+    },
+    {
+      "category": "Frailty in older adults – care needs",
+      "source_pages": [
+        46
+      ],
+      "criteria": [
+        {
+          "text": "Frail older adult by FRESH screening",
+          "triage_color": "yellow",
+          "source_page": 46,
+          "definition": "Age ≥75 years plus a modified FRESH score ≥2 defines frailty. Living in residential care scores 2 points. Reduced endurance, general tiredness or reduced energy for <2 months, frequent falls or fear of falling, and needing help with shopping each score 1 point. Assign at least yellow priority and see the patient first within their color group.",
+          "id": "frailty.01"
+        }
+      ],
+      "id": "frailty",
+      "displayLabel": "Frailty in older adults – care needs"
+    },
+    {
+      "category": "Hospital admission – care needs",
+      "source_pages": [
+        47
+      ],
+      "criteria": [
+        {
+          "text": "Likely need for inpatient care",
+          "triage_color": "yellow",
+          "source_page": 47,
+          "id": "admission.01"
+        }
+      ],
+      "id": "admission",
+      "displayLabel": "Hospital admission – care needs"
+    },
+    {
+      "category": "Interpersonal violence – care needs",
+      "source_pages": [
+        48
+      ],
+      "criteria": [
+        {
+          "text": "Reported or suspected sexual assault",
+          "triage_color": "yellow",
+          "source_page": 48,
+          "id": "interpersonal-violence.01"
+        },
+        {
+          "text": "Reported or suspected violence in a close relationship",
+          "triage_color": "yellow",
+          "source_page": 48,
+          "id": "interpersonal-violence.02"
+        }
+      ],
+      "id": "interpersonal-violence",
+      "displayLabel": "Interpersonal violence – care needs"
+    }
+  ],
+  "conflicts": [
+    {
+      "id": "obstetric-boundaries",
+      "skaSPdfPages": [
+        24
+      ],
+      "finding": "Four ONEWS2 cells overlap at RR 10, systolic BP 80, diastolic BP 90 and pulse 60.",
+      "handling": "Apply the contemporaneous Swedish obstetric NEWS2 chart at the four overlapping endpoints. RR 10 scores 0, systolic BP 80 scores 2, diastolic BP 90 scores 1 and pulse 60 scores 0.",
+      "basis": "obstetricBands",
+      "status": "resolvedForDefinition"
+    },
+    {
+      "id": "potassium",
+      "skaSPdfPages": [
+        8,
+        37
+      ],
+      "finding": "Category uses potassium ≥6.0 with ECG changes. Overview uses >6.0.",
+      "handling": "Use the inclusive category threshold. Potassium exactly 6.0 with ECG changes qualifies for the red finding.",
+      "basis": "criteria",
+      "status": "resolvedForDefinition"
+    },
+    {
+      "id": "neurology",
+      "skaSPdfPages": [
+        8,
+        35
+      ],
+      "finding": "Overview includes acute dizziness at 4.5–24 hours or unknown onset and mNIHSS ≥2 in red. The category and extract name suspected stroke in that row.",
+      "handling": "Use the supplied Östra neurology category rows and their onset and mNIHSS qualifiers. An overview-only dizziness combination does not create a selectable finding.",
+      "basis": "criteria",
+      "status": "resolvedForDefinition"
+    },
+    {
+      "id": "gynaecology",
+      "skaSPdfPages": [
+        23,
+        44
+      ],
+      "finding": "Östra supplies six gynaecology subcategories, including time-limited green criteria. SkaS has a different category structure. In the non-pregnant bleeding subgroup the supplied JSON gives heavy vaginal bleeding yellow; the SkaS female genital category gives it orange. The supplied bleeding category also gives it orange.",
+      "handling": "Assign the identical heavy vaginal bleeding criterion orange in both adult pickers. The pregnancy-specific heavy bleeding criterion remains red. Preserve the original yellow on the non-pregnant source row. Apply 07:00 inclusive to 16:00 exclusive at local measurement time to timed green rows.",
+      "basis": "localReconciliation",
+      "status": "resolvedForDefinition"
+    },
+    {
+      "id": "early-pregnancy-vomiting",
+      "skaSPdfPages": [
+        23
+      ],
+      "finding": "SkaS lists ongoing vomiting before week 18 as yellow here. Östra includes a separate early-pregnancy nausea and vomiting pathway.",
+      "handling": "Use the supplied early-pregnancy nausea and vomiting pathway with its own criteria. The SkaS overview adds no separate finding.",
+      "basis": "criteria",
+      "status": "resolvedForDefinition"
+    },
+    {
+      "id": "trauma",
+      "skaSPdfPages": [
+        7,
+        8,
+        47
+      ],
+      "finding": "Overview qualifies hanging/strangulation by visible or audible injury; the category lists it without that qualifier.",
+      "handling": "Use the supplied red hanging or strangulation criterion. Visible or audible injury is not an additional selection condition.",
+      "basis": "criteria",
+      "status": "resolvedForDefinition"
+    },
+    {
+      "id": "withdrawal",
+      "skaSPdfPages": [
+        9,
+        38
+      ],
+      "finding": "The extract describes withdrawal with risk of both seizure and delirium tremens, while the SkaS category says either.",
+      "handling": "Use the supplied Östra orange criterion for somatically affected withdrawal with risk of both seizure and delirium tremens.",
+      "basis": "criteria",
+      "status": "resolvedForDefinition"
+    },
+    {
+      "id": "respiratory-wording",
+      "skaSPdfPages": [
+        7,
+        21
+      ],
+      "finding": "The SkaS overview includes gurgling with foaming breathing; the category describes foaming breathing.",
+      "handling": "Use the supplied red dyspnoea with foaming breathing criterion. Gurgling is not an additional selection condition.",
+      "basis": "criteria",
+      "status": "resolvedForDefinition"
+    },
+    {
+      "id": "scale2-air",
+      "skaSPdfPages": [
+        10
+      ],
+      "finding": "The compact SkaS table omits saturation ≥93% on air from Scale 2. The RCP chart explicitly assigns 0.",
+      "handling": "Score saturation of 93% or above on room air as zero on prescribed Scale 2. Use the separate supplemental-oxygen branch when oxygen is administered.",
+      "basis": "scale2",
+      "status": "resolvedForDefinition"
+    },
+    {
+      "id": "unrestricted-override",
+      "skaSPdfPages": [
+        12
+      ],
+      "finding": "SkaS prohibits clinical down-prioritisation from red or orange.",
+      "handling": "A clinician may select any of the four colours. That single effective colour takes precedence. Store the calculated result and provenance separately.",
+      "basis": "localOverride",
+      "status": "resolvedForDefinition"
+    },
+    {
+      "id": "foreign-body",
+      "skaSPdfPages": [
+        7,
+        48
+      ],
+      "finding": "Overview describes ingestion of a battery or magnet. The category and extract specify a button battery or at least two magnets.",
+      "handling": "Use the supplied orange criterion for a button battery or at least two magnets.",
+      "basis": "criteria",
+      "status": "resolvedForDefinition"
+    },
+    {
+      "id": "overview-only-findings",
+      "skaSPdfPages": [
+        7,
+        8,
+        9,
+        38,
+        47
+      ],
+      "finding": "The overview includes symptomatic smoke inhalation (orange), finger or toe dislocation (yellow), and newly impaired or worsened outwardly aggressive behaviour with inability to care for oneself (yellow). These are not standalone criteria in the extract under those labels.",
+      "handling": "Use the supplied category inventory. Symptomatic smoke inhalation, finger or toe dislocation and the overview-only behavioural description are not additional standalone options.",
+      "basis": "criteria",
+      "status": "resolvedForDefinition"
+    },
+    {
+      "id": "high-voltage-trauma",
+      "skaSPdfPages": [
+        7,
+        47
+      ],
+      "finding": "SkaS specifies more than 1,000 V or lightning. The extract refers to high voltage or lightning without the number.",
+      "handling": "Use the supplied red high-voltage or lightning criterion. The clinician selects this finding.",
+      "basis": "criteria",
+      "status": "resolvedForDefinition"
+    },
+    {
+      "id": "extremity-wording",
+      "skaSPdfPages": [
+        22
+      ],
+      "finding": "The supplied joint criterion says interarticular; the SkaS category describes intra-articular swelling.",
+      "handling": "Use the supplied Östra joint criterion and wording. A clinician selecting it records yellow.",
+      "basis": "criteria",
+      "status": "resolvedForDefinition"
+    }
+  ]
+}

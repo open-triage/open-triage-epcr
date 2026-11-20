@@ -6,7 +6,7 @@ import { readFile } from "node:fs/promises";
 import productionSettings from "@open-triage/contracts/config/installation.production.json";
 import demoAssignedCalls from "../public/demo-assigned-calls.json";
 import demoOpenAssignment from "../public/demo-open-assignment.json";
-import westDefinition from "../../../defines/decision_support/west-a-2025.json";
+import westDefinition from "../../../defines/decision_support/west-a-2025.sv.json";
 import type { ClinicalDecisionSupportConfiguration, ClinicalFormConfiguration, EncounterDocument, EncounterGroupInstance, FinalizedDecisionSupportCalculation, TriageColour } from "@open-triage/contracts";
 
 const serverBacked = process.env.OPEN_TRIAGE_E2E_SERVER_MODE === "true";
@@ -532,10 +532,10 @@ test("Mobile WEST documents multiple findings and keeps the calculated level vis
   const choose = dialog.getByRole("button", { name: "Choose finding" });
   const override = dialog.getByRole("combobox", { name: "WEST override" });
   await expect(category.locator('option[value^="gynaecology."]')).toHaveCount(6);
-  await expect(category.getByRole("option", { name: "Trauma/skador" })).toHaveCount(1);
+  await expect(category.getByRole("option", { name: "Trauma/injuries", exact: true })).toHaveCount(1);
   await category.selectOption("trauma-injuries");
   await choose.click();
-  await expect(choices.getByRole("button", { name: /Level [123]$/ }).first()).toBeVisible();
+  await expect(choices.getByRole("button", { name: "Red Ventilatory support needed · Level 1" })).toBeVisible();
   await expect(choices.locator('button[value="trauma-alert.01.03"]')).toHaveCount(0);
   await choose.press("Escape");
   await expect(choices).toHaveCount(0);
@@ -558,7 +558,7 @@ test("Mobile WEST documents multiple findings and keeps the calculated level vis
 
   await category.selectOption("gynaecology.04");
   await choose.click();
-  await choices.getByRole("button", { name: /Se infektion/ }).first().click();
+  await choices.getByRole("button", { name: "Postoperative infection. See infection." }).click();
   await expect(category).toHaveValue("infection");
   await expect(documented).toHaveCount(0);
   await choose.click();
@@ -571,7 +571,7 @@ test("Mobile WEST documents multiple findings and keeps the calculated level vis
   await expect(choices.locator("[data-colour]").first()).toHaveAttribute("data-colour", "red");
   await choices.locator('button[value="bleeding.07"]').click();
   await expect(status).toContainText("Orange · Provisional");
-  await expect(status).toContainText("Riklig vaginalblödning");
+  await expect(status).toContainText("Heavy vaginal bleeding soaking through several overnight pads per hour");
   await expect(dialog.getByRole("checkbox", { name: "No warning criteria" })).toBeDisabled();
   await override.selectOption("green");
   await expect(status).toContainText("Green · Manual");
@@ -585,7 +585,7 @@ test("Mobile WEST documents multiple findings and keeps the calculated level vis
   await choices.locator('button[value="pregnancy-postpartum.01"]').click();
   await expect(status).toContainText("Calculated: Red");
   await expect(status).toContainText("Calculation changed since override");
-  await expect(documented.getByRole("listitem").filter({ hasText: /Riklig vaginalblödning/ }).last()).toBeVisible();
+  await expect(documented.getByRole("button", { name: /^Remove Heavy vaginal bleeding soaking/ })).toHaveCount(2);
   await override.selectOption("");
   await expect(status).toContainText("Red");
   await expect(status).not.toContainText("Provisional");
@@ -605,8 +605,32 @@ test("Mobile WEST documents multiple findings and keeps the calculated level vis
   await page.locator(".timeline-event-button").filter({ hasText: "Vital signs" }).first().click();
   await expect(documented).toContainText("No criteria met");
   await expect(status).toContainText("Red");
-  await documented.getByRole("button", { name: /Remove Gravid med kraftig/ }).click();
+  await documented.getByRole("button", { name: /^Remove Heavy vaginal bleeding in pregnancy/ }).click();
   await expect(status).toContainText("Orange · Provisional");
+});
+
+test("Swedish WEST uses the installation language for offline choices, documented findings and their calculated result", async ({ page, context }) => {
+  test.skip(!serverBacked, "requires OPEN_TRIAGE_E2E_SERVER_MODE=true");
+  await installRoutes(page, true, undefined, {
+    definition: { schemaVersion: 1, sections: [] }, catalogFields: {}, decisionSupport: westDecisionSupport,
+  });
+  await page.route("**/api/installation", (route) => route.fulfill({ json: { settings: { ...productionSettings, language: "sv" } } }));
+  await page.goto("/");
+  await page.getByRole("button", { name: "Öppna uppdrag", exact: true }).click();
+  await expect.poll(async () => (await encryptedRecords(page)).length).toBe(1);
+  await context.setOffline(true);
+  await page.evaluate(() => window.dispatchEvent(new Event("offline")));
+  await page.getByRole("button", { name: "Lägg till vitalparametrar" }).click();
+  const dialog = page.getByRole("dialog");
+  const category = dialog.getByRole("combobox", { name: "WEST-kategori" });
+  await category.selectOption({ label: "Trauma/skador" });
+  await dialog.getByRole("button", { name: "Välj fynd" }).click();
+  await expect(dialog.getByRole("button", { name: "Inga kriterier uppfyllda" })).toBeVisible();
+  await dialog.getByRole("button", { name: "Röd Behov av ventilationsstöd · Nivå 1" }).click();
+  await expect(dialog.getByRole("list", { name: "Dokumenterade WEST-fynd" })).toContainText("Trauma/skador");
+  await expect(dialog.getByRole("button", { name: "Ta bort Behov av ventilationsstöd · Nivå 1" })).toBeVisible();
+  await expect(dialog.getByRole("status")).toContainText("Behov av ventilationsstöd · Nivå 1");
+  await expect(dialog.getByRole("combobox", { name: "NEWS-skala" }).getByRole("option", { name: "KOL" })).toHaveCount(1);
 });
 
 test("Mobile WEST scores the selected NEWS scale and syncs only a complete integer total", async ({ page, context }) => {

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import type { ClinicalDecisionSupportConfiguration, DecisionSupportCatalogElement, DecisionSupportFieldName, EncounterGroupInstance, FinalizedDecisionSupportCalculation, TriageColour } from "@open-triage/contracts";
-import westDefinition from "../../../defines/decision_support/west-a-2025.json";
+import westDefinition from "../../../defines/decision_support/west-a-2025.sv.json";
 import { encounterEvents, removeCanonicalEvent } from "../app/canonical-events";
 import { latestFinalizedVitalDecisionSupport } from "../app/finalized-vital-decision-support";
 import { bundledEncounterDefinition, INITIAL_SHELL_STATE, transitionShell, vitalDraftDecisionSupport } from "../app/standard-encounter";

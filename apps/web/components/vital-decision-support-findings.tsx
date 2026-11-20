@@ -10,9 +10,10 @@ import {
   type DecisionSupportFindings,
 } from "@open-triage/contracts";
 import { useId, useRef, useState } from "react";
+import { localizedDecisionSupportDefinition } from "../app/decision-support-localization";
 import { resolveMessage } from "../app/localization";
 
-export function VitalDecisionSupportFindings({ definition, findings, localTime, language, onChange }: {
+export function VitalDecisionSupportFindings({ definition: pinned, findings, localTime, language, onChange }: {
   readonly definition: DecisionSupportDefinition;
   readonly findings: DecisionSupportFindings;
   readonly localTime: string;
@@ -20,6 +21,7 @@ export function VitalDecisionSupportFindings({ definition, findings, localTime, 
   readonly onChange: (findings: DecisionSupportFindings) => void;
 }) {
   const t = (key: string, params?: Record<string, string>) => resolveMessage(language, key, params);
+  const definition = localizedDecisionSupportDefinition(pinned, language);
   const locale = language === "sv" ? "sv" : "en";
   const categories = decisionSupportPickerCategories(definition.categories);
   const documented = decisionSupportFindingCategories(definition, findings.criteria);
@@ -35,7 +37,7 @@ export function VitalDecisionSupportFindings({ definition, findings, localTime, 
     !findings.criteria.includes(criterion.id) && (!criterion.navigateToCategory || rows.findIndex(({ criterion: other }) =>
       other.navigateToCategory === criterion.navigateToCategory && other.text === criterion.text) === index)).sort((left, right) =>
     priority.indexOf(right.criterion.triage_color) - priority.indexOf(left.criterion.triage_color));
-  const noCriteriaLabel = definition.assessment.elements.criteria.noneOption.label[locale];
+  const noCriteriaLabel = t("mobile.westNoCriteriaMet");
   const negativeCode = decisionSupportNegativeCode(definition, categoryId);
   const hasWarning = decisionSupportFindingResult(definition, findings, localTime).highest?.criterion.triage_color;
   const warningPresent = !!hasWarning && hasWarning !== "green";
