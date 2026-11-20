@@ -1,6 +1,8 @@
 import west from "./west-a-2025.json" with { type: "json" };
 
-const { catalogFields, uiMessages, ...clinical } = west;
+// Exchange metadata is independent of the immutable clinical rules pinned to reports.
+const { catalogFields, uiMessages, fhir, ...clinical } = west;
+export const westFhirMapping = fhir;
 
 // These fields already carry both languages in the API and offline snapshot format.
 const bilingualFields = new Set(["label", "provisionalLabel", "message", "criterionLabelSuffix"]);
@@ -27,7 +29,8 @@ function resolveLabels(value, template, language, field) {
 }
 
 export function localizedWestDefinition(pinned, language) {
-  if (pinned.key !== clinical.key || pinned.version !== clinical.version) return pinned;
+  // Draft 5 updated the pulse binding and draft 6 standardized Swedish casing.
+  if (pinned.key !== clinical.key || ![clinical.version, "1.0.0-draft.5", "1.0.0-draft.4"].includes(pinned.version)) return pinned;
   return resolveLabels(pinned, clinical, language);
 }
 

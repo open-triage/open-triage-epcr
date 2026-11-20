@@ -10,7 +10,6 @@ import {
 import { shippedWestDefinition, westCatalogText, westUiMessages } from "../defines/decision_support/west-localization.mjs";
 
 const west = shippedWestDefinition("en");
-const messages = JSON.parse(readFileSync(new URL("../apps/web/messages/en.json", import.meta.url), "utf8"));
 const westMessages = westUiMessages("en");
 const output = new URL("../packages/contracts/openehr/west-a-2025.opt", import.meta.url);
 const templateId = `OpenTriage ${west.name} ${west.version}`;
@@ -128,10 +127,8 @@ const observations = inputFields.map(([key, id]) => {
   const value = input.values
     ? choices(key, input.values.map(code => [code, observationLabel(`${key}.${code}`)]))
     : quantity(input);
-  const label = key === "heartRate" ? messages["mobile.vital.field.heartRate"] : observationLabel(key);
-  return field(id, label, value);
+  return field(id, observationLabel(key), value);
 });
-observations.push(field("at0028", observationLabel("pulse"), quantity(west.inputs.heartRate)));
 
 function cluster(id, label, items) {
   return object("CLUSTER", [multiple("items", items)], term(id, label), optional);

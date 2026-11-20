@@ -131,7 +131,12 @@ test("WEST uses the configured default and preserves zero only for complete meas
   assert.equal(evaluate("standard", normal, { oxygen: "air" }).total, null);
   assert.equal(evaluate("standard", normal, { ...observations, consciousness: "C" }).points.consciousness, 3);
   assert.equal(evaluate("standard", normal, { ...observations, pulse: "39" }).points.heartRate, 0);
-  assert.equal(evaluate("standard", { ...normal, "eVitals.10": "" }, { ...observations, pulse: "39" }).points.heartRate, 3);
+  assert.equal(evaluate("standard", { ...normal, "eVitals.10": "" }, { ...observations, pulse: "39" }).points.heartRate, undefined);
+  assert.equal(evaluate("standard", { ...normal, "eVitals.10": 39 }).points.heartRate, 3);
+  const previous = structuredClone(definition);
+  previous.version = "1.0.0-draft.4";
+  previous.inputs.heartRate.preferMeasuredHeartRateOverPulse = true;
+  assert.equal(evaluate("standard", { ...normal, "eVitals.10": "" }, { ...observations, pulse: "39" }, previous).points.heartRate, 3);
 });
 
 test("NEWS2 Scale 2 selects the oxygen branch and follows its pinned thresholds", () => {

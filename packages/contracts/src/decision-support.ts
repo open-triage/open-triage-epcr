@@ -32,6 +32,7 @@ export interface DecisionSupportNumericInput {
   precision: number;
   minValue: number;
   maxValue: number;
+  /** Compatibility with pinned WEST definitions that offered a separate pulse observation. */
   preferMeasuredHeartRateOverPulse?: boolean;
   nonNumericValue?: string;
 }

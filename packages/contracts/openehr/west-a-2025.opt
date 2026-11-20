@@ -9,7 +9,7 @@
   <description>
     <original_author id="organisation">OpenTriage</original_author>
     <lifecycle_state>in_development</lifecycle_state>
-    <other_details id="WEST definition">west-a-2025 1.0.0-draft.4</other_details>
+    <other_details id="WEST definition">west-a-2025 1.0.0-draft.6</other_details>
     <other_details id="Clinical criteria">https://mellanarkiv-offentlig.vgregion.se/alfresco/s/archive/stream/public/v1/source/available/sofia/su1226-506079272-668/surrogate/WEST%20A%202025%20%C3%96stra.pdf</other_details>
     <other_details id="Physiology">https://mellanarkiv-offentlig.vgregion.se/alfresco/s/archive/stream/public/v1/source/available/sofia/skas13221-468498705-9/surrogate/WEST%20samt%20h%C3%A4nvisningsst%C3%B6d%20SkaS.pdf</other_details>
     <details>
@@ -23,10 +23,10 @@
     </details>
   </description>
   <uid>
-    <value>6173289e-a6c0-5bd1-be11-8226257f2ee8</value>
+    <value>168f1958-8515-5735-937d-77ec773430e3</value>
   </uid>
   <template_id>
-    <value>OpenTriage WEST-A 1.0.0-draft.4</value>
+    <value>OpenTriage WEST-A 1.0.0-draft.6</value>
   </template_id>
   <concept>WEST-A adult triage</concept>
   <definition xsi:type="C_ARCHETYPE_ROOT">
@@ -1180,60 +1180,6 @@
                                 <upper>1</upper>
                               </precision>
                               <units>Cel</units>
-                            </list>
-                          </children>
-                        </attributes>
-                      </children>
-                      <children xsi:type="C_COMPLEX_OBJECT">
-                        <rm_type_name>ELEMENT</rm_type_name>
-                        <occurrences>
-                          <lower_included>true</lower_included>
-                          <upper_included>true</upper_included>
-                          <lower_unbounded>false</lower_unbounded>
-                          <upper_unbounded>false</upper_unbounded>
-                          <lower>0</lower>
-                          <upper>1</upper>
-                        </occurrences>
-                        <node_id>at0028</node_id>
-                        <attributes xsi:type="C_SINGLE_ATTRIBUTE">
-                          <rm_attribute_name>value</rm_attribute_name>
-                          <existence>
-                            <lower_included>true</lower_included>
-                            <upper_included>true</upper_included>
-                            <lower_unbounded>false</lower_unbounded>
-                            <upper_unbounded>false</upper_unbounded>
-                            <lower>1</lower>
-                            <upper>1</upper>
-                          </existence>
-                          <children xsi:type="C_DV_QUANTITY">
-                            <rm_type_name>DV_QUANTITY</rm_type_name>
-                            <occurrences>
-                              <lower_included>true</lower_included>
-                              <upper_included>true</upper_included>
-                              <lower_unbounded>false</lower_unbounded>
-                              <upper_unbounded>false</upper_unbounded>
-                              <lower>1</lower>
-                              <upper>1</upper>
-                            </occurrences>
-                            <node_id/>
-                            <list>
-                              <magnitude>
-                                <lower_included>true</lower_included>
-                                <upper_included>true</upper_included>
-                                <lower_unbounded>false</lower_unbounded>
-                                <upper_unbounded>false</upper_unbounded>
-                                <lower>0</lower>
-                                <upper>500</upper>
-                              </magnitude>
-                              <precision>
-                                <lower_included>true</lower_included>
-                                <upper_included>true</upper_included>
-                                <lower_unbounded>false</lower_unbounded>
-                                <upper_unbounded>false</upper_unbounded>
-                                <lower>0</lower>
-                                <upper>0</upper>
-                              </precision>
-                              <units>/min</units>
                             </list>
                           </children>
                         </attributes>
@@ -2818,7 +2764,7 @@
                         </occurrences>
                         <node_id/>
                         <item xsi:type="C_STRING">
-                          <list>1.0.0-draft.4</list>
+                          <list>1.0.0-draft.6</list>
                         </item>
                       </children>
                     </attributes>
@@ -2887,8 +2833,8 @@
           <items id="description">Diastolic pressure</items>
         </term_definitions>
         <term_definitions code="at0025">
-          <items id="text">Heart rate</items>
-          <items id="description">Heart rate</items>
+          <items id="text">Pulse rate</items>
+          <items id="description">Pulse rate</items>
         </term_definitions>
         <term_definitions code="https://opentriage.org/codes/west-a-2025/consciousness::A">
           <items id="text">Alert</items>
@@ -2918,10 +2864,6 @@
           <items id="text">Temperature</items>
           <items id="description">Temperature</items>
         </term_definitions>
-        <term_definitions code="at0028">
-          <items id="text">Pulse rate</items>
-          <items id="description">Pulse rate</items>
-        </term_definitions>
         <term_definitions code="at0040">
           <items id="text">Respiratory rate</items>
           <items id="description">Respiratory rate</items>
@@ -2943,8 +2885,8 @@
           <items id="description">Diastolic pressure</items>
         </term_definitions>
         <term_definitions code="at0045">
-          <items id="text">Heart rate or pulse</items>
-          <items id="description">Heart rate or pulse</items>
+          <items id="text">Pulse rate</items>
+          <items id="description">Pulse rate</items>
         </term_definitions>
         <term_definitions code="at0046">
           <items id="text">Consciousness</items>

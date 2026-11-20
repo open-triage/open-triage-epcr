@@ -2,8 +2,235 @@
   "schemaVersion": 1,
   "key": "west-a-2025",
   "name": "WEST-A",
-  "version": "1.0.0-draft.4",
+  "version": "1.0.0-draft.6",
   "catalogKey": "nemsis-3.5.1",
+  "fhir": {
+    "fhirVersion": "4.0.1",
+    "package": "west-a.triage",
+    "packageVersion": "0.1.0",
+    "packageDate": "20261120094826",
+    "sha256": "27786ceb491e6cd537c063c332631873302cfcba280d0d14272dce7cceb23362",
+    "canonical": "https://vadi2.github.io/west-a-triage-ig",
+    "priority": {
+      "red": "1",
+      "orange": "2",
+      "yellow": "3",
+      "green": "4"
+    },
+    "complaint": {
+      "allergy": "1",
+      "blood-pressure": "2",
+      "bleeding": "3",
+      "chest-pain": "4",
+      "abdominal-pain": "5",
+      "diabetes": "6",
+      "diarrhoea": "7",
+      "dyspnoea": "8",
+      "extremity": "9",
+      "pregnancy-postpartum": "10",
+      "gynaecology": "11",
+      "arrhythmia": "12",
+      "cardiac-arrest": "13",
+      "skin": "14",
+      "headache": "15",
+      "infection": "16",
+      "intoxication": "17",
+      "postoperative": "18",
+      "liver": "19",
+      "groin": "20",
+      "consciousness": "21",
+      "neurological": "22",
+      "nonspecific": "23",
+      "psychiatric": "24",
+      "rectal": "25",
+      "back": "26",
+      "syncope": "27",
+      "male-genital": "28",
+      "urinary": "29",
+      "trauma-injuries": "30",
+      "eye-ear": "31",
+      "gynaecology.01": "11",
+      "gynaecology.02": "11",
+      "gynaecology.03": "11",
+      "gynaecology.04": "11",
+      "gynaecology.05": "11",
+      "gynaecology.06": "11"
+    },
+    "criterion": {
+      "allergy.01": "1",
+      "allergy.02": "2",
+      "allergy.03": "3",
+      "bleeding.01": "4",
+      "bleeding.02": "5",
+      "bleeding.03": "6",
+      "bleeding.04": "7",
+      "bleeding.05": "8",
+      "bleeding.06": "9",
+      "bleeding.07": "10",
+      "chest-pain.01": "11",
+      "chest-pain.02": "12",
+      "chest-pain.03": "13",
+      "chest-pain.04": "14",
+      "chest-pain.05": "15",
+      "chest-pain.06": "16",
+      "chest-pain.07": "17",
+      "abdominal-pain.01": "18",
+      "abdominal-pain.02": "19",
+      "abdominal-pain.03": "20",
+      "diabetes.01": "21",
+      "diabetes.02": "22",
+      "diarrhoea.01": "20",
+      "dyspnoea.01": "23",
+      "dyspnoea.02": "24",
+      "dyspnoea.03": "25",
+      "dyspnoea.04": "26",
+      "extremity.01": "27",
+      "extremity.02": "28",
+      "extremity.03": "29",
+      "pregnancy-postpartum.01": "30",
+      "pregnancy-postpartum.02": "31",
+      "pregnancy-postpartum.03": "32",
+      "pregnancy-postpartum.04": "33",
+      "pregnancy-postpartum.05": "34",
+      "pregnancy-postpartum.06": "35",
+      "pregnancy-postpartum.07": "36",
+      "pregnancy-postpartum.08": "37",
+      "pregnancy-postpartum.09": "38",
+      "pregnancy-postpartum.10": "39",
+      "gynaecology.01.01": "40",
+      "gynaecology.01.02": "41",
+      "gynaecology.01.03": "42",
+      "gynaecology.01.04": "43",
+      "gynaecology.01.05": "44",
+      "gynaecology.01.06": "45",
+      "gynaecology.01.07": "46",
+      "gynaecology.01.08": "47",
+      "gynaecology.01.09": "48",
+      "gynaecology.01.10": "49",
+      "gynaecology.01.11": "50",
+      "gynaecology.02.01": "51",
+      "gynaecology.02.02": "52",
+      "gynaecology.03.01": "53",
+      "gynaecology.03.02": "54",
+      "gynaecology.03.03": "55",
+      "gynaecology.03.04": "10",
+      "gynaecology.03.05": "56",
+      "gynaecology.03.06": "57",
+      "gynaecology.03.07": "58",
+      "gynaecology.04.04": "59",
+      "gynaecology.04.05": "60",
+      "gynaecology.04.06": "61",
+      "gynaecology.04.07": "62",
+      "gynaecology.05.01": "63",
+      "gynaecology.05.02": "64",
+      "gynaecology.05.03": "65",
+      "gynaecology.05.04": "66",
+      "gynaecology.06.01": "67",
+      "gynaecology.06.02": "68",
+      "gynaecology.06.03": "69",
+      "gynaecology.06.04": "70",
+      "arrhythmia.01": "71",
+      "cardiac-arrest.01": "72",
+      "cardiac-arrest.02": "1",
+      "headache.01": "73",
+      "infection.01": "74",
+      "infection.02": "75",
+      "infection.03": "76",
+      "infection.04": "77",
+      "intoxication.01": "1",
+      "intoxication.02": "78",
+      "intoxication.03": "79",
+      "intoxication.04": "80",
+      "intoxication.05": "81",
+      "intoxication.06": "82",
+      "groin.01": "83",
+      "consciousness.01": "80",
+      "consciousness.02": "81",
+      "consciousness.03": "82",
+      "neurological.01": "84",
+      "neurological.02": "81",
+      "neurological.03": "85",
+      "neurological.04": "86",
+      "neurological.05": "87",
+      "neurological.06": "88",
+      "neurological.07": "89",
+      "neurological.08": "90",
+      "neurological.09": "91",
+      "neurological.10": "92",
+      "nonspecific.01": "93",
+      "nonspecific.02": "94",
+      "psychiatric.01": "95",
+      "psychiatric.02": "96",
+      "psychiatric.03": "97",
+      "psychiatric.04": "98",
+      "psychiatric.05": "99",
+      "psychiatric.06": "100",
+      "psychiatric.07": "101",
+      "psychiatric.08": "102",
+      "psychiatric.09": "103",
+      "psychiatric.10": "104",
+      "psychiatric.11": "105",
+      "psychiatric.12": "106",
+      "psychiatric.13": "107",
+      "psychiatric.14": "108",
+      "psychiatric.15": "109",
+      "psychiatric.16": "110",
+      "back.01": "111",
+      "syncope.01": "112",
+      "male-genital.01": "113",
+      "urinary.01": "114",
+      "trauma-alert.01.01": "115",
+      "trauma-alert.01.02": "116",
+      "trauma-alert.01.04": "117",
+      "trauma-alert.01.08": "118",
+      "trauma-alert.01.09": "119",
+      "trauma-alert.01.10": "120",
+      "trauma-alert.01.11": "121",
+      "trauma-alert.01.12": "122",
+      "trauma-alert.01.13": "123",
+      "trauma-alert.01.14": "124",
+      "trauma-alert.01.15": "125",
+      "trauma-alert.01.16": "126",
+      "trauma-alert.01.17": "127",
+      "trauma-alert.01.18": "128",
+      "trauma-alert.02.01": "129",
+      "trauma-alert.02.02": "130",
+      "trauma-alert.02.03": "131",
+      "trauma-alert.02.04": "132",
+      "trauma-alert.02.05": "133",
+      "trauma-alert.03.01": "134",
+      "trauma-alert.03.02": "135",
+      "trauma-alert.03.03": "136",
+      "trauma-alert.03.04": "137",
+      "trauma-alert.03.05": "138",
+      "trauma.01": "139",
+      "trauma.02": "140",
+      "trauma.03": "141",
+      "trauma.04": "142",
+      "trauma.05": "143",
+      "trauma.06": "144",
+      "trauma.07": "145",
+      "trauma.08": "146",
+      "trauma.09": "147",
+      "trauma.10": "148",
+      "trauma.11": "149",
+      "trauma.12": "150",
+      "trauma.13": "151",
+      "trauma.14": "152",
+      "trauma.15": "153",
+      "trauma.16": "154",
+      "trauma.17": "155",
+      "eye-ear.01": "156",
+      "eye-ear.02": "157",
+      "eye-ear.03": "158",
+      "eye-ear.04": "140",
+      "frailty.01": "159",
+      "admission.01": "160",
+      "interpersonal-violence.01": "161",
+      "interpersonal-violence.02": "162"
+    },
+    "noWarning": "163"
+  },
   "sources": {
     "criteria": {
       "filename": "WEST A 2025 Östra.pdf",
@@ -306,7 +533,6 @@
       "unit": "/min",
       "precision": 0,
       "element": "eVitals.10",
-      "preferMeasuredHeartRateOverPulse": true,
       "minValue": 0,
       "maxValue": 500
     },
@@ -802,7 +1028,7 @@
     {
       "category": {
         "en": "Allergy",
-        "sv": "ALLERGI"
+        "sv": "Allergi"
       },
       "source_pages": [
         10
@@ -845,7 +1071,7 @@
     {
       "category": {
         "en": "Blood pressure",
-        "sv": "BLODTRYCK"
+        "sv": "Blodtryck"
       },
       "source_pages": [
         11
@@ -864,7 +1090,7 @@
     {
       "category": {
         "en": "Bleeding/anemia",
-        "sv": "BLÖDNING/ANEMI"
+        "sv": "Blödning/anemi"
       },
       "source_pages": [
         12
@@ -943,7 +1169,7 @@
     {
       "category": {
         "en": "Chest pain",
-        "sv": "BRÖSTSMÄRTA"
+        "sv": "Bröstsmärta"
       },
       "source_pages": [
         13
@@ -1022,7 +1248,7 @@
     {
       "category": {
         "en": "Abdominal pain",
-        "sv": "BUKSMÄRTA"
+        "sv": "Buksmärta"
       },
       "source_pages": [
         14
@@ -1065,7 +1291,7 @@
     {
       "category": {
         "en": "Diabetes",
-        "sv": "DIABETES"
+        "sv": "Diabetes"
       },
       "source_pages": [
         15
@@ -1099,7 +1325,7 @@
     {
       "category": {
         "en": "Diarrhea/vomiting",
-        "sv": "DIARRÉ/KRÄKNINGAR"
+        "sv": "Diarré/kräkningar"
       },
       "source_pages": [
         16
@@ -1124,7 +1350,7 @@
     {
       "category": {
         "en": "Shortness of breath",
-        "sv": "DYSPNÉ"
+        "sv": "Dyspné"
       },
       "source_pages": [
         17
@@ -1176,7 +1402,7 @@
     {
       "category": {
         "en": "Limb problems",
-        "sv": "EXTREMITETSPROBLEM"
+        "sv": "Extremitetsproblem"
       },
       "source_pages": [
         18
@@ -1219,7 +1445,7 @@
     {
       "category": {
         "en": "Pregnancy from 18 weeks (18+0)/postpartum",
-        "sv": "GRAVIDITET FR.O.M. 18+0 /POST-PARTUM"
+        "sv": "Graviditet fr.o.m. 18+0 /post-partum"
       },
       "source_pages": [
         19
@@ -1325,7 +1551,7 @@
     {
       "category": {
         "en": "Gynecologic presentations (age 16 and over)",
-        "sv": "GYNEKOLOGISKA SÖKORSAKER (fr 16 år)"
+        "sv": "Gynekologiska sökorsaker (fr 16 år)"
       },
       "source_pages": [
         21,
@@ -1492,7 +1718,7 @@
         {
           "category": {
             "en": "Not pregnant, abdominal pain/bleeding",
-            "sv": "EJ Gravid — Buksmärta/Blödning"
+            "sv": "Ej gravid — buksmärta/blödning"
           },
           "source_pages": [
             21,
@@ -1592,7 +1818,7 @@
               "source_page": 21,
               "cross_reference": {
                 "en": "Infection/fever/sepsis",
-                "sv": "INFEKTION/FEBER/SEPSIS"
+                "sv": "Infektion/feber/sepsis"
               },
               "id": "gynaecology.04.01",
               "navigateToCategory": "infection"
@@ -1606,7 +1832,7 @@
               "source_page": 21,
               "cross_reference": {
                 "en": "Infection/fever/sepsis",
-                "sv": "INFEKTION/FEBER/SEPSIS"
+                "sv": "Infektion/feber/sepsis"
               },
               "id": "gynaecology.04.02",
               "navigateToCategory": "infection"
@@ -1620,7 +1846,7 @@
               "source_page": 21,
               "cross_reference": {
                 "en": "Infection/fever/sepsis",
-                "sv": "INFEKTION/FEBER/SEPSIS"
+                "sv": "Infektion/feber/sepsis"
               },
               "id": "gynaecology.04.03",
               "navigateToCategory": "infection"
@@ -1782,7 +2008,7 @@
       "notes": [
         {
           "en": "The green criteria are headed GREEN 07–16. The separate referral table for antenatal care, primary care, and outpatient gynecology on page 22 has no explicit triage color and is excluded from the color-coded criteria.",
-          "sv": "Gröna kriterier har rubriken GRÖN 07-16. Den separata hänvisningstabellen MVC/VC/ÖV-gyn på sida 22 saknar uttrycklig triagefärg och ingår inte som färgsatta kriterier."
+          "sv": "Gröna kriterier har rubriken Grön 07-16. Den separata hänvisningstabellen MVC/VC/ÖV-gyn på sida 22 saknar uttrycklig triagefärg och ingår inte som färgsatta kriterier."
         },
         {
           "en": "Three color rows refer postoperative infection to the infection category. These are cross-references and do not assign all three colors to postoperative infection.",
@@ -1812,7 +2038,7 @@
     {
       "category": {
         "en": "Heart rhythm",
-        "sv": "HJÄRTRYTM"
+        "sv": "Hjärtrytm"
       },
       "source_pages": [
         23
@@ -1837,7 +2063,7 @@
     {
       "category": {
         "en": "Cardiac arrest/airway obstruction",
-        "sv": "HJÄRTSTOPP/LUFTVÄGSHINDER"
+        "sv": "Hjärtstopp/luftvägshinder"
       },
       "source_pages": [
         24
@@ -1871,7 +2097,7 @@
     {
       "category": {
         "en": "Skin",
-        "sv": "HUD"
+        "sv": "Hud"
       },
       "source_pages": [
         25
@@ -1890,7 +2116,7 @@
     {
       "category": {
         "en": "Headache",
-        "sv": "HUVUDVÄRK"
+        "sv": "Huvudvärk"
       },
       "source_pages": [
         26
@@ -1915,7 +2141,7 @@
     {
       "category": {
         "en": "Infection/fever/sepsis",
-        "sv": "INFEKTION/FEBER/SEPSIS"
+        "sv": "Infektion/feber/sepsis"
       },
       "source_pages": [
         27
@@ -1967,7 +2193,7 @@
     {
       "category": {
         "en": "Poisoning",
-        "sv": "INTOX"
+        "sv": "Intox"
       },
       "source_pages": [
         28
@@ -2037,7 +2263,7 @@
     {
       "category": {
         "en": "Complications of surgery, casts, or other procedures",
-        "sv": "KOMPLIKATION OPERATION/GIPS ETC"
+        "sv": "Komplikation operation/gips etc"
       },
       "source_pages": [
         29
@@ -2056,7 +2282,7 @@
     {
       "category": {
         "en": "Liver disease",
-        "sv": "LEVERSJUKDOM"
+        "sv": "Leversjukdom"
       },
       "source_pages": [
         30
@@ -2075,7 +2301,7 @@
     {
       "category": {
         "en": "Groin",
-        "sv": "LJUMSK"
+        "sv": "Ljumsk"
       },
       "source_pages": [
         31
@@ -2100,7 +2326,7 @@
     {
       "category": {
         "en": "Altered level of consciousness",
-        "sv": "MEDVETANDEPÅVERKAN"
+        "sv": "Medvetandepåverkan"
       },
       "source_pages": [
         32
@@ -2143,7 +2369,7 @@
     {
       "category": {
         "en": "Neurologic symptoms/dizziness/seizures",
-        "sv": "NEURO/YRSEL/KRAMPER"
+        "sv": "Neuro/yrsel/kramper"
       },
       "source_pages": [
         33
@@ -2249,7 +2475,7 @@
     {
       "category": {
         "en": "Nonspecific illness",
-        "sv": "OSPECIFIK SJUKDOM"
+        "sv": "Ospecifik sjukdom"
       },
       "source_pages": [
         35
@@ -2283,7 +2509,7 @@
     {
       "category": {
         "en": "Psychiatric symptoms",
-        "sv": "PSYKISKA BESVÄR"
+        "sv": "Psykiska besvär"
       },
       "source_pages": [
         36,
@@ -2528,7 +2754,7 @@
     {
       "category": {
         "en": "Rectal symptoms",
-        "sv": "RECT"
+        "sv": "Rect"
       },
       "source_pages": [
         38
@@ -2547,7 +2773,7 @@
     {
       "category": {
         "en": "Back pain",
-        "sv": "RYGGSMÄRTA"
+        "sv": "Ryggsmärta"
       },
       "source_pages": [
         39
@@ -2572,7 +2798,7 @@
     {
       "category": {
         "en": "Syncope",
-        "sv": "SVIMNING"
+        "sv": "Svimning"
       },
       "source_pages": [
         40
@@ -2597,7 +2823,7 @@
     {
       "category": {
         "en": "Male genital symptoms",
-        "sv": "UNDERLIVSBESVÄR MÄN"
+        "sv": "Underlivsbesvär män"
       },
       "source_pages": [
         41
@@ -2606,7 +2832,7 @@
         {
           "text": {
             "en": "Sudden, severe, persistent genital or scrotal pain",
-            "sv": "Underlivssmärtor / Skrotumsmärtor: hastigt påkommande, kraftig och ihållande"
+            "sv": "Underlivssmärtor / skrotumsmärtor: hastigt påkommande, kraftig och ihållande"
           },
           "triage_color": "orange",
           "source_page": 41,
@@ -2622,7 +2848,7 @@
     {
       "category": {
         "en": "Urinary symptoms",
-        "sv": "URINVÄGSBESVÄR"
+        "sv": "Urinvägsbesvär"
       },
       "source_pages": [
         42
@@ -2659,7 +2885,7 @@
         {
           "category": {
             "en": "Trauma/injuries meeting trauma alert criteria",
-            "sv": "TRAUMA/SKADOR – TRAUMALARMSKRITERIER"
+            "sv": "Trauma/skador – traumalarmskriterier"
           },
           "source_pages": [
             3,
@@ -2670,7 +2896,7 @@
             {
               "category": {
                 "en": "Level 1",
-                "sv": "NIVÅ 1"
+                "sv": "Nivå 1"
               },
               "source_pages": [
                 3,
@@ -2714,7 +2940,7 @@
                   "source_page": 43,
                   "criterion_group": {
                     "en": "Breathing — children",
-                    "sv": "Andning — BARN"
+                    "sv": "Andning — barn"
                   },
                   "color_source_page": 3,
                   "id": "trauma-alert.01.03",
@@ -2743,7 +2969,7 @@
                   "source_page": 43,
                   "criterion_group": {
                     "en": "Circulation — children",
-                    "sv": "Cirkulation — BARN"
+                    "sv": "Cirkulation — barn"
                   },
                   "color_source_page": 3,
                   "id": "trauma-alert.01.05",
@@ -2762,7 +2988,7 @@
                   "source_page": 43,
                   "criterion_group": {
                     "en": "Circulation — children",
-                    "sv": "Cirkulation — BARN"
+                    "sv": "Cirkulation — barn"
                   },
                   "color_source_page": 3,
                   "id": "trauma-alert.01.06",
@@ -2777,7 +3003,7 @@
                   "source_page": 43,
                   "criterion_group": {
                     "en": "Circulation — children",
-                    "sv": "Cirkulation — BARN"
+                    "sv": "Cirkulation — barn"
                   },
                   "color_source_page": 3,
                   "id": "trauma-alert.01.07",
@@ -2792,7 +3018,7 @@
                   "source_page": 43,
                   "criterion_group": {
                     "en": "Neurology",
-                    "sv": "NEUROLOGI"
+                    "sv": "Neurologi"
                   },
                   "color_source_page": 3,
                   "id": "trauma-alert.01.08"
@@ -2806,7 +3032,7 @@
                   "source_page": 43,
                   "criterion_group": {
                     "en": "Anatomic criteria",
-                    "sv": "ANATOMISKA KRITERIER"
+                    "sv": "Anatomiska kriterier"
                   },
                   "color_source_page": 3,
                   "id": "trauma-alert.01.09"
@@ -2820,7 +3046,7 @@
                   "source_page": 43,
                   "criterion_group": {
                     "en": "Anatomic criteria",
-                    "sv": "ANATOMISKA KRITERIER"
+                    "sv": "Anatomiska kriterier"
                   },
                   "color_source_page": 3,
                   "id": "trauma-alert.01.10"
@@ -2834,7 +3060,7 @@
                   "source_page": 43,
                   "criterion_group": {
                     "en": "Anatomic criteria",
-                    "sv": "ANATOMISKA KRITERIER"
+                    "sv": "Anatomiska kriterier"
                   },
                   "color_source_page": 3,
                   "id": "trauma-alert.01.11"
@@ -2848,7 +3074,7 @@
                   "source_page": 43,
                   "criterion_group": {
                     "en": "Anatomic criteria",
-                    "sv": "ANATOMISKA KRITERIER"
+                    "sv": "Anatomiska kriterier"
                   },
                   "color_source_page": 3,
                   "id": "trauma-alert.01.12"
@@ -2862,7 +3088,7 @@
                   "source_page": 43,
                   "criterion_group": {
                     "en": "Anatomic criteria",
-                    "sv": "ANATOMISKA KRITERIER"
+                    "sv": "Anatomiska kriterier"
                   },
                   "color_source_page": 3,
                   "id": "trauma-alert.01.13"
@@ -2876,7 +3102,7 @@
                   "source_page": 43,
                   "criterion_group": {
                     "en": "Anatomic criteria",
-                    "sv": "ANATOMISKA KRITERIER"
+                    "sv": "Anatomiska kriterier"
                   },
                   "color_source_page": 3,
                   "id": "trauma-alert.01.14"
@@ -2890,7 +3116,7 @@
                   "source_page": 43,
                   "criterion_group": {
                     "en": "Anatomic criteria",
-                    "sv": "ANATOMISKA KRITERIER"
+                    "sv": "Anatomiska kriterier"
                   },
                   "color_source_page": 3,
                   "id": "trauma-alert.01.15"
@@ -2904,7 +3130,7 @@
                   "source_page": 43,
                   "criterion_group": {
                     "en": "Anatomic criteria",
-                    "sv": "ANATOMISKA KRITERIER"
+                    "sv": "Anatomiska kriterier"
                   },
                   "color_source_page": 3,
                   "id": "trauma-alert.01.16"
@@ -2918,7 +3144,7 @@
                   "source_page": 43,
                   "criterion_group": {
                     "en": "Anatomic criteria",
-                    "sv": "ANATOMISKA KRITERIER"
+                    "sv": "Anatomiska kriterier"
                   },
                   "color_source_page": 3,
                   "id": "trauma-alert.01.17"
@@ -2932,7 +3158,7 @@
                   "source_page": 43,
                   "criterion_group": {
                     "en": "Anatomic criteria",
-                    "sv": "ANATOMISKA KRITERIER"
+                    "sv": "Anatomiska kriterier"
                   },
                   "color_source_page": 3,
                   "id": "trauma-alert.01.18"
@@ -2951,7 +3177,7 @@
             {
               "category": {
                 "en": "Level 2",
-                "sv": "NIVÅ 2"
+                "sv": "Nivå 2"
               },
               "source_pages": [
                 3,
@@ -2967,7 +3193,7 @@
                   "source_page": 43,
                   "criterion_group": {
                     "en": "Mechanism of injury",
-                    "sv": "SKADEMEKANISM"
+                    "sv": "Skademekanism"
                   },
                   "color_source_page": 3,
                   "id": "trauma-alert.02.01"
@@ -2981,7 +3207,7 @@
                   "source_page": 43,
                   "criterion_group": {
                     "en": "Mechanism of injury",
-                    "sv": "SKADEMEKANISM"
+                    "sv": "Skademekanism"
                   },
                   "color_source_page": 3,
                   "id": "trauma-alert.02.02"
@@ -2995,7 +3221,7 @@
                   "source_page": 43,
                   "criterion_group": {
                     "en": "Mechanism of injury",
-                    "sv": "SKADEMEKANISM"
+                    "sv": "Skademekanism"
                   },
                   "color_source_page": 3,
                   "id": "trauma-alert.02.03"
@@ -3009,7 +3235,7 @@
                   "source_page": 43,
                   "criterion_group": {
                     "en": "Mechanism of injury",
-                    "sv": "SKADEMEKANISM"
+                    "sv": "Skademekanism"
                   },
                   "color_source_page": 3,
                   "id": "trauma-alert.02.04"
@@ -3023,7 +3249,7 @@
                   "source_page": 43,
                   "criterion_group": {
                     "en": "Mechanism of injury",
-                    "sv": "SKADEMEKANISM"
+                    "sv": "Skademekanism"
                   },
                   "color_source_page": 3,
                   "id": "trauma-alert.02.05"
@@ -3037,7 +3263,7 @@
                   "source_page": 43,
                   "criterion_group": {
                     "en": "Mechanism of injury — children",
-                    "sv": "SKADEMEKANISM — BARN"
+                    "sv": "Skademekanism — barn"
                   },
                   "color_source_page": 3,
                   "id": "trauma-alert.02.06",
@@ -3052,7 +3278,7 @@
                   "source_page": 43,
                   "criterion_group": {
                     "en": "Mechanism of injury — children",
-                    "sv": "SKADEMEKANISM — BARN"
+                    "sv": "Skademekanism — barn"
                   },
                   "color_source_page": 3,
                   "id": "trauma-alert.02.07",
@@ -3061,7 +3287,7 @@
               ],
               "clarification": {
                 "en": "A level 2 alert is triggered when the mechanism suggests that an unprotected patient sustained high-energy trauma and serious injury is possible despite stable vital signs.",
-                "sv": "Nivå 2-larm utlöses om skademekanismen talar för att patienten OSKYDDAD har utsatts för högenergetiskt våld och det finns risk för svåra skador trots stabila VP."
+                "sv": "Nivå 2-larm utlöses om skademekanismen talar för att patienten oskyddad har utsatts för högenergetiskt våld och det finns risk för svåra skador trots stabila VP."
               },
               "examples": [
                 {
@@ -3102,7 +3328,7 @@
             {
               "category": {
                 "en": "Level 3",
-                "sv": "NIVÅ 3"
+                "sv": "Nivå 3"
               },
               "source_pages": [
                 3,
@@ -3118,7 +3344,7 @@
                   "source_page": 43,
                   "criterion_group": {
                     "en": "Mechanism of injury",
-                    "sv": "SKADEMEKANISM"
+                    "sv": "Skademekanism"
                   },
                   "color_source_page": 3,
                   "id": "trauma-alert.03.01"
@@ -3132,7 +3358,7 @@
                   "source_page": 43,
                   "criterion_group": {
                     "en": "Mechanism of injury",
-                    "sv": "SKADEMEKANISM"
+                    "sv": "Skademekanism"
                   },
                   "color_source_page": 3,
                   "id": "trauma-alert.03.02"
@@ -3140,13 +3366,13 @@
                 {
                   "text": {
                     "en": "Motorcycle or moped crash at >35 km/h",
-                    "sv": "MC/Mopedolycka >35 km/tim"
+                    "sv": "MC/mopedolycka >35 km/tim"
                   },
                   "triage_color": "yellow",
                   "source_page": 43,
                   "criterion_group": {
                     "en": "Mechanism of injury",
-                    "sv": "SKADEMEKANISM"
+                    "sv": "Skademekanism"
                   },
                   "color_source_page": 3,
                   "id": "trauma-alert.03.03"
@@ -3160,7 +3386,7 @@
                   "source_page": 43,
                   "criterion_group": {
                     "en": "Mechanism of injury",
-                    "sv": "SKADEMEKANISM"
+                    "sv": "Skademekanism"
                   },
                   "color_source_page": 3,
                   "id": "trauma-alert.03.04"
@@ -3174,7 +3400,7 @@
                   "source_page": 43,
                   "criterion_group": {
                     "en": "Mechanism of injury",
-                    "sv": "SKADEMEKANISM"
+                    "sv": "Skademekanism"
                   },
                   "color_source_page": 3,
                   "id": "trauma-alert.03.05"
@@ -3239,7 +3465,7 @@
         {
           "category": {
             "en": "Trauma/injuries below trauma alert criteria",
-            "sv": "TRAUMA/SKADOR som inte uppfyller traumalarmskriterierna"
+            "sv": "Trauma/skador som inte uppfyller traumalarmskriterierna"
           },
           "source_pages": [
             44
@@ -3266,7 +3492,7 @@
             {
               "text": {
                 "en": "Abdominal or chest trauma with increasing pain or girth, obstructed urinary outflow, or hematuria",
-                "sv": "Buk / Toraxtrauma med tilltagande smärta / omfång, urostopp eller hematuri"
+                "sv": "Buk / toraxtrauma med tilltagande smärta / omfång, urostopp eller hematuri"
               },
               "triage_color": "red",
               "source_page": 44,
@@ -3320,7 +3546,7 @@
             {
               "text": {
                 "en": "Abdominal or chest trauma with autonomic symptoms",
-                "sv": "Buk / Toraxtrauma: med vegetativa symtom"
+                "sv": "Buk / toraxtrauma: med vegetativa symtom"
               },
               "triage_color": "orange",
               "source_page": 44,
@@ -3416,7 +3642,7 @@
     {
       "category": {
         "en": "Eyes and ears",
-        "sv": "Ögon och Öron"
+        "sv": "Ögon och öron"
       },
       "source_pages": [
         45
@@ -3468,7 +3694,7 @@
     {
       "category": {
         "en": "Frailty in older adults – care needs",
-        "sv": "SKÖR ÄLDRE – BEHOV/PROCESS"
+        "sv": "Skör äldre – behov/process"
       },
       "source_pages": [
         46
@@ -3483,7 +3709,7 @@
           "source_page": 46,
           "definition": {
             "en": "Age ≥75 years plus a modified FRESH score ≥2 defines frailty. Living in residential care scores 2 points. Reduced endurance, general tiredness or reduced energy for <2 months, frequent falls or fear of falling, and needing help with shopping each score 1 point. Assign at least yellow priority and see the patient first within their color group.",
-            "sv": "≥75 år + ≥2p enligt modifierad FRESH definieras som Skör äldre. Bor på särskilt boende (2p); nedsatt uthållighet (1p); allmän trötthet/minskad ork <2 mån (1p); ramlar ofta/oro för fall (1p); behöver hjälp med inköp (1p). Prioriteras lägst GUL och tas först i sin färg."
+            "sv": "≥75 år + ≥2p enligt modifierad FRESH definieras som skör äldre. Bor på särskilt boende (2p); nedsatt uthållighet (1p); allmän trötthet/minskad ork <2 mån (1p); ramlar ofta/oro för fall (1p); behöver hjälp med inköp (1p). Prioriteras lägst gul och tas först i sin färg."
           },
           "id": "frailty.01"
         }
@@ -3497,7 +3723,7 @@
     {
       "category": {
         "en": "Hospital admission – care needs",
-        "sv": "INLÄGGNING - BEHOV/PROCESS"
+        "sv": "Inläggning - behov/process"
       },
       "source_pages": [
         47
@@ -3522,7 +3748,7 @@
     {
       "category": {
         "en": "Interpersonal violence – care needs",
-        "sv": "YTTRE VÅLD – BEHOV/PROCESS"
+        "sv": "Yttre våld – behov/process"
       },
       "source_pages": [
         48
@@ -3803,6 +4029,14 @@
       "en": "— pts",
       "sv": "— poäng"
     },
+    "mobile.provisionalVital": {
+      "en": "Previous reading. Click or press Enter to confirm.",
+      "sv": "Tidigare värde. Klicka eller tryck på Enter för att bekräfta."
+    },
+    "mobile.provisionalScore": {
+      "en": "{scale} (provisional)",
+      "sv": "{scale} (preliminär)"
+    },
     "mobile.westScoreTotal": {
       "en": "{scale} total",
       "sv": "Totalt {scale}"
@@ -3847,10 +4081,6 @@
       "en": "Unresponsive",
       "sv": "Reagerar inte"
     },
-    "mobile.westObservation.pulse": {
-      "en": "Pulse rate",
-      "sv": "Pulsfrekvens"
-    },
     "mobile.westObservation.respiratoryRate": {
       "en": "Respiratory rate",
       "sv": "Andningsfrekvens"
@@ -3868,8 +4098,8 @@
       "sv": "Diastoliskt tryck"
     },
     "mobile.westObservation.heartRate": {
-      "en": "Heart rate or pulse",
-      "sv": "Hjärtfrekvens eller puls"
+      "en": "Pulse rate",
+      "sv": "Puls"
     },
     "mobile.westObservation.temperature": {
       "en": "Temperature",
