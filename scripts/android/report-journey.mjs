@@ -2,7 +2,7 @@ import {adbShellArguments} from './instrumentation.mjs';
 import {observeNativePdfCalls} from './pdf-native-observer.mjs';
 import {decodeUpgradePreparationReceipt} from './upgrade-policy-fixture.mjs';
 import { captureAndroidFailure } from './diagnostics.mjs';
-import { execFileSync, spawn, spawnSync } from 'node:child_process';
+import { execFileSync, spawnSync } from 'node:child_process';
 import { readFile, rm, writeFile } from 'node:fs/promises';
 import assert from 'node:assert/strict';
 import pg from 'pg';
@@ -39,25 +39,10 @@ export async function runReportRecoveryJourney({ root, fixture, adb, serial, run
   const prepareUntilKilled = (phase = 'prepare', extra = {}) => {
     const args = argumentsFor(phase, fixture.clinician.username, fixture.clinicianPassword,
       { artifactBase64: Buffer.from(JSON.stringify(artifact)).toString('base64'), ...extra });
-    const child = spawn(adb, adbShellArguments(args), { cwd: root, stdio: ['ignore', 'pipe', 'pipe'] });
-    let output = '', announced = false, readyResolve, readyReject, closedResolve;
-    const ready = new Promise((resolve, reject) => { readyResolve = resolve; readyReject = reject; });
-    const closed = new Promise(resolve => { closedResolve = resolve; });
-    const timeout = setTimeout(() => { child.kill('SIGTERM'); readyReject(new Error('Android preparation did not reach the live-process checkpoint')); }, 600000);
-    const collect = chunk => {
-      output += chunk.toString(); process.stdout.write(chunk);
-      if (!announced && output.includes('opentriage_phase=ready-for-process-kill')) {
-        announced = true; clearTimeout(timeout); readyResolve();
-      }
-    };
-    child.stdout.on('data', collect); child.stderr.on('data', collect);
-    child.once('error', error => { clearTimeout(timeout); readyReject(error); });
-    child.once('close', (code, signal) => {
-      clearTimeout(timeout);
-      if (!announced) readyReject(new Error(`Android preparation exited before the live-process checkpoint (${code ?? signal})`));
-      closedResolve({ code, signal });
+    return startLiveInstrumentation(adb, adbShellArguments(args), {
+      cwd: root, phase: 'report-' + phase, checkpoint: 'opentriage_phase=ready-for-process-kill',
+      secrets: [fixture.administratorPassword, fixture.clinicianPassword],
     });
-    return { ready, closed, child };
   };
   const db = new pg.Client({ connectionString: fixture.databaseUrl }); await db.connect();
   let preparation, primaryError;

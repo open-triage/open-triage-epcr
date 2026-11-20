@@ -19,13 +19,28 @@ export function startLiveInstrumentation(command,args,{cwd,checkpoint,phase='liv
   };
   const fail=(message,terminate=true)=>{if(failed)return;failed=true;clearTimeout(timeout);readyReject(failureFor(message));if(terminate){child.kill('SIGTERM');killTimer=setTimeout(()=>child.kill('SIGKILL'),killGraceMs);}};
   const timeout=setTimeout(()=>fail('Live instrumentation checkpoint timed out'),timeoutMs);
-  const collect=chunk=>{
+  const checkpointLine = 'INSTRUMENTATION_STATUS: ' + checkpoint;
+  let pendingLine = '', checkpointSeen = false;
+  const collect=(chunk,isStdout)=>{
     if(failed)return;
     if(Buffer.byteLength(output)+chunk.length>256*1024){truncated=true;fail('Live instrumentation output exceeded its bound');return;}
     output+=chunk.toString();
-    if(!announced&&output.includes(checkpoint)){announced=true;clearTimeout(timeout);readyResolve(sanitize(output));}
+    if (announced || !isStdout) return;
+    const lines = (pendingLine + chunk.toString()).split('\n');
+    pendingLine = lines.pop();
+    for (const rawLine of lines) {
+      const line = rawLine.replace(/\r$/, '');
+      if (line === checkpointLine) checkpointSeen = true;
+      // am instrument emits the status code after every field in the Bundle.
+      if (checkpointSeen && /^INSTRUMENTATION_STATUS_CODE: -?\d+$/.test(line)) {
+        announced = true;
+        clearTimeout(timeout);
+        readyResolve(sanitize(output));
+        break;
+      }
+    }
   };
-  child.stdout.on('data',collect);child.stderr.on('data',collect);
+  child.stdout.on('data',chunk=>collect(chunk,true));child.stderr.on('data',chunk=>collect(chunk,false));
   child.once('error',()=>fail('Live instrumentation could not start',false));
   child.once('close',(code,signal)=>{
     clearTimeout(timeout);clearTimeout(killTimer);

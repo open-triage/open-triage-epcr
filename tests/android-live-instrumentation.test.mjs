@@ -15,9 +15,42 @@ test('normal instrumentation success before the live checkpoint cannot claim pro
  assert.equal(statSync(join(cwd,ended.diagnostics.reportPath)).mode&0o777,0o600);
 });
 test('live checkpoint keeps the child alive until host termination and sanitizes evidence',async t=>{
- const cwd=workspace(t),run=startLiveInstrumentation(process.execPath,['-e',"console.log('token=synthetic-secret\\nlive-ready');setInterval(()=>{},1000)"],{cwd,checkpoint:'live-ready',timeoutMs:1000,redact:value=>value.replaceAll('synthetic-secret','[redacted]')});
+ const cwd=workspace(t),run=startLiveInstrumentation(process.execPath,['-e',"console.log('token=synthetic-secret\\nINSTRUMENTATION_STATUS: live-ready\\nINSTRUMENTATION_STATUS_CODE: 2');setInterval(()=>{},1000)"],{cwd,checkpoint:'live-ready',timeoutMs:1000,redact:value=>value.replaceAll('synthetic-secret','[redacted]')});
  const evidence=await run.ready;assert(evidence.includes('live-ready'));assert(!evidence.includes('synthetic-secret'));assert.equal(run.child.exitCode,null);
  run.child.kill('SIGTERM');const ended=await run.closed;assert.equal(ended.signal,'SIGTERM');assert(!ended.output.includes('synthetic-secret'));assert.equal(ended.diagnostics,undefined);assert.equal(existsSync(join(cwd,'android/app/build/reports/android-live-instrumentation')),false);
+});
+test('a TLS checkpoint delivers the full status bundle across ADB chunks', async t => {
+  const cwd = workspace(t);
+  const source = `
+    console.log('INSTRUMENTATION_STATUS_CODE: 1');
+    console.log('INSTRUMENTATION_STATUS: opentriage_phase=pending-confirmation-ready');
+    setTimeout(() => {
+      console.log('INSTRUMENTATION_STATUS: pending_token_sha256=' + 'a'.repeat(64));
+      process.stdout.write('INSTRUMENTATION_STATUS_CO');
+      setTimeout(() => console.log('DE: 2'), 20);
+    }, 20);
+    setInterval(() => {}, 1000);
+  `;
+  const run = startLiveInstrumentation(process.execPath, ['-e', source], {
+    cwd, checkpoint: 'opentriage_phase=pending-confirmation-ready', timeoutMs: 5000,
+  });
+  try {
+    const evidence = await run.ready;
+    assert.match(evidence, /pending_token_sha256=a{64}/);
+    assert.match(evidence, /INSTRUMENTATION_STATUS_CODE: 2/);
+  } finally {
+    run.child.kill();
+    await run.closed;
+  }
+});
+test('an incomplete status or a marker in stderr cannot authorize process termination', async t => {
+  for (const source of [
+    "console.log('INSTRUMENTATION_STATUS: live-ready')",
+    "console.error('INSTRUMENTATION_STATUS: live-ready'); console.log('INSTRUMENTATION_STATUS_CODE: 2')",
+  ]) {
+    const run = startLiveInstrumentation(process.execPath, ['-e', source], {cwd: workspace(t), checkpoint: 'live-ready'});
+    await assert.rejects(run.ready, /exited before/);
+  }
 });
 test('missing checkpoints and excessive output terminate rather than hang and retain bounded failure evidence',async t=>{
  for(const [source,expected,signal] of [["process.on('SIGTERM',()=>{});setInterval(()=>{},1000)",/timed out/,'SIGKILL'],["process.stdout.write('x'.repeat(300000));setInterval(()=>{},1000)",/exceeded/,'SIGTERM']]){
@@ -37,6 +70,6 @@ test('spawn errors, nonzero exits and actual child signals preserve phase and te
  for(const[command,args,signal]of cases){const cwd=workspace(t),run=startLiveInstrumentation(command,args,{cwd,phase:'failed-runner',checkpoint:'live-ready',timeoutMs:1000});await assert.rejects(run.ready,/could not start|exited before/);const ended=await run.closed,evidence=report(cwd,ended);assert.equal(evidence.exitCode,ended.code);assert.equal(evidence.signal,signal);assert.equal(evidence.phase,'failed-runner');if(args[1]?.includes('17'))assert.equal(evidence.exitCode,17);}
 });
 test('all shared live-instrumentation callers supply a safe distinct phase and sensitive callers provide known-secret redaction',()=>{
- for(const file of ['agency-handoff-journey','pdf-journey','report-journey','tls-journey']){const source=readFileSync(new URL(`../scripts/android/${file}.mjs`,import.meta.url),'utf8');assert.match(source,/phase:/,file);if(file!=='pdf-journey')assert.match(source,/secrets:/,file);}
+ for(const file of ['agency-handoff-journey','pdf-journey','oidc-journey','report-journey','tls-journey']){const source=readFileSync(new URL(`../scripts/android/${file}.mjs`,import.meta.url),'utf8');assert.match(source,/phase:/,file);if(file!=='pdf-journey')assert.match(source,/secrets:/,file);}
  assert.throws(()=>startLiveInstrumentation(process.execPath,[],{checkpoint:'live-ready',phase:'../private'}),/safe instrumentation phase/);
 });

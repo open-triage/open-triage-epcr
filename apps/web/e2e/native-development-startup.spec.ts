@@ -13,7 +13,7 @@ test("development UI renders without the debugging WebSocket used outside native
     }
     return route.fulfill({ status: 401, json: { message: "Unauthorized" } });
   });
-  await page.goto("/");
+  await page.goto("/", { waitUntil: "domcontentloaded" });
   await expect(page.getByRole("heading", { name: "Sign in", exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "Sign in", exact: true })).toBeVisible();
   await page.getByLabel("Username", { exact: true }).fill("native-startup-fixture");
@@ -50,17 +50,20 @@ test("Android development stays on the current screen beyond the HMR reconnect b
     };
     sessionStorage.setItem("stability-loads", String(Number(sessionStorage.getItem("stability-loads") ?? 0) + 1));
   }, { settings, appearance: DEFAULT_AGENCY_APPEARANCE });
-  await page.goto("/");
+  await page.goto("/", { waitUntil: "domcontentloaded" });
   const username = page.getByLabel("Username", { exact: true });
   await expect(username).toBeVisible();
   await username.fill("preserved-native-input");
-  // Next retries five times at 1s, then at 5s, and reloads after 12 failures.
-  await page.clock.runFor(70_000);
+  // Allow each chained reconnect timer to run, coalescing unrelated frame and interval callbacks.
+  const advancePastReconnectBudget = async () => {
+    for (let attempt = 0; attempt < 14; attempt++) await page.clock.fastForward(5_000);
+  };
+  await advancePastReconnectBudget();
   await page.evaluate(() => {
     window.dispatchEvent(new Event("online"));
     document.dispatchEvent(new Event("visibilitychange"));
   });
-  await page.clock.runFor(70_000);
+  await advancePastReconnectBudget();
   await expect(username).toHaveValue("preserved-native-input");
   expect(await page.evaluate(() => sessionStorage.getItem("stability-loads"))).toBe("1");
   expect(sockets).toBe(0);

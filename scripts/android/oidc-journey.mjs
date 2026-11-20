@@ -1,10 +1,11 @@
 import 'reflect-metadata';
-import {execFileSync,spawn,spawnSync} from 'node:child_process';
+import {execFileSync,spawnSync} from 'node:child_process';
 import {readFile,writeFile,rm} from 'node:fs/promises';
 import {randomUUID} from 'node:crypto';
 import {join} from 'node:path';
 import assert from 'node:assert/strict';
 import {DataSource} from 'typeorm';
+import {startLiveInstrumentation} from './live-instrumentation.mjs';
 import {runInstrumentation} from './instrumentation.mjs';
 import {captureAndroidFailure} from './diagnostics.mjs';
 import {assertNativeAuthenticationOutcome} from './authentication-outcome.mjs';
@@ -114,12 +115,15 @@ export async function runOidcJourney({root,fixture,adb,serial,api}) {
     await instrument('cancel');
     provider.tokenOverrides={sub:'android-unknown',name:'Synthetic external clinician',email:'android@example.test'};
     // Leave the provider page open while terminating the live clinical process.
-    const child=spawn(adb,instrumentArgs('prepare'),{cwd:root,stdio:['ignore','pipe','pipe']});let output='';
-    await new Promise((resolve,reject)=>{const timeout=setTimeout(()=>{child.kill();reject(new Error('OIDC did not reach its live process-loss checkpoint'));},180000);const collect=chunk=>{output+=chunk;process.stdout.write(chunk);if(output.includes('opentriage_phase=oidc-ready-for-process-kill')){clearTimeout(timeout);resolve();}};child.stdout.on('data',collect);child.stderr.on('data',collect);child.once('error',reject);child.once('exit',code=>{if(!output.includes('opentriage_phase=oidc-ready-for-process-kill')){clearTimeout(timeout);reject(new Error(`OIDC preparation exited early ${code}`));}});});
+    const preparation = startLiveInstrumentation(adb, instrumentArgs('prepare'), {
+      cwd: root, phase: 'oidc-prepare', checkpoint: 'opentriage_phase=oidc-ready-for-process-kill',
+      timeoutMs: 180000, secrets: [fixture.administratorPassword, fixture.clinicianPassword],
+    });
+    await preparation.ready;
     assert(execFileSync(adb,['-s',serial,'shell','pidof','org.opentriage.development'],{encoding:'utf8',timeout:10000}).trim());
     runAdb(['-s',serial,'shell','am','force-stop','org.opentriage.development']);
     assert.equal(spawnSync(adb,['-s',serial,'shell','pidof','org.opentriage.development'],{encoding:'utf8',timeout:10000}).stdout.trim(),'');
-    await new Promise(resolve=>{if(child.exitCode!==null)resolve();else child.once('exit',resolve);});
+    await preparation.closed;
     await instrument('resume',{userId:fixture.clinician.userId,protected:'recover'});
     assert.equal(await firstName(),'ANDROID-OIDC-PENDING','Original OIDC login must actually synchronize the retained pending edit');
     const [afterPins]=await db.query('select form_version_id,catalog_release_id,validation_version_id from clinical.report where id=$1',[report.id]);assert.deepEqual(afterPins,pins);
