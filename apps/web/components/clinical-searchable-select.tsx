@@ -8,6 +8,7 @@ import { resolveMessage } from "../app/localization";
 export type ClinicalSelectOption = {
   readonly key: string;
   readonly label: string;
+  readonly accessibleLabel?: string;
   readonly disabled?: boolean;
   readonly triageColour?: TriageColour;
 };
@@ -35,7 +36,7 @@ export function ClinicalSearchableSelect({ label, value, values, options, disabl
   const [query, setQuery] = useState("");
   const [active, setActive] = useState(0);
   const [placement, setPlacement] = useState<Placement | null>(null);
-  const visible = options.filter((option) => option.label.toLocaleLowerCase().includes(query.toLocaleLowerCase()));
+  const visible = options.filter((option) => (option.accessibleLabel ?? option.label).toLocaleLowerCase().includes(query.toLocaleLowerCase()));
   const selected = options.find((option) => option.key === value);
   const selectedValues = values ? options.filter((option) => values.includes(option.key)) : [];
   const language = typeof document !== "undefined" ? document.documentElement.lang : "en";
@@ -153,7 +154,8 @@ export function ClinicalSearchableSelect({ label, value, values, options, disabl
         }} />
       <div id={`${id}-options`} className="clinical-searchable-options" role="listbox" aria-label={label} aria-multiselectable={values ? true : undefined}>
         {visible.length ? visible.map((option, index) => <button key={option.key} id={`${id}-option-${index}`}
-          type="button" role="option" disabled={option.disabled} data-colour={option.triageColour} aria-selected={values ? values.includes(option.key) : option.key === value}
+          type="button" role="option" disabled={option.disabled} data-west-colour={option.triageColour} aria-selected={values ? values.includes(option.key) : option.key === value}
+          aria-label={option.accessibleLabel}
           className={`${index === active ? "is-active " : ""}${values?.includes(option.key) ? "is-selected" : ""}`.trim()}
           onMouseEnter={() => setActive(index)} onClick={() => commit(option.key)}>{option.label}</button>)
           : <div className="clinical-searchable-empty" role="status">{resolveMessage(language, "clinicalSelect.noMatches")}</div>}

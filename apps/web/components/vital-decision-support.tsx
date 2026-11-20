@@ -29,8 +29,7 @@ export function VitalDecisionSupport({
   const changed = override && calculation.colour !== override.calculatedColourWhenSelected;
   return <div className="vital-decision-support">
     <div className="vital-decision-support-controls">
-      <div role="status" className="vital-decision-support-result">
-        <span className="vital-decision-support-indicator" data-colour={effective ?? "gray"} aria-hidden="true" />
+      <div role="status" className="vital-decision-support-result" data-west-colour={effective ?? "gray"}>
         <div>
           <strong>{override ? t("mobile.westManual", { colour: label(effective) }) : calculationLabel}</strong>
           {override && <small>{t("mobile.westCalculated", { result: calculationLabel })}</small>}

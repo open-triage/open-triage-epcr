@@ -1,10 +1,11 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import type { ClinicalDecisionSupportConfiguration, DecisionSupportCatalogElement, DecisionSupportFieldName, EncounterGroupInstance, FinalizedDecisionSupportCalculation, TriageColour } from "@open-triage/contracts";
+import type { ClinicalDecisionSupportConfiguration, DecisionSupportCatalogElement, DecisionSupportFieldName, EncounterDocument, EncounterGroupInstance, FinalizedDecisionSupportCalculation, TriageColour } from "@open-triage/contracts";
 import { shippedWestDefinition } from "../../../defines/decision_support/west-localization.mjs";
 import { encounterEvents, removeCanonicalEvent } from "../app/canonical-events";
 import { latestFinalizedVitalDecisionSupport } from "../app/finalized-vital-decision-support";
-import { bundledEncounterDefinition, INITIAL_SHELL_STATE, transitionShell, vitalDraftDecisionSupport } from "../app/standard-encounter";
+import { bundledEncounterDefinition, INITIAL_SHELL_STATE, mobileEncounterDefinition, transitionShell, vitalDraftDecisionSupport, vitalDraftSuggestions } from "../app/standard-encounter";
+import { stationaryVitalEditDraft } from "../app/stationary-repeating-group";
 
 const westDefinition = shippedWestDefinition();
 
@@ -55,6 +56,58 @@ function report(instances: EncounterGroupInstance[]) {
     { id: "eVitals.VitalGroup", instances },
   ] };
 }
+
+test("editing an older WEST pulse saves eVitals.10 and preserves GCS recorded on the full report", () => {
+  const previous = structuredClone(configuration);
+  previous.definition.version = "1.0.0-draft.4";
+  const previousRate = previous.definition.inputs.heartRate!;
+  assert.ok("element" in previousRate);
+  previousRate.preferMeasuredHeartRateOverPulse = true;
+  const root = vital("prior", "2025-03-02T08:00:00Z", { status: "unassessed", colour: null }, "green");
+  const legacy = { ...root, decisionSupportCalculation: { ...root.decisionSupportCalculation!, version: previous.definition.version },
+    elements: root.elements.map((element) => element.id !== "eVitals.01" ? element : {
+    ...element, values: element.values.map((value) => ({ ...value, attributes: { "decisionSupportObservation:pulse": "120" } })),
+  }) };
+  const gcs = { id: "eVitals.GlasgowScoreGroup", instances: [{ instanceId: "gcs", parentInstanceId: "prior",
+    elements: [{ id: "eVitals.23", values: [{ kind: "scalar" as const, occurrenceId: "gcs-score", value: 15 }] }] }] };
+  const document = report([legacy]);
+  const original = { ...document, groups: [...document.groups.filter(({ id }) => id !== gcs.id), gcs] };
+  const initial = { ...INITIAL_SHELL_STATE, encounter: { ...INITIAL_SHELL_STATE.encounter, document: original } };
+  const open = { type: "vitals-opened", id: "prior", decisionSupport: previous } as const;
+  const save = { type: "vitals-saved", decisionSupport: previous } as const;
+  const opened = transitionShell(initial, open, mobileEncounterDefinition);
+  assert.equal(opened.encounter.document, original);
+  assert.equal(opened.vitalDraft?.values.heartRate, "120");
+  assert.equal(opened.vitalDraft?.values.gcs, "");
+  assert.equal(vitalDraftDecisionSupport(opened.vitalDraft, previous).calculation.physiology?.points.heartRate, 2);
+
+  const saved = transitionShell(opened, save, mobileEncounterDefinition);
+  const savedDocument = saved.encounter.document;
+  assert.deepEqual(savedDocument.groups.find(({ id }) => id === gcs.id), gcs);
+  const readings = (doc: EncounterDocument) => doc.groups.find(({ id }) => id === "eVitals.HeartRateGroup")
+    ?.instances.find(({ parentInstanceId }) => parentInstanceId === "prior")?.elements.find(({ id }) => id === "eVitals.10")?.values;
+  assert.equal(readings(savedDocument)?.length, 1);
+  assert.equal(readings(savedDocument)?.[0]?.value, 120);
+  assert.equal(readings(stationaryVitalEditDraft(original, legacy))?.[0]?.value, "120");
+  const edited = transitionShell(transitionShell(saved, open, mobileEncounterDefinition),
+    { type: "vitals-value-changed", field: "heartRate", value: "" }, mobileEncounterDefinition);
+  const cleared = transitionShell(edited, save, mobileEncounterDefinition);
+  const reopened = transitionShell(cleared, open, mobileEncounterDefinition);
+  assert.equal(reopened.vitalDraft?.values.heartRate, "");
+  assert.equal(vitalDraftDecisionSupport(reopened.vitalDraft, previous).calculation.physiology?.points.heartRate, undefined);
+});
+
+test("pending offline drafts recover a legacy pulse while giving a documented NEMSIS rate precedence", () => {
+  const started = transitionShell(INITIAL_SHELL_STATE, { type: "vitals-started", id: "draft", time: "09:00" });
+  for (const [canonical, expected] of [["", "120"], ["0", "0"]] as const) {
+    const draft = { ...started.vitalDraft!, values: { ...started.vitalDraft!.values, heartRate: canonical },
+      decisionSupport: { calculation: { status: "unassessed" as const, colour: null }, override: null,
+        observations: { pulse: "120", oxygen: "air" } } };
+    const restored = transitionShell(started, { type: "state-restored", state: { ...started, vitalDraft: draft } });
+    assert.equal(restored.vitalDraft?.values.heartRate, expected);
+    assert.deepEqual(restored.vitalDraft?.decisionSupport?.observations, { oxygen: "air" });
+  }
+});
 
 test("each timeline row reads its own stored WEST level, including manual downgrades and provisional levels", () => {
   const document = report([
@@ -126,6 +179,18 @@ test("repeat Vitals inherit the preceding decisions by timestamp and stable ID, 
   assert.equal(backdated.vitalDraft?.values.respiratoryRate, "");
   assert.deepEqual(review.calculation.physiology?.points, {});
   assert.equal(review.calculation.physiology?.total, null);
+  const readings = vitalDraftSuggestions(backdated.vitalDraft);
+  assert.equal(readings["eVitals.14"], "30");
+  const preview = vitalDraftDecisionSupport(backdated.vitalDraft, configuration, bundledEncounterDefinition, readings);
+  assert.equal(preview.calculation.physiology?.points.respiratoryRate, 3);
+  const confirmed = transitionShell(backdated, { type: "vitals-value-changed", field: "respiratoryRate", value: "30" });
+  assert.equal(vitalDraftSuggestions(confirmed.vitalDraft)["eVitals.14"], undefined);
+  assert.equal(vitalDraftDecisionSupport(confirmed.vitalDraft, configuration).calculation.physiology?.points.respiratoryRate, 3);
+  const cleared = transitionShell(confirmed, { type: "vitals-value-changed", field: "respiratoryRate", value: "" });
+  assert.equal(vitalDraftSuggestions(cleared.vitalDraft)["eVitals.14"], undefined);
+  const beforeFirst = transitionShell(backdated, { type: "vitals-time-changed", value: "07:59" });
+  assert.deepEqual(vitalDraftSuggestions(beforeFirst.vitalDraft), {});
+
 
   const revised = transitionShell(backdated, { type: "document-opened", document: report([first]) });
   const serialized = JSON.parse(JSON.stringify(revised));

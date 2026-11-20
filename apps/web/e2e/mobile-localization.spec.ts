@@ -19,9 +19,17 @@ for (const language of ["en", "sv"] as const) {
       capabilities: ["clinical:document", "clinical:demo"], workspaceAvailable: true,
     } }));
     await page.route("**/api/calls/assigned", (route) => route.fulfill({ json: demoAssignedCalls }));
-    await page.route("**/api/reports/open", (route) => route.fulfill({ json: { openCalls: [], completedReportIds: [], refreshedAt: new Date().toISOString() } }));
+    let callOpened = false;
+    await page.route("**/api/reports/open", (route) => route.fulfill({ json: {
+      openCalls: callOpened ? [{ reportId, callNumber: call.callNumber, lastSavedAt: new Date().toISOString(),
+        syncStatus: "saved", validationErrorCount: 0, revision: demoOpenAssignment.report.revision,
+        formVersionId: demoOpenAssignment.report.formVersionId, catalogReleaseId: demoOpenAssignment.report.catalogReleaseId }] : [],
+      completedReportIds: [], refreshedAt: new Date().toISOString(),
+    } }));
     await page.route("**/api/calls/synthetic-generation", (route) => route.fulfill({ json: { eligibleUnits: [call.unit], hasUnopenedCall: true } }));
     await page.route(`**/api/reports/${reportId}/active`, (route) => route.fulfill({ status: 304 }));
+    await page.route(`**/api/reports/${reportId}/signing-status`, (route) => route.fulfill({ json: { status: "draft" } }));
+    await page.route(`**/api/reports/${reportId}/{eps,cos}/context`, (route) => route.fulfill({ json: null }));
     await page.route(`**/api/reports/${reportId}/protected-key-envelope`, (route) => route.fulfill({ status: 201, json: {
       schemaVersion: 1, recoveryHandle: route.request().postDataJSON().recoveryHandle,
       recoveryDeadline: "2099-09-29T12:00:00Z", wrappingKeyVersion: 1,
@@ -36,7 +44,10 @@ for (const language of ["en", "sv"] as const) {
         nillable: true, supportsNotValues: true, supportsPertinentNegatives: true,
         localization: { sv: { label: "Systoliskt blodtryck" } } } },
     } } };
-    await page.route(`**/api/calls/${call.id}/open`, (route) => route.fulfill({ json: opened }));
+    await page.route(`**/api/calls/${call.id}/open`, (route) => {
+      callOpened = true;
+      return route.fulfill({ json: opened });
+    });
     await page.route(`**/api/reports/${reportId}/draft-changes`, (route) => route.fulfill({ json: { id: reportId, status: "draft", revision: 2 } }));
 
     await page.goto("/");
@@ -49,21 +60,31 @@ for (const language of ["en", "sv"] as const) {
     await expect(page.getByRole("heading", { name: language === "sv" ? "Tidslinje" : "Timeline" })).toBeVisible();
     const addVitals = page.getByRole("button", { name: language === "sv" ? "Lägg till vitalparametrar" : "Add vital signs" });
     await addVitals.click();
-    const dialog = page.getByRole("dialog", { name: "Vital signs" }); // Authored clinical label falls back to English.
+    const vitalsTitle = language === "sv" ? "Vitalparametrar" : "Vital signs";
+    const dialog = page.getByRole("dialog", { name: vitalsTitle });
     await expect(dialog).toBeVisible();
-    const systolicLabel = language === "sv" ? /Systoliskt blodtryck/ : /Systolic BP/;
+    const systolicLabel = language === "sv" ? /Systoliskt BT/ : /Systolic BP/;
     const systolic = dialog.getByRole("textbox", { name: systolicLabel });
+    await expect(dialog.getByRole("textbox", { name: language === "sv" ? /Puls/ : /Pulse rate/ })).toHaveCount(1);
+    await expect(dialog.getByRole("textbox", { name: /GCS|Glasgow/i })).toHaveCount(0);
     await systolic.fill("120");
     await page.keyboard.press("Tab");
     await expect(systolic).toHaveValue("120");
     await expect(dialog).toBeVisible();
-    await dialog.getByRole("button", { name: "Add vital set" }).click();
+    await dialog.getByRole("button", { name: language === "sv" ? "Lägg till" : "Add vital set", exact: true }).click();
     await page.getByRole("button", { name: new RegExp(language === "sv" ? "Checklista" : "Checklist") }).click();
     await page.getByRole("button", { name: new RegExp(language === "sv" ? "Tidslinje" : "Timeline") }).click();
-    await page.locator(".timeline-event-button").filter({ hasText: /Vital signs/ }).first().click();
-    await expect(page.getByRole("dialog", { name: "Vital signs" }).getByRole("textbox", { name: systolicLabel })).toHaveValue("120");
+    const vitalRow = page.locator(".timeline-list li").filter({ has: page.getByText(vitalsTitle, { exact: true }) }).first();
+    const editVitals = vitalRow.getByRole("button");
+    await expect(vitalRow.getByText(language === "sv" ? "Redigera" : "Edit", { exact: true })).toHaveCount(0);
+    await vitalRow.locator("time").click();
+    await expect(dialog.getByRole("textbox", { name: systolicLabel })).toHaveValue("120");
     await page.keyboard.press("Escape");
-    await expect(page.locator(".timeline-event-button").filter({ hasText: /Vital signs/ }).first().getByRole("button")).toBeFocused();
+    await expect(editVitals).toBeFocused();
+    await editVitals.press("Space");
+    await expect(dialog).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(editVitals).toBeFocused();
     await page.getByRole("button", { name: language === "sv" ? "Textanteckning" : "Text note" }).click();
     const noteDialog = page.getByRole("dialog", { name: language === "sv" ? "Textanteckning" : "Text note" });
     const noteText = noteDialog.getByRole("textbox");
@@ -74,8 +95,8 @@ for (const language of ["en", "sv"] as const) {
     await expect(noteText).toHaveValue("Åke observerade förbättring");
     await noteDialog.getByRole("button", { name: language === "sv" ? "Avbryt" : "Cancel" }).click();
 
-    await page.getByRole("button", { name: language === "sv" ? "Lägg till fotoanteckning" : "Add photo note" }).click();
-    const photoDialog = page.getByRole("dialog", { name: language === "sv" ? "Fotoanteckning" : "Photo note" });
+    await page.getByRole("button", { name: language === "sv" ? "Lägg till bildanteckning" : "Add photo note" }).click();
+    const photoDialog = page.getByRole("dialog", { name: language === "sv" ? "Bildanteckning" : "Photo note" });
     await expect(photoDialog).toBeVisible();
     await expect(photoDialog.getByRole("button", { name: language === "sv" ? "Byt kamera" : "Cycle camera" })).toBeVisible();
     await photoDialog.getByRole("button", { name: language === "sv" ? "Avbryt" : "Cancel" }).click();

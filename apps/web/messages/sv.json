@@ -225,7 +225,7 @@
   "mobile.noFindings": "Inga varningar eller fel.",
   "mobile.error": "Fel",
   "mobile.warning": "Varning",
-  "mobile.editValue": "Ändra värdet eller välj PN/NV × →",
+  "mobile.editValue": "Ändra värdet →",
   "mobile.editEntry": "Ändra berörd post →",
   "mobile.dispatchCancelled": "Larmcentralen avbröt utryckningen",
   "mobile.timelineOrder": "Nyaste först · Lokal tid",

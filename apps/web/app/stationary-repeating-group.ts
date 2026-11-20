@@ -3,6 +3,20 @@ import { COMPILED_STATIONARY_LAYOUT, type CompiledStationaryGroup } from "./stat
 import { getNemsisDataElement, getNemsisGroup, NEMSIS_DATA_MODEL } from "./nemsis-data-model";
 import { ensureNonRepeatingInstance } from "./stationary-non-repeating";
 import { localStationaryDateTimeParts } from "./stationary-date-time";
+import { legacyMeasurementPulse } from "./vital-decision-support";
+import { editScalarOccurrence } from "./stationary-scalar";
+
+export function stationaryVitalEditDraft(document: EncounterDocument, instance: EncounterGroupInstance): EncounterDocument {
+  const pulse = legacyMeasurementPulse(instance);
+  if (!pulse) return document;
+  const groupId = "eVitals.HeartRateGroup";
+  const heart = ensureNestedSingleGroupOccurrence(document, groupId, instance.instanceId);
+  if (!heart.ok) return document;
+  const entry = heart.document.groups.find(({ id }) => id === groupId)?.instances.find(({ instanceId }) => instanceId === heart.instanceId);
+  if (entry?.elements.some(({ id, values }) => id === "eVitals.10" && values.length)) return document;
+  const edited = editScalarOccurrence(heart.document, { groupId, groupInstanceId: heart.instanceId, elementId: "eVitals.10", input: pulse });
+  return edited.ok ? edited.document : document;
+}
 
 export type RepeatingGroupFinding = {
   readonly code: "cardinality" | "parent" | "identity";

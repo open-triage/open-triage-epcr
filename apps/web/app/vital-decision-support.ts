@@ -17,6 +17,9 @@ import {
   type EncounterGroupInstance,
 } from "@open-triage/contracts";
 import { clinicalInstantParts } from "./agency-time-zone";
+import { canonicalDecimal } from "./regional-format";
+
+const legacyPulseAttribute = decisionSupportObservationAttribute("pulse");
 
 export const UNASSESSED_VITAL: DraftDecisionSupportAssessment = {
   calculation: UNASSESSED_DECISION_SUPPORT,
@@ -25,16 +28,31 @@ export const UNASSESSED_VITAL: DraftDecisionSupportAssessment = {
 
 export function vitalAssessmentWithFindings(assessment: DraftDecisionSupportAssessment,
   definition: DecisionSupportDefinition, localTime: string,
-  measurements: Readonly<Record<string, string | number>>): DraftDecisionSupportAssessment {
+  measurements: Readonly<Record<string, string | number>>, suggestions?: Readonly<Record<string, string>>): DraftDecisionSupportAssessment {
   const result = decisionSupportFindingResult(definition, assessment.findings ?? EMPTY_DECISION_SUPPORT_FINDINGS, localTime);
   const scale = decisionSupportScale(definition, assessment.scale);
-  const physiology = decisionSupportPhysiology(definition, scale, measurements, assessment.observations);
+  const observations = suggestions ? { ...assessment.observations, ...Object.fromEntries(
+    Object.entries(suggestions).filter(([key]) => Object.hasOwn(definition.inputs[key] ?? {}, "values")),
+  ) } : assessment.observations;
+  const physiology = decisionSupportPhysiology(definition, scale, { ...measurements, ...suggestions }, observations);
   return { ...assessment, scale, calculation: calculateDecisionSupportFindings(definition, result, physiology) };
 }
 
 function measurement(instance: EncounterGroupInstance | undefined) {
   const value = instance?.elements.find(({ id }) => id === "eVitals.01")?.values[0];
   return value?.kind === "scalar" && typeof value.value === "string" ? value : undefined;
+}
+
+/** Earlier WEST editors stored a second rate on the measurement timestamp. */
+export function legacyPulseRate(raw: unknown): string {
+  const decimal = typeof raw === "string" ? canonicalDecimal(raw) : null;
+  if (decimal === null) return "";
+  const rate = Number(decimal);
+  return Number.isInteger(rate) && rate >= 0 && rate <= 500 ? String(rate) : "";
+}
+
+export function legacyMeasurementPulse(instance: EncounterGroupInstance): string {
+  return legacyPulseRate(measurement(instance)?.attributes?.[legacyPulseAttribute]);
 }
 
 export function vitalRecordedLocalTime(instance: EncounterGroupInstance | undefined): string | undefined {
@@ -71,7 +89,8 @@ export function vitalDecisionSupport(
   const scale = values("newsScale")[0];
   const observationPrefix = decisionSupportObservationAttribute("");
   const observations = Object.fromEntries(Object.entries(measurement(instance)?.attributes ?? {}).flatMap(([key, value]) =>
-    key.startsWith(observationPrefix) && typeof value === "string" ? [[key.slice(observationPrefix.length), value]] : []));
+    key.startsWith(observationPrefix) && key !== legacyPulseAttribute && typeof value === "string"
+      ? [[key.slice(observationPrefix.length), value]] : []));
   return {
     calculation: calculation.status === "unassessed"
       ? { ...UNASSESSED_DECISION_SUPPORT, ...(calculation.physiology ? { physiology: calculation.physiology } : {}) }
@@ -104,13 +123,16 @@ export function withVitalDecisionSupport(
   const managed = [fields.overrideColour, fields.categories, fields.criteria, fields.noWarningCriteria, fields.newsScale, fields.physiologyScore].map(decisionSupportElementKey);
   const observationPrefix = decisionSupportObservationAttribute("");
   const observationAttributes = Object.fromEntries(Object.entries(assessment.observations ?? {})
-    .filter(([, value]) => value !== "").map(([key, value]) => [decisionSupportObservationAttribute(key), value]));
+    .filter(([key, value]) => key !== "pulse" && value !== "").map(([key, value]) => [decisionSupportObservationAttribute(key), value]));
   const elements = instance.elements.filter(({ id }) => !managed.includes(id)).map((element) => element.id !== "eVitals.01" ? element : ({
     ...element,
     values: element.values.map((value, index) => index > 0 ? value : {
       ...value,
       attributes: {
         ...Object.fromEntries(Object.entries(value.attributes ?? {}).filter(([key]) => !key.startsWith(observationPrefix))),
+        // Retain the original reading as provenance when an older report is edited.
+        ...(value.attributes?.[legacyPulseAttribute] !== undefined
+          ? { "x-open-triage-legacy-west-pulse": value.attributes[legacyPulseAttribute] } : {}),
         ...observationAttributes,
       },
     }),

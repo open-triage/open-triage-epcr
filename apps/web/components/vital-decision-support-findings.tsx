@@ -61,9 +61,8 @@ export function VitalDecisionSupportFindings({ definition: pinned, findings, loc
       ...available.map(({ criterion, labelSuffix }) => {
         const finding = decisionSupportCriterionLabel(criterion, labelSuffix, locale);
         if (criterion.navigateToCategory) return { key: criterion.id, label: finding };
-        return { key: criterion.id, triageColour: criterion.triage_color, label: t("mobile.westFindingOption", {
-          severity: t(`mobile.westColour.${criterion.triage_color}`), finding,
-        }) };
+        return { key: criterion.id, triageColour: criterion.triage_color, label: finding,
+          accessibleLabel: t("mobile.westFindingOption", { severity: t(`mobile.westColour.${criterion.triage_color}`), finding }) };
       }),
     ]} onChange={(code) => {
       const target = available.find(({ criterion }) => criterion.id === code)?.criterion.navigateToCategory;
@@ -73,10 +72,11 @@ export function VitalDecisionSupportFindings({ definition: pinned, findings, loc
     {documented.length > 0 && <ul className="vital-west-documented" aria-label={t("mobile.westDocumentedFindings")}>
       {documented.map(({ category: documentedCategory, negative, criteria }) => <li key={documentedCategory.id}>
         <strong>{displayCategory(documentedCategory)}</strong>
-        <ul>{(negative ? [{ code: decisionSupportNegativeCode(definition, documentedCategory.id), label: noCriteriaLabel }]
+        <ul>{(negative ? [{ code: decisionSupportNegativeCode(definition, documentedCategory.id), label: noCriteriaLabel, colour: undefined }]
           : criteria.map(({ criterion, labelSuffix }) => ({
-            code: criterion.id, label: decisionSupportCriterionLabel(criterion, labelSuffix, locale),
-          }))).map(({ code, label }) => <li key={code}>
+            code: criterion.id, label: decisionSupportCriterionLabel(criterion, labelSuffix, locale), colour: criterion.triage_color,
+          }))).map(({ code, label, colour }) => <li key={code} data-west-colour={colour}
+            aria-description={colour && t(`mobile.westColour.${colour}`)}>
           <span>{label}</span>
           <button type="button" aria-label={t("mobile.westRemoveFinding", { finding: label })}
             onClick={() => remove(code)}>×</button>

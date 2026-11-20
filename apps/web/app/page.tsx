@@ -21,6 +21,7 @@ import {EpsOutgoingPreview} from '../components/eps-outgoing-preview';
 import {EpsSigningCheckbox,EpsDeliveryStatus,useEpsSigningActivation,useSigningExportSelection} from '../components/eps-sign-export';
 import { MedicationDialog } from "../components/medication-dialog";
 import { resolveCatalogElementText } from "./catalog-localization";
+import { provisionalVitalProps } from "../components/provisional-vital";
 import { VitalDecisionSupport } from "../components/vital-decision-support";
 import { VitalDecisionSupportScale, VitalDecisionSupportObservations } from "../components/vital-decision-support-scoring";
 import { VitalDecisionSupportFindings } from "../components/vital-decision-support-findings";
@@ -43,8 +44,11 @@ import {
   INITIAL_SHELL_STATE,
   MISSING_VITALS_FINDING_ID,
   reviewEncounter,
-  standardEncounterReducer,
-  vitalDraftDecisionSupport, additionalVitalInputs,
+  transitionShell,
+  mobileEncounterDefinition,
+  type ShellState,
+  type ShellAction,
+  vitalDraftDecisionSupport, vitalDraftSuggestions, additionalVitalInputs,
   type EncounterEvent,
   type ReviewFinding,
   type ShellView,
@@ -145,7 +149,9 @@ function EncounterWorkspace({ session, report, presentationMode, language, onSav
 }) {
   const region = useRegionalFormat();
   const zone = useAgencyTimeZone();
-  const [shell, dispatch] = useReducer(standardEncounterReducer, INITIAL_SHELL_STATE);
+  const encounterDefinition = presentationMode === "mobile" ? mobileEncounterDefinition : bundledEncounterDefinition;
+  const [shell, dispatch] = useReducer((state: ShellState, action: ShellAction) =>
+    transitionShell(state, action, encounterDefinition), INITIAL_SHELL_STATE);
   const t = (key: string, parameters?: Record<string, string | number>, count?: number) => resolveMessage(language, key, parameters, count);
   useEffect(() => { dispatch({ type: "time-zone-loaded", timeZone: zone }); }, [zone]);
   const [procedureSearch, setProcedureSearch] = useState("");
@@ -240,8 +246,8 @@ function EncounterWorkspace({ session, report, presentationMode, language, onSav
   const decisionSupport = report?.clinicalForm?.decisionSupport;
   const latestWestLevel = useMemo(() => latestFinalizedVitalDecisionSupport(encounter.document, decisionSupport),
     [encounter.document, decisionSupport]);
-  const clinicalEvents = useMemo(() => encounterEvents(encounter.document, bundledEncounterDefinition, zone, decisionSupport),
-    [encounter.document, zone, decisionSupport]);
+  const clinicalEvents = useMemo(() => encounterEvents(encounter.document, encounterDefinition, zone, decisionSupport),
+    [encounter.document, encounterDefinition, zone, decisionSupport]);
   const timelineEvents = useMemo(() => completeReportTimeline(
     [...incidentEvents, ...clinicalEvents], reportNotes, zone,
   ), [incidentEvents, clinicalEvents, reportNotes, zone]);
@@ -279,7 +285,9 @@ function EncounterWorkspace({ session, report, presentationMode, language, onSav
       label: catalogText(field.reference, "label") ?? field.label })) };
   const westOverrideRef = useRef<HTMLSelectElement>(null);
   const [westMissingColour, setWestMissingColour] = useState(false);
-  const westDraft = vitalDraftDecisionSupport(shell.vitalDraft, decisionSupport);
+  const westDraft = vitalDraftDecisionSupport(shell.vitalDraft, decisionSupport, encounterDefinition);
+  const suggestions = vitalDraftSuggestions(shell.vitalDraft);
+  const newsPreview = vitalDraftDecisionSupport(shell.vitalDraft, decisionSupport, encounterDefinition, suggestions);
   const westEffectiveColour = effectiveDecisionSupportColour(westDraft.calculation, westDraft.override?.colour);
   const mobileWestEnabled = presentationMode === "mobile" && Boolean(decisionSupport);
   const { id: draftVitalId, date: draftVitalDate, time: draftVitalTime, dateTime: draftVitalDateTime } =
@@ -292,28 +300,22 @@ function EncounterWorkspace({ session, report, presentationMode, language, onSav
   const westFrameColour = mobileWestEnabled
     ? (previewWestDraft ? westEffectiveColour ?? "gray" : latestWestLevel?.colour)
     : undefined;
-  const vitalDefinition = mobileDisplayDefinition(bundledEncounterDefinition, language, report?.clinicalForm).events.vitals;
-  const westPoints = westDraft.calculation.physiology?.points;
+  const vitalDefinition = mobileDisplayDefinition(encounterDefinition, language, report?.clinicalForm).events.vitals;
+  const westPoints = newsPreview.calculation.physiology?.points;
   const westDefinition = decisionSupport?.definition;
   const activeWestScale = westDefinition && decisionSupportScale(westDefinition, westDraft.scale);
   const westScoreInputs = activeWestScale && westDefinition?.assessment.elements.newsScale.values[activeWestScale]?.tablesByInput;
   const westPointsByElement = new Map<string, number | null>();
-  let pulsePoints: number | null | undefined;
   for (const key of Object.keys(westScoreInputs || {})) {
     const input = westDefinition?.inputs[key];
     if (!input || !("element" in input)) continue;
-    const points = westPoints?.[key] ?? null;
-    const field = vitalDefinition.fields.find(({ reference }) => reference === input.element);
-    const measured = field ? shell.vitalDraft?.values[field.id] : shell.vitalDraft?.additionalMeasurements?.[input.element];
-    if (input.preferMeasuredHeartRateOverPulse && !measured) {
-      pulsePoints = points;
-      if (points !== null) continue;
-    }
-    westPointsByElement.set(input.element, points);
+    westPointsByElement.set(input.element, westPoints?.[key] ?? null);
   }
   const displayDefinition = { ...bundledEncounterDefinition, events: { ...bundledEncounterDefinition.events,
     procedure: procedureDefinition, medication: medicationDefinition, vitals: vitalDefinition } };
-  const reviewFindings = useMemo(() => reviewEncounter(shell), [shell]);
+  const fullReviewFindings = useMemo(() => reviewEncounter(shell), [shell]);
+  const reviewFindings = useMemo(() => presentationMode === "mobile"
+    ? reviewEncounter(shell, mobileEncounterDefinition) : fullReviewFindings, [shell, presentationMode, fullReviewFindings]);
   const validationEvaluationTimestamp = useMemo(() => validationTimestampFor(encounter.document, report?.clinicalForm),
     [encounter.document, report?.clinicalForm]);
   const stationaryFindings = useMemo(() => validateStationaryRecord(encounter.document, report?.clinicalForm,
@@ -321,15 +323,15 @@ function EncounterWorkspace({ session, report, presentationMode, language, onSav
   const configuredStationaryFindings: ReadonlyArray<SigningFinding> = useMemo(
     () => [...stationaryFindings.map((finding) => ({ ...finding,
       acknowledged: finding.severity === "warning" && shell.acknowledgedWarnings.includes(finding.id),
-    })), ...stationaryReviewFindings(reviewFindings, report?.clinicalForm)],
-    [report?.clinicalForm, reviewFindings, shell.acknowledgedWarnings, stationaryFindings],
+    })), ...stationaryReviewFindings(fullReviewFindings, report?.clinicalForm)],
+    [report?.clinicalForm, fullReviewFindings, shell.acknowledgedWarnings, stationaryFindings],
   );
   const stationarySectionFindings = useMemo(() => configuredStationaryFindings.flatMap((finding) =>
     finding.severity === "information" ? [] : [{ severity: finding.severity, target: finding.target }]),
   [configuredStationaryFindings]);
   const mobileChecklistFindings: ReadonlyArray<SigningFinding> = useMemo(() => [...(report?.clinicalForm ? [] : reviewFindings),
     ...configuredStationaryFindings.filter((finding): finding is StationaryValidationFinding =>
-      !("eventType" in finding) && finding.severity !== "information" &&
+      !("eventType" in finding) && finding.severity !== "information" && finding.target.groupId !== "eVitals.GlasgowScoreGroup" &&
       Boolean(checklistFieldTarget(finding, encounter.document, report?.clinicalForm)))],
   [reviewFindings, configuredStationaryFindings, encounter.document, report?.clinicalForm]);
   const displayMobileChecklistFindings = pinnedChecklistFinding && !mobileChecklistFindings.some(({ id }) => id === pinnedChecklistFinding.id)
@@ -506,7 +508,7 @@ function EncounterWorkspace({ session, report, presentationMode, language, onSav
     pendingMedia: noteBlockers.length > 0 || (report ? hasPendingProtectedMedia(report.id) : false),
   });
   const canFinish = signingBlockers.length === 0;
-  const vitalDraftValidation = shell.vitalDraft ? validateVitals(shell.vitalDraft.time, shell.vitalDraft.values, bundledEncounterDefinition) : null;
+  const vitalDraftValidation = shell.vitalDraft ? validateVitals(shell.vitalDraft.time, shell.vitalDraft.values, encounterDefinition) : null;
   const editingVitalField = editingFinding && "vitalField" in editingFinding.target ? editingFinding.target.vitalField : undefined;
   const vitalFindingActive = !!(editingFinding && "eventType" in editingFinding && editingFinding.eventType === "vitals" && vitalDraftValidation && [...Object.values(vitalDraftValidation.errors), ...Object.values(vitalDraftValidation.warnings)].includes(editingFinding.message));
   const activeDialog = audioDialog ? "audio" : photoDialog ? "photo" : textNoteDraft ? "note" : shell.medicationDraft ? "medication" : shell.procedureDraft ? "procedure" : shell.vitalDraft ? "vitals" : null;
@@ -1058,7 +1060,7 @@ function EncounterWorkspace({ session, report, presentationMode, language, onSav
     <main className={`app-shell ${presentationMode}-presentation${presentationMode === "stationary" && stationaryTimelineOpen ? " stationary-timeline-open" : ""}`} data-presentation-mode={presentationMode}
       data-editing-blocked={editingBlocked || signing || cosBusy || undefined} onClickCapture={blockProtectedEdit}
       onBeforeInputCapture={blockProtectedEdit} onKeyDownCapture={blockProtectedEdit}>
-      {westFrameColour && <div className="west-encounter-frame" data-colour={westFrameColour} aria-hidden="true" />}
+      {westFrameColour && <div className="west-encounter-frame" data-west-colour={westFrameColour} aria-hidden="true" />}
       {closeError && <p className="safety-notice" role="alert" data-feedback-source="close">{t("mobile.protectedBeforeClose")}</p>}
       {recoveryNotice && !bestEffortNoticeInDemoBanner && <aside className="safety-notice" role="status" data-feedback-source="protected-storage"><strong>{recoveryNoticeHeading}</strong><span>{recoveryNotice}</span></aside>}
       {cosBusy&&<aside className="safety-notice" role="status">{t(epsBusy?"epsSubmission.signingPending":"cosSigning.pending")}</aside>}
@@ -1358,20 +1360,21 @@ function EncounterWorkspace({ session, report, presentationMode, language, onSav
               definition={decisionSupport.definition} findings={westDraft.findings ?? EMPTY_DECISION_SUPPORT_FINDINGS}
               localTime={shell.vitalDraft.recordedLocalTime ?? shell.vitalDraft.time} language={language}
               onChange={(findings) => dispatch({ type: "vitals-findings-changed", findings })} />}
-            {decisionSupport && <VitalDecisionSupportScale definition={decisionSupport.definition} assessment={westDraft} language={language}
+            {decisionSupport && <VitalDecisionSupportScale definition={decisionSupport.definition} assessment={newsPreview} suggestions={suggestions} language={language}
               showPendingScore
               onScale={(value) => dispatch({ type: "vitals-scale-changed", value })}
               onObservation={(key, value) => dispatch({ type: "vitals-observation-changed", key, value })} />}
             <div className="vital-grid">
-              {decisionSupport && <VitalDecisionSupportObservations definition={decisionSupport.definition} assessment={westDraft} language={language}
-                points={westPoints ?? {}} pulsePoints={pulsePoints}
+              {decisionSupport && <VitalDecisionSupportObservations definition={decisionSupport.definition} assessment={newsPreview} suggestions={suggestions} language={language}
+                points={westPoints ?? {}}
                 onObservation={(key, value) => dispatch({ type: "vitals-observation-changed", key, value })} />}
               {decisionSupport && additionalVitalInputs(decisionSupport, bundledEncounterDefinition).map((input) =>
                 <VitalEditorField key={input.element} id={`vital-${input.element}`}
                   label={catalogText(input.element, "label") ?? t(`mobile.westObservation.${input.key}`)} unit={input.unit}
                   pointsLabel={vitalPointsLabel(language, westPointsByElement.get(input.element))}>
                   {(describedBy) => <input id={`vital-${input.element}`} aria-describedby={describedBy} inputMode={input.precision === 0 ? "numeric" : "decimal"}
-                    placeholder={`${input.minValue}–${input.maxValue}`} value={shell.vitalDraft!.additionalMeasurements?.[input.element] ?? ""}
+                    {...provisionalVitalProps(suggestions[input.element], language, value => dispatch({ type: "vitals-measurement-changed", elementId: input.element, value }))}
+                    placeholder={suggestions[input.element] ?? `${input.minValue}–${input.maxValue}`} value={shell.vitalDraft!.additionalMeasurements?.[input.element] ?? ""}
                     onChange={(event) => dispatch({ type: "vitals-measurement-changed", elementId: input.element, value: event.target.value })} />}
                 </VitalEditorField>)}
               {vitalDefinition.fields.map((configuredField) => {
@@ -1384,18 +1387,19 @@ function EncounterWorkspace({ session, report, presentationMode, language, onSav
                   pointsLabel={vitalPointsLabel(language, westPointsByElement.get(configuredField.reference))}
                   className={vitalFindingActive && editingVitalField === field ? `finding-frame ${editingFinding!.severity}` : undefined}
                   validation={<DialogValidationMessage finding={vitalFindingActive && editingVitalField === field ? editingActionableFinding : undefined} />}
-                  action={<ExceptionalValueMenu label={t("mobile.setExceptional", { label: configuredField.label })}
+                  action={presentationMode === "stationary" && <ExceptionalValueMenu label={t("mobile.setExceptional", { label: configuredField.label })}
                       menuLabel={t("mobile.exceptionalMenu", { label: configuredField.label })}
                       selected={!!shell.vitalDraft!.values.nullValues[field]} open={openNullField === field}
                       onOpenChange={(open) => setOpenNullField(open ? field : null)}
                       choices={[...(shell.vitalDraft!.values.nullValues[field] ? [{ key: "", label: t("mobile.clearExceptional") }] : []),
                         ...nullOptionsFor(configuredField).filter((option) => option.value).map((option) => ({ key: option.value, label: option.label }))]}
                       onSelect={(value) => dispatch({ type: "vitals-null-changed", field, value })} />}>
-                  {(describedBy) => <input id={id} aria-describedby={describedBy} inputMode="numeric" required={configuredField.required} placeholder={`${configuredField.boundaries.min}–${configuredField.boundaries.max}`} value={shell.vitalDraft!.values[field]} onChange={(event) => dispatch({ type: "vitals-value-changed", field, value: event.target.value })} />}
+                  {(describedBy) => <input id={id} aria-describedby={describedBy} inputMode="numeric" required={configuredField.required} {...provisionalVitalProps(suggestions[configuredField.reference], language, value => dispatch({ type: "vitals-value-changed", field, value }))}
+                    placeholder={suggestions[configuredField.reference] ?? `${configuredField.boundaries.min}–${configuredField.boundaries.max}`} value={shell.vitalDraft!.values[field]} onChange={(event) => dispatch({ type: "vitals-value-changed", field, value: event.target.value })} />}
                 </VitalEditorField>
               );})}
             </div>
-            <p className="null-help">{vitalDefinition.labels.absenceHelp}</p>
+            {presentationMode === "stationary" && <p className="null-help">{vitalDefinition.labels.absenceHelp}</p>}
             <div className="note-dialog-actions"><DialogCancelButton language={language} onClick={() => { setOpenNullField(null); dispatch({ type: "vitals-cancelled" }); }} /><button className="button-primary" type="button" onClick={() => {
               setOpenNullField(null);
               if (decisionSupport && !westEffectiveColour) {

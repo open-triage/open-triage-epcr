@@ -670,6 +670,11 @@ fieldset { min-inline-size: 0; }
 .timeline-list small { color: #5d625b; font-size: var(--text-caption); }
 .timeline-list .editable-event { padding-block: 7px; background: #f4f8fc; }
 .timeline-event-button { display: grid; gap: 4px; width: 100%; min-height: 48px; padding: 8px 12px; text-align: left; cursor: pointer; }
+button.timeline-event-button {
+  --button-background: transparent;
+  --button-hover-background: color-mix(in srgb, var(--green) 8%, transparent);
+  border: 0; border-radius: 0; font-weight: inherit;
+}
 .timeline-row-action { justify-self: start; }
 .event-title { font-size: var(--text-control); line-height: 1.25; font-weight: 650; }
 .event-detail { color: var(--muted); font-size: var(--text-body); line-height: 1.35; }
@@ -920,6 +925,7 @@ fieldset { min-inline-size: 0; }
 .stationary-multiple-picker { align-self: start; }
 .stationary-multiple-picker .stationary-occurrence-actions { align-self: start; }
 .stationary-exceptional-picker { position: relative; }
+.mobile-presentation .checklist-inline-target [data-element-id^="eVitals."] .stationary-exceptional-picker { display: none; }
 .stationary-scalar-value-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: start; gap: 7px; min-width: 0; }
 .stationary-scalar-value-row > :first-child { min-width: 0; }
 .stationary-exceptional-picker > .null-value-trigger { width: 42px; min-height: 48px; padding: 0; font-size: var(--text-heading); line-height: 1; cursor: pointer; }
@@ -1536,23 +1542,27 @@ a.button-link { display: inline-flex; align-items: center; justify-content: cent
 .vital-decision-support { position: sticky; top: 0; z-index: 2; padding: 4px 0 8px; background: white; }
 .vital-decision-support-controls { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 12px; align-items: end; }
 .note-dialog .vital-decision-support label { margin: 0; }
-.vital-decision-support-result { display: flex; gap: 8px; align-items: center; min-height: 48px; overflow-wrap: anywhere; }
+.vital-decision-support-result { display: flex; align-items: center; min-height: 48px; overflow-wrap: anywhere; }
 .vital-decision-support-result small { display: block; color: var(--muted); }
-:is(.vital-decision-support-indicator, .west-encounter-frame) { --west-level-colour: #707779; }
-:is(.vital-decision-support-indicator, .west-encounter-frame, .clinical-searchable-options [role="option"])[data-colour="green"] { --west-level-colour: #22824b; }
-:is(.vital-decision-support-indicator, .west-encounter-frame, .clinical-searchable-options [role="option"])[data-colour="yellow"] { --west-level-colour: #c99b00; }
-:is(.vital-decision-support-indicator, .west-encounter-frame, .clinical-searchable-options [role="option"])[data-colour="orange"] { --west-level-colour: #c96212; }
-:is(.vital-decision-support-indicator, .west-encounter-frame, .clinical-searchable-options [role="option"])[data-colour="red"] { --west-level-colour: #c12b36; }
-.vital-decision-support-indicator { flex: none; width: 12px; height: 12px; border-radius: 50%; background: var(--west-level-colour); }
+[data-west-colour="gray"] { --west-level-colour: #707779; }
+[data-west-colour="green"] { --west-level-colour: #22824b; }
+[data-west-colour="yellow"] { --west-level-colour: #c99b00; }
+[data-west-colour="orange"] { --west-level-colour: #c96212; }
+[data-west-colour="red"] { --west-level-colour: #c12b36; }
+:is(.clinical-searchable-options [role="option"], .vital-west-documented li, .vital-decision-support-result,
+    .encounter-west-level .west-level, .timeline-event-button)[data-west-colour] {
+  border-inline-start: 6px solid var(--west-level-colour);
+  padding-inline-start: 8px;
+}
 .west-encounter-frame { position: fixed; inset: 0; z-index: 101; pointer-events: none; border: 2px solid var(--west-level-colour); }
-.west-level { display: inline-flex; align-items: center; gap: 6px; color: var(--text-color); font-size: var(--text-caption); font-weight: 650; }
+.west-level { color: var(--text-color); font-size: var(--text-caption); font-weight: 650; }
 .encounter-west-level { grid-column: 1 / -1; margin-block: 4px; }
+.encounter-west-level .west-level { display: block; }
 .vital-decision-support p { margin: 6px 0 0; color: var(--validation-error, #a11824); }
 
 .vital-west-findings { display: grid; grid-template-columns: minmax(0, 1fr); gap: 8px; margin-block: 8px 12px; }
 .vital-west-findings > label { margin: 0; }
 .vital-west-findings select { display: block; width: 100%; margin-top: 4px; }
-.clinical-searchable-options [data-colour] { --button-color: color-mix(in srgb, var(--west-level-colour) 60%, #000); --button-hover-color: var(--button-color); }
 .vital-west-documented, .vital-west-documented ul { overflow-wrap: anywhere; list-style: none; padding: 0; margin: 4px 0 0; }
 .vital-west-documented > li + li { margin-top: 6px; }
 .vital-west-documented li li { display: grid; grid-template-columns: minmax(0, 1fr) 44px; align-items: center; gap: 4px; }

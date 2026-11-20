@@ -1,3 +1,4 @@
+import { recordedVitalValues } from "./canonical-events";
 import {
   type ClinicalDecisionSupportConfiguration, type DraftDecisionSupportAssessment, type EncounterDocument,
 } from "@open-triage/contracts";
@@ -47,4 +48,30 @@ export function withCarriedVitalDecisions(
     override: edits.override ? assessment.override : latest?.override ?? null,
     scale: edits.scale ? assessment.scale : preceding.find(({ scale }) => scale !== undefined)?.scale ?? snapshot.defaultScale,
   };
+}
+
+export type VitalReadingHistory = ReadonlyArray<VitalMeasurementOrder & { readings: Record<string, string> }>;
+
+export function vitalReadingHistory(document: EncounterDocument, elements: readonly string[],
+  configuration?: ClinicalDecisionSupportConfiguration): VitalReadingHistory {
+  const instances = document.groups.find(({ id }) => id === "eVitals.VitalGroup")?.instances ?? [];
+  return instances.flatMap(instance => {
+    const order = vitalMeasurementOrder(instance);
+    if (!order) return [];
+    const observations = configuration ? vitalDecisionSupport(instance, configuration).observations : undefined;
+    return [{ ...order, readings: { ...recordedVitalValues(document, instance, elements), ...observations } }];
+  }).sort(compareVitalMeasurements);
+}
+
+export function provisionalVitalReadings(history: VitalReadingHistory | undefined, instanceId: string,
+  measurementInstant: string | undefined, entered: Readonly<Record<string, unknown>> = {}): Record<string, string> {
+  const previous: Record<string, string> = {};
+  // A new row can default to the preceding row's exact timestamp.
+  const cutoff = Date.parse(measurementInstant ?? "");
+  if (!Number.isFinite(cutoff)) return previous;
+  for (const row of history ?? []) {
+    if (Date.parse(row.measurementInstant) > cutoff) break;
+    if (row.instanceId !== instanceId) Object.assign(previous, row.readings);
+  }
+  return Object.fromEntries(Object.entries(previous).filter(([key, value]) => value && !Object.hasOwn(entered, key)));
 }

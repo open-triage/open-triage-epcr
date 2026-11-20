@@ -75,6 +75,9 @@ row actions.
   in its Actions column so keyboard and assistive technology users can perform
   the same action. Keep item names as plain text; do not turn them into buttons
   solely to provide keyboard access. Preserve table and list semantics.
+- Editing is the default action for editable encounter timeline events. Use the
+  event content as a named button, make the whole row clickable, and return
+  focus to the event when its editor closes.
 - Validation rule library exception agreed 2026-10-03: omit the Edit button and
   Actions column. The row opens the editor directly; make it focusable, named,
   and operable with Enter and Space, while keeping tooltip interaction independent.
@@ -124,6 +127,11 @@ agencies. Pair semantic colors with labels or meaningful icons so status does
 not depend on color alone. A configured destructive button color does not
 redefine an error or clinical status color. Preserve legible text and visible
 focus indicators when using a nondefault agency palette.
+
+Show WEST severity with a 6px bar along the left edge of each coded criterion
+or result panel. Criterion rows show the finding text and expose the localized
+severity to screen readers. Result panels also show the severity as text.
+Leave neutral choices such as “No criteria met” uncolored.
 
 ## Buttons and controls
 

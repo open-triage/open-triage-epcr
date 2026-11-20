@@ -462,6 +462,7 @@ test("Mobile Vitals keeps an unsupported WEST draft and syncs a finalized manual
   const dialog = page.getByRole("dialog", { name: "Triage" });
   const systolic = dialog.getByRole("textbox", { name: /Systolic BP/ });
   const override = dialog.getByRole("combobox", { name: "WEST override" });
+  await expect(dialog.getByRole("button", { name: /Set unavailable or pertinent-negative value/ })).toHaveCount(0);
   await expect(dialog.getByRole("status").and(dialog.locator(".vital-decision-support-result"))).toHaveText("Unassessed");
   await systolic.fill("118");
   await dialog.evaluate((element) => element.scrollTo(0, element.scrollHeight));
@@ -539,6 +540,7 @@ for (const labels of [
     await expect(list).toBeInViewport({ ratio: 1 });
     expect(await list.evaluate(element => element.scrollWidth <= element.clientWidth)).toBe(true);
     const longFinding = list.getByRole("option", { name: labels.longCriterion });
+    const optionLabel = await longFinding.innerText();
     await longFinding.scrollIntoViewIfNeeded();
     const layout = await longFinding.evaluate((row) => {
       const text = document.createRange();
@@ -552,7 +554,7 @@ for (const labels of [
     expect(await list.evaluate(element => element.scrollTop)).toBeGreaterThan(0);
     await longFinding.tap();
     const recorded = dialog.getByRole("list", { name: labels.documented });
-    await expect(recorded).toContainText(labels.longCriterion);
+    await expect(recorded.getByText(optionLabel, { exact: true })).toBeVisible();
     expect(await dialog.evaluate(element => element.scrollWidth <= element.clientWidth)).toBe(true);
   });
 }
@@ -595,6 +597,7 @@ test("Mobile WEST documents multiple findings and keeps the calculated level vis
   await category.selectOption("trauma-injuries");
   await choose.click();
   await expect(options.getByRole("option").first()).toHaveText("No criteria met");
+  await expect(options.getByRole("option").first()).toHaveCSS("border-left-width", "0px");
   await expect(options.getByRole("option", { name: "Red · Ventilatory support needed · Level 1", exact: true })).toHaveCount(1);
   await expect(options.getByRole("option", { name: /Respiratory compromise/ })).toHaveCount(0);
   await page.keyboard.press("Escape");
@@ -625,14 +628,25 @@ test("Mobile WEST documents multiple findings and keeps the calculated level vis
   await expect(choose).toHaveText("Choose finding");
   await expect(status).toHaveText("Unassessed");
   await expect(documented).toContainText("No criteria met");
+  await expect(documented.locator("li li").filter({ hasText: "No criteria met" })).toHaveCSS("border-left-width", "0px");
 
   await category.selectOption("bleeding");
   await choose.click();
   const firstFinding = options.getByRole("option").nth(1);
-  await expect(firstFinding).toHaveText(/^Red · /);
-  await expect(firstFinding).toHaveAttribute("data-colour", "red");
+  await expect(firstFinding).toHaveAccessibleName(/^Red · /);
+  await expect(firstFinding).toHaveCSS("border-left", "6px solid rgb(193, 43, 54)");
   const heavyBleeding = /Heavy vaginal bleeding soaking through several overnight pads per hour/;
-  await options.getByRole("option", { name: heavyBleeding }).click();
+  const orangeOption = options.getByRole("option", { name: heavyBleeding });
+  await expect(orangeOption).toHaveText(/^Heavy vaginal bleeding/);
+  await orangeOption.hover();
+  const orangeBar = "6px solid rgb(201, 98, 18)";
+  await expect(orangeOption).toHaveCSS("border-left", orangeBar);
+  await orangeOption.click();
+  const recordedBleeding = documented.locator("li li").filter({ hasText: heavyBleeding });
+  await expect(recordedBleeding).toContainText(/^Heavy vaginal bleeding/);
+  await expect(recordedBleeding).toHaveAccessibleDescription("Orange");
+  await expect(recordedBleeding).toHaveCSS("border-left", orangeBar);
+  await expect(status).toHaveCSS("border-left", orangeBar);
   await expect(status).toContainText("Orange · Provisional");
   await expect(status).toContainText("Heavy vaginal bleeding soaking through several overnight pads per hour");
   await selectWestFinding(page, "No criteria met");
@@ -642,6 +656,8 @@ test("Mobile WEST documents multiple findings and keeps the calculated level vis
   await expect(dialog.getByRole("checkbox", { name: "No warning criteria" })).toHaveCount(0);
   await override.selectOption("green");
   await expect(status).toContainText("Green · Manual");
+  await expect(status).toHaveCSS("border-left", "6px solid rgb(34, 130, 75)");
+  await expect(recordedBleeding).toHaveCSS("border-left", orangeBar);
 
   await category.selectOption("gynaecology.03");
   await selectWestFinding(page, heavyBleeding);
@@ -692,7 +708,10 @@ test("Swedish WEST uses the installation language for offline choices, documente
   await dialog.getByRole("button", { name: "Välj fynd" }).click();
   const finding = dialog.getByRole("listbox", { name: "Välj fynd" });
   await expect(finding.getByRole("option").first()).toHaveText("Inga kriterier uppfyllda");
-  await finding.getByRole("option", { name: "Röd · Behov av ventilationsstöd · Nivå 1", exact: true }).click();
+  await dialog.locator(".clinical-searchable-popup").getByRole("combobox").fill("Röd");
+  const ventilation = finding.getByRole("option", { name: "Röd · Behov av ventilationsstöd · Nivå 1", exact: true });
+  await expect(ventilation).toHaveText("Behov av ventilationsstöd · Nivå 1");
+  await ventilation.click();
   await expect(dialog.getByRole("list", { name: "Dokumenterade WEST-fynd" })).toContainText("Trauma/skador");
   await expect(dialog.getByRole("button", { name: "Ta bort Behov av ventilationsstöd · Nivå 1" })).toBeVisible();
   await expect(dialog.locator(".vital-decision-support-result")).toContainText("Behov av ventilationsstöd · Nivå 1");
@@ -732,11 +751,15 @@ test("Mobile WEST scores the selected NEWS scale and syncs only a complete integ
   const result = dialog.locator(".vital-decision-support-result");
   const respiratoryRate = dialog.getByRole("textbox", { name: /Respiratory rate/i });
   const pulse = dialog.getByRole("textbox", { name: /Pulse rate/ });
-  const heartRate = dialog.getByRole("textbox", { name: /Heart rate/i });
+  await expect(dialog.getByRole("textbox", { name: /heart rate|GCS|Glasgow/i })).toHaveCount(0);
   const temperature = dialog.getByRole("textbox", { name: /Temperature/i });
   await expect(scale).toHaveValue("standard");
   const oxygenPicker = dialog.getByRole("combobox", { name: "Oxygen", exact: true });
-  const [scaleBox, oxygenBox] = await Promise.all([scale.boundingBox(), oxygenPicker.boundingBox()]);
+  const [criteriaBox, totalBox, scaleBox, oxygenBox] = await Promise.all([
+    dialog.locator(".vital-west-findings").boundingBox(), output.boundingBox(), scale.boundingBox(), oxygenPicker.boundingBox(),
+  ]);
+  expect(totalBox!.y).toBeGreaterThanOrEqual(criteriaBox!.y + criteriaBox!.height);
+  expect(scaleBox!.y).toBeGreaterThanOrEqual(totalBox!.y + totalBox!.height);
   expect(oxygenBox!.x).toBeGreaterThan(scaleBox!.x + scaleBox!.width);
   expect(oxygenBox!.y).toBeCloseTo(scaleBox!.y);
   for (const field of [/Pulse rate/, /Temperature/i, /Systolic BP/]) {
@@ -754,12 +777,12 @@ test("Mobile WEST scores the selected NEWS scale and syncs only a complete integ
   await dialog.getByRole("textbox", { name: /Systolic BP/ }).fill("120");
   await dialog.getByRole("textbox", { name: /Oxygen saturation|SpO[₂2]/i }).fill("97");
   await pulse.fill("70");
-  await expect(pulse).toHaveAccessibleDescription("0 pts");
-  await heartRate.fill("120");
-  await expect(heartRate).toHaveAccessibleDescription(/2 pts/);
-  await expect(pulse).toHaveAccessibleDescription("");
-  await heartRate.clear();
-  await expect(pulse).toHaveAccessibleDescription("0 pts");
+  await expect(pulse).toHaveAccessibleDescription(/0 pts/);
+  await pulse.fill("120");
+  await expect(pulse).toHaveAccessibleDescription(/2 pts/);
+  await pulse.clear();
+  await expect(pulse).toHaveAccessibleDescription(/— pts/);
+  await pulse.fill("70");
   await temperature.fill("37,9");
   await dialog.getByRole("combobox", { name: "Oxygen", exact: true }).selectOption("air");
   await dialog.getByRole("combobox", { name: "Consciousness", exact: true }).selectOption("A");
@@ -795,6 +818,7 @@ test("Mobile WEST scores the selected NEWS scale and syncs only a complete integ
   await expect(page.locator(".sync-status")).toHaveText("Pending sync");
   await page.locator(".timeline-event-button").filter({ hasText: "Triage" }).first().click();
   await expect(scale).toHaveValue("copd");
+  await expect(pulse).toHaveValue("70");
   await expect(output).toHaveText("5");
   await page.keyboard.press("Escape");
   await context.setOffline(false);
@@ -805,15 +829,18 @@ test("Mobile WEST scores the selected NEWS scale and syncs only a complete integ
   expect(group?.decisionSupportCalculation).toMatchObject({ status: "definitive", colour: "orange",
     physiology: { total: 5, colour: "orange", points: { oxygen: 2, spo2: 3 } } });
   expect(commands[0]!.occurrences).toEqual(expect.arrayContaining([
+    expect.objectContaining({ elementId: "eVitals.10", value: expect.objectContaining({ kind: "integer", value: 70 }) }),
     expect.objectContaining({ groupInstanceId: group?.id, elementId: "west.opentriage.org.FixtureNewsScale",
       value: expect.objectContaining({ kind: "coded", code: "copd" }) }),
     expect.objectContaining({ groupInstanceId: group?.id, elementId: "west.opentriage.org.FixturePhysiologyScore",
       value: expect.objectContaining({ kind: "integer", value: 5 }) }),
     expect.objectContaining({ elementId: "eVitals.24", value: expect.objectContaining({ kind: "numeric", value: 37 }) }),
   ]));
+  expect(commands[0]!.groups.some(({ groupId }) => groupId === "eVitals.GlasgowScoreGroup")).toBe(false);
+  expect(JSON.stringify(commands[0]!.occurrences)).not.toContain("decisionSupportObservation:pulse");
 });
 
-test("Mobile WEST repeat vitals preserve offline decisions and start fresh measurements", async ({ page, context }) => {
+test("Mobile WEST repeat vitals preview previous readings and only save confirmed measurements", async ({ page, context }) => {
   test.skip(!serverBacked, "requires OPEN_TRIAGE_E2E_SERVER_MODE=true");
   await page.setViewportSize({ width: 320, height: 740 });
   await installRoutes(page, true, undefined, {
@@ -845,7 +872,7 @@ test("Mobile WEST repeat vitals preserve offline decisions and start fresh measu
   const consciousness = dialog.getByRole("combobox", { name: "Consciousness", exact: true });
   await add.click();
   await scale.selectOption("copd");
-  await systolic.fill("120");
+  await systolic.fill("85");
   await oxygen.selectOption("air");
   await consciousness.selectOption("A");
   await dialog.getByRole("combobox", { name: "WEST category" }).selectOption("infection");
@@ -860,9 +887,14 @@ test("Mobile WEST repeat vitals preserve offline decisions and start fresh measu
   await expect(override).toHaveValue("red");
   await expect(dialog.getByRole("list", { name: "Documented WEST findings" })).toContainText("No criteria met");
   await expect(systolic).toHaveValue("");
-  await expect(oxygen).toHaveValue("");
-  await expect(consciousness).toHaveValue("");
-  await expect(dialog.locator("output")).toHaveText("0 · Incomplete");
+  await expect(systolic).toHaveAttribute("placeholder", "85");
+  await expect(oxygen).toHaveValue("air");
+  await expect(consciousness).toHaveValue("A");
+  await expect(dialog.getByRole("status", { name: /provisional/i })).toContainText("3");
+  await systolic.click();
+  await expect(systolic).toHaveValue("85");
+  await systolic.fill("120");
+  await expect(systolic).not.toHaveAttribute("data-provisional-vital", "true");
   await save.click();
   await expect(dialog).toHaveCount(0);
   await expect(page.locator(".sync-status")).toHaveText("Pending sync");
@@ -872,7 +904,9 @@ test("Mobile WEST repeat vitals preserve offline decisions and start fresh measu
   const rows = page.locator(".timeline-event-button").filter({ hasText: "Triage" });
   await rows.first().click();
   await expect(override).toHaveValue("red");
-  await expect(systolic).toHaveValue("");
+  await expect(systolic).toHaveValue("120");
+  await expect(oxygen).toHaveValue("");
+  await expect(consciousness).toHaveValue("");
   await page.keyboard.press("Escape");
   await add.click();
   await override.selectOption("");
@@ -893,7 +927,7 @@ test("Mobile WEST repeat vitals preserve offline decisions and start fresh measu
   expect(selection(1)).toMatchObject({ value: { code: "red" }, sourceAttributes: {
     ...selection(0)?.sourceAttributes, inheritedFromMeasurement: sourceId,
   } });
-  expect(commands[1]!.occurrences.some(({ elementId }) => elementId === "eVitals.06")).toBe(false);
+  expect(commands[1]!.occurrences.some(({ elementId }) => elementId === "eVitals.06")).toBe(true);
   expect(commands.flatMap(({ occurrences }) => occurrences)
     .some(({ elementId }) => elementId === "west.opentriage.org.FixturePhysiologyScore")).toBe(false);
 });
@@ -903,6 +937,7 @@ test("Stationary Vitals uses the same WEST finalization rule while retaining its
   await installRoutes(page, true, undefined, {
     definition: { schemaVersion: 1, sections: [{ key: "eVitalsSection", fields: [
       { key: "measured", source: { kind: "nemsis", elementId: "eVitals.01" } },
+      { key: "respirations", source: { kind: "nemsis", elementId: "eVitals.14" } },
       { key: "pain", source: { kind: "nemsis", elementId: "eVitals.27" } },
     ] }] }, catalogFields: {}, decisionSupport: westDecisionSupport,
   });
@@ -919,6 +954,9 @@ test("Stationary Vitals uses the same WEST finalization rule while retaining its
   await save.click();
   await expect(override).toBeFocused();
   await expect(dialog.getByRole("alert")).toContainText("choose a WEST color");
+  const respiratoryRate = dialog.locator('[data-element-id="eVitals.14"] input').first();
+  await respiratoryRate.fill("30");
+  await respiratoryRate.press("Tab");
   await override.selectOption("yellow");
   const synced = page.waitForRequest(`**/api/reports/${reportId}/draft-changes`);
   await save.click();
@@ -926,10 +964,18 @@ test("Stationary Vitals uses the same WEST finalization rule while retaining its
   const command = (await synced).postDataJSON();
   expect(command.groups.find(({ groupId }: { groupId: string }) => groupId === "eVitals.VitalGroup"))
     .toMatchObject({ documentedTime: expect.any(String), decisionSupportCalculation: {
-      status: "unassessed", colour: null, systemKey: westDefinition.key, version: westDefinition.version,
+      systemKey: westDefinition.key, version: westDefinition.version,
     } });
   expect(command.occurrences.find(({ elementId }: { elementId: string }) =>
     elementId === "west.opentriage.org.FixtureOverrideColour").value.code).toBe("yellow");
+  await group.getByRole("button", { name: "Add triage", exact: true }).click();
+  await expect(respiratoryRate).toHaveAttribute("placeholder", "30");
+  await expect(dialog.getByRole("status", { name: /provisional/i })).toContainText("3");
+  await respiratoryRate.press("Enter");
+  await expect(respiratoryRate).toHaveValue("30");
+  await respiratoryRate.fill("16");
+  await respiratoryRate.press("Tab");
+  await expect(dialog.getByRole("status", { name: /NEWS2/ })).toContainText("0");
 });
 
 for (const persistentStorage of [true, false]) {
@@ -1924,7 +1970,7 @@ for (const { width, language, openCall, addTriage, overrideLabel, cancelLabel, u
     const frame = page.locator(".west-encounter-frame");
     const reportLevel = page.locator(".encounter-west-level").getByRole("status");
     const expectFrame = async (colour: string, cssColour: string) => {
-      await expect(frame).toHaveAttribute("data-colour", colour);
+      await expect(frame).toHaveAttribute("data-west-colour", colour);
       await expect(frame).toHaveCSS("position", "fixed");
       await expect(frame).toHaveCSS("pointer-events", "none");
       for (const edge of ["top", "right", "bottom", "left"]) {
@@ -1938,6 +1984,9 @@ for (const { width, language, openCall, addTriage, overrideLabel, cancelLabel, u
       })).toEqual([0, 0, 0, 0]);
     };
     await expect(reportLevel).toHaveText(latest);
+    await expect(reportLevel).toHaveCSS("border-left", "6px solid rgb(193, 43, 54)");
+    const olderPanel = page.locator(".timeline-event-button").filter({ hasText: olderLevel });
+    await expect(olderPanel).toHaveCSS("border-left", "6px solid rgb(201, 155, 0)");
     await expectFrame("red", "rgb(193, 43, 54)");
     await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
     await expect.poll(() => page.evaluate(() => window.scrollY)).toBeGreaterThan(0);
@@ -2001,4 +2050,36 @@ test("ordinary Mobile Vitals without WEST has no assessment frame", async ({ pag
   await expect(page.getByRole("dialog", { name: "Vital signs", exact: true })).toBeVisible();
   await expect(page.locator(".west-encounter-frame")).toHaveCount(0);
   await expect(page.getByRole("combobox", { name: "WEST override" })).toHaveCount(0);
+});
+
+test("mobile vitals and checklist omit PN/NV controls while the stationary timeline offers them", async ({ page }) => {
+  test.skip(!serverBacked, "requires OPEN_TRIAGE_E2E_SERVER_MODE=true");
+  await installRoutes(page, true, undefined, {
+    definition: { schemaVersion: 1, sections: [{ key: "vitals", fields: [
+      { key: "spo2", source: { kind: "nemsis", elementId: "eVitals.12" } },
+    ] }] }, catalogFields: {},
+  });
+  await page.goto("/");
+  await page.getByRole("button", { name: "Open call", exact: true }).click();
+  await page.getByRole("button", { name: "Add vital signs" }).click();
+  const dialog = page.getByRole("dialog", { name: "Vital signs" });
+  const marker = dialog.getByRole("button", { name: /Set unavailable or pertinent-negative value/ });
+  const help = dialog.getByText("Use × when a value cannot be recorded.");
+  await expect(marker).toHaveCount(0);
+  await expect(help).toHaveCount(0);
+  await dialog.getByRole("textbox", { name: /SpO₂/ }).fill("101");
+  await dialog.getByRole("button", { name: "Add vital set" }).click();
+  await page.getByRole("button", { name: /^Checklist/ }).click();
+  const field = page.locator('.checklist-panel [data-element-id="eVitals.12"]');
+  await expect(field.locator("input")).toHaveValue("101");
+  await expect(field.getByRole("button", { name: /Set unavailable value/ })).toHaveCount(0);
+  await field.locator("input").fill("98");
+  await field.locator("input").press("Tab");
+  await page.getByRole("button", { name: "Stationary", exact: true }).click();
+  await page.getByRole("button", { name: /^Timeline/ }).click();
+  await page.getByRole("complementary", { name: "Encounter timeline" }).getByRole("button", { name: /Edit Vital signs/ }).click();
+  await expect(dialog.getByRole("textbox", { name: /SpO₂/ })).toHaveValue("98");
+  await expect(help).toBeVisible();
+  await marker.filter({ hasText: "×" }).first().click();
+  await expect(dialog.getByRole("menuitem", { name: /\(NV\)/ }).first()).toBeVisible();
 });

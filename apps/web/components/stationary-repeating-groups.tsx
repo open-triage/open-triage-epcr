@@ -16,6 +16,7 @@ import {
   repeatingGroupInstances,
   repeatingGroupSummary,
   sortRepeatingGroupInstancesByTimestamp,
+  stationaryVitalEditDraft,
   type RepeatingGroupFinding,
 } from "../app/stationary-repeating-group";
 import { getNemsisGroup, requireNemsisDataElement } from "../app/nemsis-data-model";
@@ -31,7 +32,7 @@ import { StationaryValidationMessages, stationaryFindingSeverity } from "./stati
 import { actionableStationaryFindings, stationaryReviewFindings, validateStationaryRecord } from "../app/stationary-validation";
 import { bundledEncounterDefinition, INITIAL_SHELL_STATE, reviewEncounter } from "../app/standard-encounter";
 import { withoutDemoProvenance } from "../app/demo-provenance";
-import { vitalDecisionSnapshot, withCarriedVitalDecisions, type VitalDecisionEdits } from "../app/vital-carry-forward";
+import { provisionalVitalReadings, vitalReadingHistory, vitalDecisionSnapshot, withCarriedVitalDecisions, type VitalDecisionEdits } from "../app/vital-carry-forward";
 import { chooseVitalOverride, UNASSESSED_VITAL, vitalAssessmentWithFindings, vitalDecisionSupport, vitalRecordedLocalTime, withVitalDecisionSupport, withVitalMeasurementOffset } from "../app/vital-decision-support";
 import { VitalDecisionSupport } from "./vital-decision-support";
 import { VitalDecisionSupportScale, VitalDecisionSupportObservations } from "./vital-decision-support-scoring";
@@ -64,6 +65,8 @@ function elementValidationFindings(findings: ReadonlyArray<StationarySectionFind
     return finding.target.groupId === groupId && targetElement === elementId && (!targetInstance || targetInstance === instanceId);
   });
 }
+
+const VitalSuggestionsContext = createContext<{ readings: Record<string, string>; confirm: (element: string) => void } | null>(null);
 
 const FormPresentationContext = createContext<{ language: FormLanguage; clinicianId?: string }>({ language: "en" });
 
@@ -153,6 +156,9 @@ function SingleScalarGroupField({ document, instance, placement, presentation, v
   readonly initialFocus: boolean;
   readonly onDocumentChange: (document: EncounterDocument) => void;
 }) {
+  const suggestions = useContext(VitalSuggestionsContext);
+  const suggestion = !value ? suggestions?.readings[placement.id] : undefined;
+  const { language } = useContext(FormPresentationContext);
   const [raw, setRaw] = useState<string | boolean>();
   const [findings, setFindings] = useState<ReadonlyArray<ScalarValidationFinding>>([]);
   const commit = (input: string | boolean) => {
@@ -166,10 +172,15 @@ function SingleScalarGroupField({ document, instance, placement, presentation, v
     onDocumentChange(result.document);
   };
   return <div data-element-id={placement.id}><StationaryScalarControl presentation={presentation} value={value} inputValue={raw} findings={findings} initialFocus={initialFocus}
+    suggestion={suggestion} language={language} onConfirmSuggestion={candidate => {
+      suggestions?.confirm(placement.id);
+      commit(candidate);
+    }}
     defaultDateTime={presentation.family === "datetime" ? stationaryDateTimeDefault(document, {
       groupId: placement.groupId, groupInstanceId: instance.instanceId, excludedOccurrenceId: value?.occurrenceId,
     }) : undefined}
     onInput={(input) => {
+      if (suggestion) suggestions?.confirm(placement.id);
       setRaw(input);
       setFindings([]);
       if (presentation.family === "datetime") commit(input);
@@ -224,7 +235,13 @@ function RepeatingGroupDialog({ placement, draft, instanceId, isNew, returnFocus
   const [assessment, setAssessment] = useState(() => configuration ? vitalDecisionSupport(instance, configuration) : UNASSESSED_VITAL);
   const [snapshot] = useState(() => isNew && assessVitals ? vitalDecisionSnapshot(draft, configuration) : undefined);
   const [decisionEdits, setDecisionEdits] = useState<VitalDecisionEdits>({});
-  const [defaultMeasurement] = useState(() => snapshot
+  const [readingHistory] = useState(() => isNew && placement.id === "eVitals.VitalGroup" ? vitalReadingHistory(draft, [
+    ...bundledEncounterDefinition.events.vitals.fields.map(field => field.reference),
+    ...Object.values(configuration?.definition.inputs ?? {}).flatMap(input => "element" in input ? [input.element] : []),
+  ], configuration) : undefined);
+  const [enteredReadings, setEnteredReadings] = useState<Record<string, true>>({});
+  const confirmReading = (key: string) => setEnteredReadings(previous => ({ ...previous, [key]: true }));
+  const [defaultMeasurement] = useState(() => readingHistory
     ? stationaryDateTimeDefault(draft, { groupId: placement.id, groupInstanceId: instanceId }) : undefined);
   const enteredMeasurement = measurementValue(instance);
   const measurementInstant = enteredMeasurement?.kind === "scalar" && typeof enteredMeasurement.value === "string"
@@ -234,9 +251,13 @@ function RepeatingGroupDialog({ placement, draft, instanceId, isNew, returnFocus
   const timedInstance = assessVitals && instance ? withVitalMeasurementOffset(instance, timeZone, timeChanged) : instance;
   const measurements = configuration && instance ? vitalMeasurementValues(draft, instance,
     Object.values(configuration.definition.inputs).flatMap((input) => "element" in input ? [input.element] : [])) : {};
+  const localTime = vitalRecordedLocalTime(timedInstance)
+    ?? (measurementInstant ? clinicalInstantParts(measurementInstant, timeZone)?.time : undefined) ?? "";
   const liveAssessment = configuration
-    ? vitalAssessmentWithFindings(decisions, configuration.definition, vitalRecordedLocalTime(timedInstance)
-      ?? (measurementInstant ? clinicalInstantParts(measurementInstant, timeZone)?.time : undefined) ?? "", measurements) : decisions;
+    ? vitalAssessmentWithFindings(decisions, configuration.definition, localTime, measurements) : decisions;
+  const suggestions = provisionalVitalReadings(readingHistory, instanceId, measurementInstant, enteredReadings);
+  const newsPreview = configuration
+    ? vitalAssessmentWithFindings(decisions, configuration.definition, localTime, measurements, suggestions) : liveAssessment;
   const [missingColour, setMissingColour] = useState(false);
   const overrideRef = useRef<HTMLSelectElement>(null);
   const liveFindings = useMemo(() => placement.mode === "read-only" ? [] : stationaryDialogFindings(draft, clinicalForm), [clinicalForm, draft, placement.mode]);
@@ -295,9 +316,10 @@ function RepeatingGroupDialog({ placement, draft, instanceId, isNew, returnFocus
       : { ...group, instances: group.instances.map((entry) => entry.instanceId !== instance.instanceId ? entry
         : withVitalDecisionSupport(withVitalMeasurementOffset(entry, timeZone, timeChanged || !initialMeasurement), configuration, liveAssessment)) }) });
   };
-  const changeObservation = (key: string, value: string) => setAssessment((previous) => ({
-    ...previous, observations: { ...previous.observations, [key]: value },
-  }));
+  const changeObservation = (key: string, value: string) => {
+    confirmReading(key);
+    setAssessment(previous => ({ ...previous, observations: { ...previous.observations, [key]: value } }));
+  };
 
   return <div className="dialog-backdrop" role="presentation" onMouseDown={(event) => {
     if (event.target === event.currentTarget) onCancel();
@@ -318,16 +340,17 @@ function RepeatingGroupDialog({ placement, draft, instanceId, isNew, returnFocus
           setAssessment((previous) => ({ ...previous, override: next.override }));
         }} />}
       {assessVitals && configuration && editable && <>
-        <VitalDecisionSupportScale definition={configuration.definition} assessment={liveAssessment} language={language} onObservation={changeObservation}
+        <VitalDecisionSupportScale definition={configuration.definition} assessment={newsPreview} suggestions={suggestions} showPendingScore language={language} onObservation={changeObservation}
           onScale={(scale) => {
             setDecisionEdits((previous) => ({ ...previous, scale: true }));
             setAssessment((previous) => ({ ...previous, scale }));
           }} />
         <div className="vital-grid">
-          <VitalDecisionSupportObservations definition={configuration.definition} assessment={liveAssessment} language={language}
+          <VitalDecisionSupportObservations definition={configuration.definition} assessment={newsPreview} suggestions={suggestions} language={language}
             onObservation={changeObservation} />
         </div>
       </>}
+      <VitalSuggestionsContext.Provider value={{ readings: suggestions, confirm: confirmReading }}>
       <div className="stationary-group-dialog-fields">
         {placement.elements.map((element, index) => editable && element.mode !== "read-only"
           ? <GroupField key={element.id} document={draft} instance={instance} placement={element} findings={validationFindings} initialFocus={index === 0} catalogFields={clinicalForm?.catalogFields} onDocumentChange={onDraftChange} />
@@ -335,6 +358,7 @@ function RepeatingGroupDialog({ placement, draft, instanceId, isNew, returnFocus
         {!placement.elements.length && <p>{t("stationary.noDirectFields")}</p>}
       </div>
       <NestedGroupContents document={draft} placement={placement} parentInstanceId={instance.instanceId} findings={liveFindings} clinicalForm={clinicalForm} onDocumentChange={onDraftChange} />
+      </VitalSuggestionsContext.Provider>
       {editable && <div className="note-dialog-actions">
         <button type="button" onClick={onCancel}>{t("stationary.cancel")}</button>
         <button className="button-primary" type="button" onClick={save}>{t(isNew ? "stationary.addRow" : "stationary.saveChanges")}</button>
@@ -443,7 +467,10 @@ export function RepeatingGroupTable({ document, placement, parentInstanceId, fin
           return <tr key={instance.instanceId} data-group-instance-id={instance.instanceId}
             className={rowSeverity ? `stationary-validation-state ${rowSeverity}` : undefined}>
             {repeatingGroupSummary(document, placement, instance, zone).map((cell) => <td key={cell.elementId} data-element-id={cell.elementId}>{cell.values.length ? cell.values.map((value) => <span key={value.occurrenceId} data-occurrence-id={value.occurrenceId}>{value.text}</span>) : <span>{t("stationary.notRecorded")}</span>}</td>)}
-            <td className="stationary-table-actions"><div className="stationary-row-actions"><button className="stationary-icon-action edit" type="button" aria-label={t(editable ? "stationary.editNamedRow" : "stationary.viewNamedRow", { label: actionLabel })} title={t(editable ? "stationary.edit" : "stationary.view")} data-dialog-return-focus={`${placement.id}:${instance.instanceId}:edit`} onClick={(event) => setDialogState({ draft: document, instanceId: instance.instanceId, isNew: false, returnFocus: event.currentTarget })}><span aria-hidden="true">{editable ? "✎" : t("stationary.view")}</span></button>
+            <td className="stationary-table-actions"><div className="stationary-row-actions"><button className="stationary-icon-action edit" type="button" aria-label={t(editable ? "stationary.editNamedRow" : "stationary.viewNamedRow", { label: actionLabel })} title={t(editable ? "stationary.edit" : "stationary.view")} data-dialog-return-focus={`${placement.id}:${instance.instanceId}:edit`} onClick={(event) => setDialogState({
+              draft: placement.id === "eVitals.VitalGroup" ? stationaryVitalEditDraft(document, instance) : document,
+              instanceId: instance.instanceId, isNew: false, returnFocus: event.currentTarget,
+            })}><span aria-hidden="true">{editable ? "✎" : t("stationary.view")}</span></button>
               {editable && <button className="stationary-icon-action remove" type="button" aria-label={t("stationary.removeNamedRow", { label: actionLabel })} title={t("stationary.remove")} onClick={() => { const result = removeRepeatingGroupOccurrence(document, placement.id, instance.instanceId); if (result.ok) { setFinding(undefined); onDocumentChange(result.document); } else setFinding(result.findings[0]); }}><span aria-hidden="true">×</span></button>}</div></td>
           </tr>;
         })}</tbody></table>

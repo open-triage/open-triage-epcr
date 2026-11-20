@@ -113,23 +113,35 @@ export function EncounterTimeline({ events, validationStatuses, definition: sour
         const title = event.medication?.dose ? presentation.title.replace(event.medication.dose, displayDecimal(event.medication.dose, region)) : presentation.title;
         const eventDetail = encounterEventDetail(displayedEvent, definition);
         const westLevelId = event.decisionSupport ? `${filterLabelId}-west-${event.id}` : undefined;
-        return <li key={event.id} className={event.kind === "note" || event.kind === "medication" || event.kind === "procedure" ? "editable-event" : undefined}>
+        const canOpen = event.kind === "note" || event.kind === "procedure" || event.kind === "medication" || !!event.vitals;
+        let content = <div><h2>{title}</h2><p>{eventDetail}</p><small>{event.reference}</small></div>;
+        if (canOpen) {
+          const details = <>
+            <span className="event-title">{title}</span><span className="event-detail">{eventDetail}</span>
+            {event.decisionSupport && <WestLevel id={westLevelId} assessment={event.decisionSupport} language={language} />}
+            <small>{presentation.reference}</small>
+            {event.procedure && validateProcedure({ id: event.id, date: event.date ?? DEMO_FALLBACK_DATE, time: event.time,
+              procedureCode: event.procedure.code, procedureLabel: event.procedure.label, attempts: String(event.procedure.attempts),
+              success: event.procedure.success, outcome: event.procedure.outcome, complications: event.procedure.complications,
+              warningAcknowledged: event.procedure.warningAcknowledged, isNew: false,
+            }, procedureDefinition).warnings.length > 0 && !event.procedure.warningAcknowledged && <span className="warning-pill">{procedureDefinition.labels.warningPill}</span>}
+          </>;
+          const actionProps = {
+            "aria-label": t(readOnly ? "mobile.viewEvent" : "mobile.editEvent", { title, time: event.time, detail: eventDetail }),
+            "aria-describedby": westLevelId,
+            onClick: (clickEvent: React.MouseEvent<HTMLButtonElement>) => onOpenEvent(event, clickEvent.currentTarget),
+          };
+          content = readOnly ? <div className="timeline-event-button" data-west-colour={event.decisionSupport?.colour}>
+            {details}
+            <button className="timeline-row-action" data-list-row-action type="button" {...actionProps}>{t("admin.viewDetails")}</button>
+          </div> : <button className="timeline-event-button" data-west-colour={event.decisionSupport?.colour}
+            data-list-row-action type="button" {...actionProps}>{details}</button>;
+        }
+        return <li key={event.id} className={event.kind === "note" || event.kind === "medication" || event.kind === "procedure" ? "editable-event" : undefined}
+          onClick={canOpen ? activateListRow : undefined}>
           <time dateTime={event.dateTime ?? `${event.date ?? DEMO_FALLBACK_DATE}T${event.time}:00`}>{event.time}</time>
           <span className={`event-dot validation-${validationStatus}`} role="img" aria-label={t("mobile.validationStatus", { status: t(validationStatus === "clear" ? "mobile.validationClear" : validationStatus === "error" ? "mobile.validationError" : "mobile.validationWarning") })} />
-          {event.kind === "note" || event.kind === "procedure" || event.kind === "medication" || event.vitals ? (
-            <div className="timeline-event-button" onClick={activateListRow}>
-              <span className="event-title">{title}</span><span className="event-detail">{eventDetail}</span>
-              {event.decisionSupport && <WestLevel id={westLevelId} assessment={event.decisionSupport} language={language} />}
-              <small>{presentation.reference}</small>
-              {event.procedure && validateProcedure({ id: event.id, date: event.date ?? DEMO_FALLBACK_DATE, time: event.time,
-                procedureCode: event.procedure.code, procedureLabel: event.procedure.label, attempts: String(event.procedure.attempts),
-                success: event.procedure.success, outcome: event.procedure.outcome, complications: event.procedure.complications,
-                warningAcknowledged: event.procedure.warningAcknowledged, isNew: false,
-              }, procedureDefinition).warnings.length > 0 && !event.procedure.warningAcknowledged && <span className="warning-pill">{procedureDefinition.labels.warningPill}</span>}
-              <button className="timeline-row-action" data-list-row-action type="button" aria-describedby={westLevelId} aria-label={t(readOnly ? "mobile.viewEvent" : "mobile.editEvent", { title, time: event.time, detail: eventDetail })}
-                onClick={(clickEvent) => onOpenEvent(event, clickEvent.currentTarget)}>{t(readOnly ? "admin.viewDetails" : "admin.edit")}</button>
-            </div>
-          ) : <div><h2>{title}</h2><p>{eventDetail}</p><small>{event.reference}</small></div>}
+          {content}
         </li>;
       })}
     </ol>}

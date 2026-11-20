@@ -1,6 +1,7 @@
 import type { ClinicalDecisionSupportConfiguration, EncounterDocument, EncounterGroupInstance, EncounterValue } from "@open-triage/contracts";
 import { clinicianOwnedAttributes, DEMO_FALLBACK_DATE, hasDemoProvenance, withoutDemoProvenance } from "./demo-provenance";
 import { finalizedVitalDecisionSupport } from "./finalized-vital-decision-support";
+import { legacyMeasurementPulse } from "./vital-decision-support";
 import { stableDraftId } from "./draft-report";
 import type { EncounterDefinition } from "./encounter-definition";
 import { getNemsisDataElement, resolveNemsisElementValues, requireNemsisDataElement } from "./nemsis-data-model";
@@ -70,6 +71,17 @@ export function vitalMeasurementValues(document: EncounterDocument, root: Encoun
     const source = instanceForElement(document, root, id);
     return [id, source ? scalar(source, id) : ""];
   }));
+}
+
+/** Missing fields may be suggested from older rows. An explicit unavailable value stops the search. */
+export function recordedVitalValues(document: EncounterDocument, root: EncounterGroupInstance, ids: readonly string[]) {
+  const values: Record<string, string> = {};
+  for (const id of ids) {
+    const source = instanceForElement(document, root, id);
+    const value = source && element(source, id)?.values[0];
+    if (value) values[id] = value.kind === "scalar" ? String(value.value) : "";
+  }
+  return values;
 }
 
 function coded(instance: EncounterGroupInstance, id: string): { code: string; display: string; system?: string; attributes?: Readonly<Record<string, string | number | boolean | null>> } | null {
@@ -392,6 +404,7 @@ function readEncounterEvents(document: EncounterDocument, definition: EncounterD
         const fieldInstance = instanceForElement(document, instance, field.reference);
         if (fieldInstance) remember(instance.instanceId, fieldInstance);
         const value = fieldInstance ? element(fieldInstance, field.reference)?.values[0] : undefined;
+        if (!sources && !value && field.reference === "eVitals.10") values[field.id] = legacyMeasurementPulse(instance);
         if (value?.kind === "scalar") values[field.id] = String(value.value);
         else if (value?.kind === "null" && value.notValue) values.nullValues[field.id] = value.notValue.code;
         else if (value?.kind === "pertinent-negative") values.nullValues[field.id] = value.code;

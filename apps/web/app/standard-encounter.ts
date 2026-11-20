@@ -17,7 +17,7 @@ import { DEMO_FALLBACK_DATE } from "./demo-provenance";
 import { getNemsisDataElement } from "./nemsis-data-model";
 import type { FinalizedVitalDecisionSupport } from "./finalized-vital-decision-support";
 import { vitalDraftMeasurementInstant } from "./vital-measurement";
-import { vitalDecisionSnapshot, withCarriedVitalDecisions, type VitalDecisionEdits, type VitalDecisionSnapshot } from "./vital-carry-forward";
+import { provisionalVitalReadings, vitalReadingHistory, type VitalReadingHistory, vitalDecisionSnapshot, withCarriedVitalDecisions, type VitalDecisionEdits, type VitalDecisionSnapshot } from "./vital-carry-forward";
 
 export type ShellView = "timeline" | "checklist" | "review";
 
@@ -42,6 +42,9 @@ export type VitalField = ConfiguredVitalField;
 export type NullValue = "" | VitalNullValue;
 export type VitalValues = Record<VitalField, string> & { readonly nullValues: Partial<Record<VitalField, NullValue>> };
 export type VitalDraft = { readonly id: string; readonly date: string; readonly time: string; readonly dateTime?: string; readonly values: VitalValues; readonly isNew: boolean; readonly decisionSupport?: DraftDecisionSupportAssessment; readonly recordedLocalTime?: string; readonly additionalMeasurements?: Readonly<Record<string, string>>;
+  readonly previousReadings?: VitalReadingHistory;
+  readonly readingTimeZone?: string | null;
+  readonly enteredReadings?: Readonly<Record<string, true>>;
   readonly carryForward?: { readonly snapshot: VitalDecisionSnapshot; readonly timeZone: string | null; readonly edits?: VitalDecisionEdits };
 };
 
@@ -56,6 +59,15 @@ export type Encounter = {
 
 export const encounterDefinitionProvider = createBundledDefinitionProvider([standardEncounterDefinition]);
 export const bundledEncounterDefinition = encounterDefinitionProvider.get("standard-encounter-v1");
+const bundledVitals = bundledEncounterDefinition.events.vitals;
+export const mobileEncounterDefinition: EncounterDefinition = {
+  ...bundledEncounterDefinition,
+  events: { ...bundledEncounterDefinition.events, vitals: {
+    ...bundledVitals,
+    fields: bundledVitals.fields.filter(({ id }) => id !== "gcs"),
+    summary: bundledVitals.summary.filter(({ fields }) => !fields.includes("gcs")),
+  } },
+};
 
 // Fixed usability-test fixture. Everything here is fictional and loaded
 // automatically; this module is never a destination for real patient data.
@@ -609,6 +621,11 @@ export function transitionShell(state: ShellState, action: ShellAction, definiti
     case "vitals-started":
       return { ...state, vitalDraft: { id: action.id, date: action.date ?? DEMO_FALLBACK_DATE, time: action.time,
         values: { ...EMPTY_VITALS, nullValues: {} }, isNew: true,
+        readingTimeZone: state.timeZone ?? null,
+        previousReadings: vitalReadingHistory(state.encounter.document, [
+          ...definition.events.vitals.fields.map(field => field.reference),
+          ...(action.decisionSupport ? additionalVitalInputs(action.decisionSupport, definition).map(input => input.element) : []),
+        ], action.decisionSupport),
         ...(action.decisionSupport ? { carryForward: { snapshot: vitalDecisionSnapshot(state.encounter.document, action.decisionSupport),
           timeZone: state.timeZone ?? null } } : {}) } };
     case "vitals-opened": {
@@ -628,20 +645,27 @@ export function transitionShell(state: ShellState, action: ShellAction, definiti
     case "vitals-date-changed":
       return state.vitalDraft ? { ...state, vitalDraft: { ...state.vitalDraft, date: action.value, dateTime: undefined, recordedLocalTime: undefined } } : state;
     case "vitals-value-changed":
-      return state.vitalDraft ? { ...state, vitalDraft: { ...state.vitalDraft, values: { ...state.vitalDraft.values, [action.field]: action.value, nullValues: { ...state.vitalDraft.values.nullValues, [action.field]: "" } } } } : state;
-    case "vitals-null-changed":
-      return state.vitalDraft ? { ...state, vitalDraft: { ...state.vitalDraft, values: { ...state.vitalDraft.values, [action.field]: "", nullValues: { ...state.vitalDraft.values.nullValues, [action.field]: action.value } } } } : state;
+    case "vitals-null-changed": {
+      const draft = state.vitalDraft;
+      const field = definition.events.vitals.fields.find(field => field.id === action.field);
+      if (!draft || !field) return state;
+      return { ...state, vitalDraft: { ...draft,
+        enteredReadings: { ...draft.enteredReadings, [field.reference]: true },
+        values: { ...draft.values, [field.id]: action.type === "vitals-value-changed" ? action.value : "",
+          nullValues: { ...draft.values.nullValues, [field.id]: action.type === "vitals-null-changed" ? action.value : "" } },
+      } };
+    }
     case "vitals-scale-changed":
       return state.vitalDraft ? { ...state, vitalDraft: editVitalDecision(state.vitalDraft, "scale", action.value) } : state;
     case "vitals-observation-changed": {
       if (!state.vitalDraft) return state;
       const assessment = state.vitalDraft.decisionSupport ?? UNASSESSED_VITAL;
-      return { ...state, vitalDraft: { ...state.vitalDraft, decisionSupport: {
+      return { ...state, vitalDraft: { ...state.vitalDraft, enteredReadings: { ...state.vitalDraft.enteredReadings, [action.key]: true }, decisionSupport: {
         ...assessment, observations: { ...assessment.observations, [action.key]: action.value },
       } } };
     }
     case "vitals-measurement-changed":
-      return state.vitalDraft ? { ...state, vitalDraft: { ...state.vitalDraft, additionalMeasurements: {
+      return state.vitalDraft ? { ...state, vitalDraft: { ...state.vitalDraft, enteredReadings: { ...state.vitalDraft.enteredReadings, [action.elementId]: true }, additionalMeasurements: {
         ...state.vitalDraft.additionalMeasurements, [action.elementId]: action.value,
       } } } : state;
     case "vitals-findings-changed":
@@ -677,11 +701,20 @@ export function transitionShell(state: ShellState, action: ShellAction, definiti
     }
     case "state-restored":
       return action.state.encounter.definitionId === definition.id && action.state.encounter.definitionVersion === definition.version
-        ? { ...action.state, timeZone: state.timeZone ?? null, noteDraft: action.state.noteDraft ?? null, procedureDraft: action.state.procedureDraft ?? null, medicationDraft: action.state.medicationDraft ?? null, vitalDraft: action.state.vitalDraft ?? null, acknowledgedWarnings: action.state.acknowledgedWarnings ?? [] }
+        ? { ...action.state, timeZone: state.timeZone ?? null, noteDraft: action.state.noteDraft ?? null, procedureDraft: action.state.procedureDraft ?? null, medicationDraft: action.state.medicationDraft ?? null, vitalDraft: restoreVitalDraft(action.state.vitalDraft), acknowledgedWarnings: action.state.acknowledgedWarnings ?? [] }
         : state;
     default:
       return state;
   }
+}
+
+function restoreVitalDraft(draft: VitalDraft | null): VitalDraft | null {
+  const assessment = draft?.decisionSupport;
+  if (!draft || !assessment?.observations || !Object.hasOwn(assessment.observations, "pulse")) return draft ?? null;
+  const { pulse, ...observations } = assessment.observations;
+  const values = draft.values.heartRate || draft.values.nullValues?.heartRate
+    ? draft.values : { ...draft.values, heartRate: legacyPulseRate(pulse) };
+  return { ...draft, values, decisionSupport: { ...assessment, observations } };
 }
 
 export function standardEncounterReducer(state: ShellState, action: ShellAction): ShellState {
@@ -701,8 +734,13 @@ function editVitalDecision<Field extends keyof VitalDecisionEdits>(draft: VitalD
     ...(carry ? { carryForward: { ...carry, edits: { ...carry.edits, [field]: true } } } : {}) };
 }
 
+export function vitalDraftSuggestions(draft: VitalDraft | null) {
+  return draft?.previousReadings ? provisionalVitalReadings(draft.previousReadings, draft.id,
+    vitalDraftMeasurementInstant(draft, draft.readingTimeZone ?? null), draft.enteredReadings) : {};
+}
+
 export function vitalDraftDecisionSupport(draft: VitalDraft | null, configuration?: ClinicalDecisionSupportConfiguration,
-  definition = bundledEncounterDefinition): DraftDecisionSupportAssessment {
+  definition = bundledEncounterDefinition, suggestions?: Record<string, string>): DraftDecisionSupportAssessment {
   const entered = draft?.decisionSupport ?? UNASSESSED_VITAL;
   if (!draft || !configuration) return entered;
   const carry = draft.carryForward;
@@ -714,5 +752,5 @@ export function vitalDraftDecisionSupport(draft: VitalDraft | null, configuratio
     return canonical === null ? [] : [[element, Number(canonical)]];
   }));
   return vitalAssessmentWithFindings(assessment, configuration.definition, draft.recordedLocalTime ?? draft.time,
-    { ...measurements, ...additional });
+    { ...measurements, ...additional }, suggestions);
 }

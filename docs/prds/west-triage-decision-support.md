@@ -47,7 +47,7 @@ The versioned JSON owns input bindings and units, coded choices, category-depend
 
 **NEWS scale.** Start each WEST encounter with **Standard** selected. Its NEWS2 tables and thresholds apply immediately, including when the clinician leaves the selector untouched. The same selector offers **Obstetric** and **COPD**. A clinician can switch to either scale or back to Standard. Repeat vitals inherit the preceding selection within the encounter. Categories, findings, diagnoses, and pregnancy timing never change the scale. COPD uses the prescribed NEWS2 oxygen saturation Scale 2.
 
-**Calculation.** Standard and COPD use respiratory rate, oxygen saturation, air or supplemental oxygen, systolic blood pressure, heart rate or pulse, consciousness including new confusion, and temperature. Obstetric applies its own bands and also requires diastolic pressure. The most urgent of the physiology color and the selected clinical findings determines the calculated WEST level. A finding contributes a color directly. With complete physiology, read the following thresholds from highest urgency downward. [SkaS WEST guide, PDF pages 10 and 24](https://mellanarkiv-offentlig.vgregion.se/alfresco/s/archive/stream/public/v1/source/available/sofia/skas13221-468498705-9/surrogate/WEST%20samt%20h%C3%A4nvisningsst%C3%B6d%20SkaS.pdf)
+**Calculation.** Standard and COPD use respiratory rate, oxygen saturation, air or supplemental oxygen, systolic blood pressure, pulse rate (NEMSIS `eVitals.10`), consciousness including new confusion, and temperature. Obstetric applies its own bands and also requires diastolic pressure. The most urgent of the physiology color and the selected clinical findings determines the calculated WEST level. A finding contributes a color directly. With complete physiology, read the following thresholds from highest urgency downward. [SkaS WEST guide, PDF pages 10 and 24](https://mellanarkiv-offentlig.vgregion.se/alfresco/s/archive/stream/public/v1/source/available/sofia/skas13221-468498705-9/surrogate/WEST%20samt%20h%C3%A4nvisningsst%C3%B6d%20SkaS.pdf)
 
 | Physiology profile | Red | Orange | Yellow | Green |
 | --- | --- | --- | --- | --- |
@@ -64,7 +64,7 @@ The versioned JSON owns input bindings and units, coded choices, category-depend
 
 Associate the WEST custom elements with the existing repeating vital group. Each occurrence stores its stable ID, measurement time, definition version, findings and explicit negatives, selected scale, calculation and completeness, override provenance, and effective result alongside its measurements.
 
-On creation, copy findings, explicit negatives and any manual WEST override from the immediately preceding entry in **measurement-time order**. Use the latest preceding NEWS scale from this encounter, or Standard when there is no prior scale. Start fresh measurements, oxygen status, and consciousness. Calculate the score from this entry's observations and scale. Save the carried choices as a snapshot. A later correction to the source entry does not rewrite assessments that already inherited its selections.
+On creation, copy findings, explicit negatives and any manual WEST override from the immediately preceding entry in **measurement-time order**. Use the latest preceding NEWS scale from this encounter, or Standard when there is no prior scale. Show the latest preceding value for each vital, oxygen status and consciousness in light grey. Include those suggestions in a provisional NEWS score. Clicking a field or pressing Enter confirms its value for the new entry. Recalculate the saved score using the confirmed observations and selected scale. Save the carried choices as a snapshot. A later correction to the source entry does not rewrite assessments that already inherited its selections.
 
 The report projects the effective level and status from the **latest finalized vital entry by measurement time**, including a provisional or manual color. A newer unassessed draft leaves the last finalized result in the report. Re-evaluate which entry is latest after a correction, deletion, or out-of-order sync. Use a stable tie-breaker for equal measurement times so offline and online views agree. Retain historical results as recorded and leave legacy entries without a WEST assessment unlabeled.
 
@@ -92,7 +92,7 @@ Test all four modules through their observable results. Extend the existing inst
 
 ## Out of Scope
 
-Future work includes Admin panels for editing and publishing rules, a general-purpose autofill facility for other form groups, and medication selection that prefills route or unit. This release covers the adult WEST-A assessment. Pediatric WEST, referral pathways, and treatment or monitoring orders are separate work.
+Future work includes Admin panels for editing and publishing rules, a general-purpose autofill facility for other form groups, for example medication selection that prefills route or unit. This release covers the adult WEST-A assessment. Pediatric WEST, referral pathways, and treatment or monitoring orders are separate work.
 
 ## Further Notes
 

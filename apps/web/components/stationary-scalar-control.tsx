@@ -7,6 +7,7 @@ import { useAgencyTimeZone } from "../app/agency-time-zone";
 import { canonicalDecimal, displayDecimal, useRegionalFormat } from "../app/regional-format";
 import { localStationaryDateTimeParts, stationaryDateTimeSelection } from "../app/stationary-date-time";
 import type { ScalarControlPresentation, ScalarValidationFinding } from "../app/stationary-scalar";
+import { provisionalVitalProps } from "./provisional-vital";
 import { ExceptionalValueMenu } from "./exceptional-value-menu";
 import { StationaryPickerLegend } from "./stationary-picker-label";
 import { TimePicker } from "./time-picker";
@@ -21,7 +22,10 @@ const subscribeToClientClock = () => () => undefined;
 const clientClockReady = () => true;
 const serverClockReady = () => false;
 
-export function StationaryScalarControl({ presentation, value, exceptionalValue, exceptionalChoices = [], inputValue, defaultDateTime, findings = [], disabled = false, initialFocus = false, embedded = false, onInput, onBlur, onExceptionalChange }: {
+export function StationaryScalarControl({ presentation, value, suggestion, language = "en", onConfirmSuggestion, exceptionalValue, exceptionalChoices = [], inputValue, defaultDateTime, findings = [], disabled = false, initialFocus = false, embedded = false, onInput, onBlur, onExceptionalChange }: {
+  readonly suggestion?: string;
+  readonly language?: string;
+  readonly onConfirmSuggestion?: (value: string) => void;
   readonly presentation: ScalarControlPresentation;
   readonly value?: ScalarEncounterValue;
   readonly exceptionalValue?: Extract<EncounterValue, { kind: "null" }>;
@@ -107,6 +111,8 @@ export function StationaryScalarControl({ presentation, value, exceptionalValue,
   };
   const control = <>
       <div className="stationary-scalar-value-row">{presentation.elementId === "eNarrative.01" ? <textarea {...commonTextProperties} rows={5} /> : <input
+        {...(onConfirmSuggestion ? provisionalVitalProps(suggestion, language, onConfirmSuggestion) : {})}
+        placeholder={suggestion && displayDecimal(suggestion, region)}
         autoFocus={initialFocus}
         aria-label={presentation.label}
         type={presentation.inputType}
