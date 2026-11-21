@@ -87,6 +87,10 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
+      - name: Discover public demo journeys on a clean checkout
+        env:
+          DEMO_WEB_URL: https://demo.invalid
+        run: npm run test:public-demo -w @open-triage/web -- --list
       - name: Build deployable web application
         run: npm run build -w @open-triage/web
       - name: Require the generated service worker
