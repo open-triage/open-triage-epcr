@@ -71,6 +71,11 @@ test("a clinician can save, close and reopen a new synthetic patient", async ({ 
     const card = page.getByRole("listitem").filter({ has: page.getByText(report.callNumber, { exact: true }) });
     await card.getByRole("button", { name: "Reopen report" }).click();
     await expect(name).toHaveValue(marker);
+    await expect(page.getByRole("button", { name: "Validate FHIR", exact: true })).toHaveCount(0);
+    const validation = await page.request.post(`/api/reports/${id}/demo/fhir-validation?background=true`, {
+      headers: { "x-csrf-token": demoSession.csrfToken },
+    });
+    expect(validation.status()).toBe(404);
     await page.getByRole("button", { name: "Save & close", exact: true }).click();
     await expect(page.getByRole("heading", { name: "Open reports" })).toBeVisible();
   } finally {

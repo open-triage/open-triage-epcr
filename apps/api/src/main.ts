@@ -10,8 +10,6 @@ import { PlatformErrorFilter } from "./platform-error.filter.js";
 import { agencyContextMiddleware } from "./sessions/agency-context.middleware.js";
 import { AgencyDirectoryService } from "./sessions/agency-directory.service.js";
 
-import { prewarmDemoFhir } from "./reports/demo-fhir-worker.js";
-
 async function bootstrap() {
   validateAuthenticationThrottleConfiguration();
   const app = await NestFactory.create<NestExpressApplication>(AppModule, { bodyParser: false });
@@ -39,7 +37,6 @@ async function bootstrap() {
     credentials: true,
   });
   await app.listen(Number(process.env.PORT ?? 3001));
-  prewarmDemoFhir();
 }
 
 void bootstrap();

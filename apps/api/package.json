@@ -5,7 +5,7 @@
   "private": true,
   "scripts": {
     "prebuild": "npm run build -w @open-triage/contracts",
-    "dev": "concurrently --kill-others-on-fail -n api,analytics,review \"nest start --watch --exec \\\"node --watch --watch-preserve-output\\\"\" \"npm run project:watch -w @open-triage/database\" \"npm run review:watch\"",
+    "dev": "concurrently --kill-others-on-fail -n api,analytics,review \"NODE_ENV=development nest start --watch --exec \\\"node --watch --watch-preserve-output\\\"\" \"npm run project:watch -w @open-triage/database\" \"npm run review:watch\"",
     "build": "nest build",
     "start": "node dist/main.js",
     "dispatch:ingest": "npm run build && node dist/dispatch/dispatch-file-cli.entry.js",

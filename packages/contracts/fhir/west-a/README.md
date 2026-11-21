@@ -40,9 +40,9 @@ For a finalized ePCR measurement, pass an envelope and its matching FHIR Patient
 node --import tsx scripts/generate-west-fhir.mjs encounter-envelope.json patient.json > bundle.json
 ```
 
-## Validate an open demo record
+## Validate an open demo record in local development
 
-Open a generated synthetic draft, save the measurement, wait for **Saved**, then choose **Validate FHIR** in the clinical demo bar. The dialog reports the saved revision, number of exported WEST assessments, errors and warnings. Download the Bundle to inspect the resource references or the OperationOutcome for individual findings.
+Start the local development servers with `npm run dev`. Open a generated synthetic draft, save the measurement, wait for **Saved**, then choose **Validate FHIR** in the clinical demo bar. The dialog reports the saved revision, number of exported WEST assessments, errors and warnings. Download the Bundle to inspect the resource references or the OperationOutcome for individual findings.
 
 The API reads the authorized saved snapshot. The collection includes the encounter, patient and a DocumentReference containing the canonical encounter JSON and note records. The validator checks the FHIR resources and attachment representation. The JSON inside the attachment retains its native ePCR format. Each finalized WEST measurement contributes its own triage observation and available vitals and NEWS2. A single assessed complaint supplies the primary category. Missing or ambiguous primary complaints produce a finding. A record with no finalized WEST assessment receives a warning.
 

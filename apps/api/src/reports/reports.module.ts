@@ -7,6 +7,7 @@ import { CosWorkerService } from '../hospital/cos-worker.service.js';
 import { EpsController } from '../hospital/eps.controller.js';
 import { EpsService } from '../hospital/eps.service.js';
 import { Module } from "@nestjs/common";
+import { DemoFhirController } from "./demo-fhir.controller.js";
 import { DraftReportController } from "./draft-report.controller.js";
 import { DraftReportService } from "./draft-report.service.js";
 import { SignReportService } from "./sign-report.service.js";
@@ -22,7 +23,8 @@ import { ReportAudioNormalizer } from "./report-audio-normalizer.service.js";
 
 @Module({
   imports: [SessionsModule, SchedulesModule, AdminModule],
-  controllers: [EpsSubmissionController, DraftReportController, EpsController],
+  controllers: [EpsSubmissionController, DraftReportController, EpsController,
+    ...(process.env.NODE_ENV === "development" ? [DemoFhirController] : [])],
   providers: [EpsWorkerService, EpsSubmissionService, CosWorkerService, EpsImportService, EpsService, DraftReportService, SignReportService, AmendReportService, ProtectedReportKeyService,
     ReviewValidationService, ReportNoteService, ReportPhotoService, ReportAudioService, ReportAudioNormalizer]
 })
